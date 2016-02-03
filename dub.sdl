@@ -1,0 +1,9 @@
+name "gsb"
+description "A minimal D application."
+copyright "Copyright © 2016, semery"
+authors "semery"
+
+targetType "executable"
+targetPath "build"
+
+
