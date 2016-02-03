@@ -2,10 +2,12 @@
 import std.stdio;
 import std.concurrency;
 import std.traits;
+import std.format;
 
 import Derelict.glfw3.glfw3;
 import Derelict.opengl3.gl3;
 
+import gsb.glutils;
 import gsb.text.textrenderer;
 import gsb.triangles_test;
 
@@ -147,8 +149,24 @@ void graphicsThread (Tid mainThreadId) {
 	auto camera = new Camera();
 	auto test = new TriangleRenderer();
 
-	int frame = 0;
+	Font font;
+	TextBuffer text;
 
+
+	try {
+		font = loadFont("/Library/Fonts/Arial.ttf");
+		text = new TextBuffer(font);
+		text.appendText("Hello world!");
+	} catch (Exception e) {
+
+		writefln("Error: %s on %s:%d", e.msg, e.file, e.line);
+		//writeln(e);
+		return;
+	}
+
+	
+
+	int frame = 0;
 	while (running) {
 		auto evt = receiveOnly!(ThreadSyncEvent)();
 		switch (evt) {
@@ -163,7 +181,10 @@ void graphicsThread (Tid mainThreadId) {
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-				test.render(camera);
+				//test.render(camera);
+				text.render(camera);
+				text.clear();
+				text.appendText(format("Hello World!\nCurrent frame is %d", frame));
 
 				glfwSwapBuffers(g_mainWindow);
 				checkGlErrors();
