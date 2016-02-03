@@ -5,6 +5,8 @@ import std.concurrency;
 import Derelict.glfw3.glfw3;
 import Derelict.opengl3.gl3;
 
+import stb.truetype;
+
 auto todstr(inout(char)* cstr) {
 	import core.stdc.string: strlen;
 	return cstr ? cstr[0 .. strlen(cstr)] : "";
