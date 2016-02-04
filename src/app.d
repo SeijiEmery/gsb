@@ -6,6 +6,7 @@ import std.format;
 
 import Derelict.glfw3.glfw3;
 import Derelict.opengl3.gl3;
+import gl3n.linalg;
 
 import gsb.glutils;
 import gsb.text.textrenderer;
@@ -121,9 +122,14 @@ static __gshared GLFWwindow * g_mainWindow = null;
 //	writefln("GL_MESSAGE (%s | %s | %s)[%s]: %s", debugSources[source], debugTypes[type], debugSeverity[severity], tryGetName(id), message[0 .. length]);
 //}
 
-void graphicsThread (Tid mainThreadId) {
+__gshared Log g_graphicsLog = null;
+__gshared Log g_mainLog     = null;      
 
-	writeln("Launched graphics thread");
+
+void graphicsThread (Tid mainThreadId) {
+	auto log = g_graphicsLog = new Log("graphics-thread");
+
+	log.write("Launched graphics thread");
 
 	glfwMakeContextCurrent(g_mainWindow);
 	glfwSwapInterval(1);
@@ -134,6 +140,13 @@ void graphicsThread (Tid mainThreadId) {
 
 	//checkGlErrors();
 	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
+
+	glEnable(GL_BLEND);
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	//glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+	//glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
+
 	//auto call = tryCall(glEnable);
 	//call(GL_DEPTH_TEST);
 	//checkGlErrors();
@@ -142,9 +155,9 @@ void graphicsThread (Tid mainThreadId) {
 
 	send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
-	writeln("Running GLSandbox");
-	writefln("Renderer: %s", todstr(glGetString(GL_RENDERER)));
-	writefln("Opengl version: ", todstr(glGetString(GL_VERSION)));
+	log.write("Running GLSandbox");
+	log.write("Renderer: %s", todstr(glGetString(GL_RENDERER)));
+	log.write("Opengl version: %s", todstr(glGetString(GL_VERSION)));
 
 	auto camera = new Camera();
 	auto test = new TriangleRenderer();
@@ -154,29 +167,36 @@ void graphicsThread (Tid mainThreadId) {
 
 
 	try {
-		font = loadFont("/Library/Fonts/Arial.ttf");
+		//font = loadFont("/Library/Fonts/Arial.ttf");
+		font = loadFont("/Library/Fonts/Trattatello.ttf");
 		text = new TextBuffer(font);
 		text.appendText("Hello world!");
 	} catch (Exception e) {
-
-		writefln("Error: %s on %s:%d", e.msg, e.file, e.line);
+		log.write("Error: %s on %s:%d", e.msg, e.file, e.line);
 		//writeln(e);
 		return;
 	}
 
-	
+	auto createView (Log targetLog, float width, float height, mat4 transform) {
+		return new LogView(targetLog).setBounds(width, height).setTransform(transform);
+	}
+
+	LogView[string] logViews = [
+		"graphics": createView(g_graphicsLog, 800, 200, mat4.translation(0, +0.5, 0)),
+		"main": createView(g_mainLog, 800, 200, mat4.translation(0, -0.5, 0))
+	];
 
 	int frame = 0;
 	while (running) {
 		auto evt = receiveOnly!(ThreadSyncEvent)();
 		switch (evt) {
 			case ThreadSyncEvent.NOTIFY_SHOULD_DIE: {
-				writeln("Recieved kill event");
+				log.write("Recieved kill event");
 				running = false;
 			} break;
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 
-				writefln("on frame %d", frame++);
+				log.write("on frame %d", frame++);
 
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -185,6 +205,10 @@ void graphicsThread (Tid mainThreadId) {
 				text.render(camera);
 				text.clear();
 				text.appendText(format("Hello World!\nCurrent frame is %d", frame));
+
+				foreach (logView; logViews.values) {
+					logView.maybeUpdate();
+				}
 
 				glfwSwapBuffers(g_mainWindow);
 				checkGlErrors();
@@ -201,11 +225,13 @@ void graphicsThread (Tid mainThreadId) {
 
 void main()
 {
+	auto log = g_mainLog = new Log("main-thread");
+
 	DerelictGLFW3.load();
 	DerelictGL3.load();
 
 	if (!glfwInit()) {
-		writeln("Failed to initialize glfw");
+		log.write("Failed to initialize glfw");
 		return;
 	}
 
@@ -216,7 +242,7 @@ void main()
 
 	g_mainWindow = glfwCreateWindow(800, 600, "GL Sandbox", null, null);
 	if (!g_mainWindow) {
-		writeln("Failed to create window");
+		log.write("Failed to create window");
 		glfwTerminate();
 		return;
 	}
@@ -229,9 +255,9 @@ void main()
 			(ThreadSyncEvent evt) {
 				if (evt == ThreadSyncEvent.READY_FOR_NEXT_FRAME) {
 					initialized = true;
-					writeln("Initialized.");
+					log.write("Initialized.");
 				} else {
-					writeln("Recieved unexpected event");
+					log.write("Recieved unexpected event");
 				}
 			}
 		);
@@ -247,15 +273,15 @@ void main()
 			evt = receiveOnly!(ThreadSyncEvent)();
 		}
 	}
-	writeln("Killing graphics thread");
+	log.write("Killing graphics thread");
 	send(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
 
 	ThreadSyncEvent evt;
 	while ((evt = receiveOnly!(ThreadSyncEvent)()) != ThreadSyncEvent.NOTIFY_THREAD_DIED) {
-		writefln("Waiting on thread kill event (recieved %d)", evt);
+		log.write("Waiting on thread kill event (recieved %d)", evt);
 	}
 
-	writeln("Deinitializing");
+	log.write("Deinitializing");
 
 	glfwDestroyWindow(g_mainWindow);
 	glfwTerminate();

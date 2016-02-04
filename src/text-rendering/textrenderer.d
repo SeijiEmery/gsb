@@ -3,11 +3,11 @@ module gsb.text.textrenderer;
 
 import std.stdio;
 import std.file;
+import std.format;
 import stb.truetype;
 import gsb.glutils;
 import derelict.opengl3.gl3;
 import dglsl;
-
 
 class GlTexture {
 	uint id;
@@ -20,6 +20,164 @@ class GlTexture {
 	}
 }
 
+class ResourceError : Error {
+	this (T...) (string fmt, T args) {
+		super(format(fmt, args));
+	}
+}
+
+class StbFont {
+	stbtt_fontinfo fontInfo;
+	ubyte[] fontData;
+
+	this (string filename) {
+		if (!exists(filename) || !attrIsFile(getAttributes(filename)))
+			throw new ResourceError("Cannot load font file '%s'", filename);
+
+		fontData = cast(ubyte[])read(filename);
+		if (fontData.length == 0)
+			throw new ResourceError("Failed to load font file '%s'", filename);
+
+		if (!stbtt_InitFont(&fontInfo, fontData.ptr, 0))
+			throw new ResourceError("stb: Failed to load font '%s'", filename);
+	}
+	auto getScaleForPixelHeight (float height) {
+		return stbtt_ScaleForPixelHeight(&fontInfo, height);
+	}
+}
+
+class PackedFontAtlas {
+	StbFont font;
+	stbtt_pack_context packCtx;
+	ubyte[] bitmapData; // single channel bitmap
+	int width, height;
+
+	stbtt_packedchar[] packedChars;
+	int nextPackedChar = 0;
+
+	this (StbFont _font, int textureWidth, int textureHeight) {
+		if (_font is null)
+			throw new ResourceError("null font");
+
+		font = _font;
+		width = textureWidth;
+		height = textureHeight;
+		bitmapData = new ubyte[width * height];
+
+		if (!stbtt_PackBegin(&packCtx, bitmapData.ptr, width, height, 0, 1, null))
+			throw new ResourceError("stbtt_PackBegin(...) failed");
+	}
+	void packRange (float fontSize, int firstUChar, int nchars) {
+		auto data = &packedChars[nextPackedChar++];
+		auto size = font.getScaleForPixelHeight(fontSize);
+		stbtt_PackFontRange(&packCtx, font.fontData.ptr, 0, size, firstUChar, nchars, data);
+	}
+
+	~this () {
+		stbtt_PackEnd(&packCtx);
+	}
+}
+
+class RasterizedTextElement {
+	PackedFontAtlas atlas;
+	vec2 nextPos;
+	vec2 bounds;
+	public float depth = 0;
+	public mat4 transform;
+
+	private GlTexture bitmapTexture;
+
+	this (PackedFontAtlas _atlas)
+	in { assert(!(atlas is null)); }
+	body {
+		atlas = _atlas;
+	}
+}
+
+class Log {
+	string title;
+	string[] lines;
+	public bool writeToStdout = true;
+
+	this (string title_) {
+		title = title_;
+	}
+
+	void write (string msg) {
+		lines ~= msg;
+		if (writeToStdout) {
+			writefln("[%s] %s", title, msg);
+		}
+	}
+	void write (T...)(string msg, T args) {
+		write(format(msg, args));
+	}
+}
+
+class LogView {
+	Log log;
+	uint lastLineCount = 0;
+
+	public vec2 bounds;
+	public mat4 transform;
+
+	vec2 currentTextBounds; // total bounds of layouted text
+	vec2 nextLayoutPosition;
+
+	vec2 viewPosition;      // current position (scroll, etc) in view
+
+	this (Log _log)
+	in { assert(!(_log is null)); }
+	body {
+		log = _log;
+	}
+
+	void maybeUpdate () {
+		auto nlines = log.lines.length;
+		if (lastLineCount != nlines) {
+			writeln("Needs update!");
+		}
+	}
+}
+
+LogView setBounds (LogView view, float x, float y) {
+	view.bounds.x = x;
+	view.bounds.y = y;
+	return view;
+}
+LogView setTransform (LogView view, mat4 transform) {
+	view.transform = transform;
+	return view;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class Font {
 	stbtt_fontinfo font;
 	float scale;
@@ -31,13 +189,13 @@ class Font {
 		ubyte[] contents = cast(ubyte[])read(filename);
 		stbtt_InitFont(&font, &contents[0], 0);
 
-		scale = stbtt_ScaleForPixelHeight(&font, 40);
+		scale = stbtt_ScaleForPixelHeight(&font, 120);
 		stbtt_GetFontVMetrics(&font, &ascent, null, null);
 		baseline = cast(int)(ascent * scale);
 
 		bitmapTexture = new GlTexture();
 		ubyte[] bitmapData = new ubyte[512*512];
-		stbtt_BakeFontBitmap(contents.ptr,0, 40.0, bitmapData.ptr,512,512, 32,96, chrdata.ptr);
+		stbtt_BakeFontBitmap(contents.ptr,0, 120.0, bitmapData.ptr,512,512, 32,96, chrdata.ptr);
 
 		writeln("Finished loading font");
 
@@ -93,7 +251,7 @@ class TextVertexShader: Shader!Vertex {
 }
 class TextFragmentShader: Shader!Fragment {
 	@input vec2 texCoord;
-	@output vec3 fragColor;
+	@output vec4 fragColor;
 
 	@uniform sampler2D textureSampler;
 
@@ -101,7 +259,8 @@ class TextFragmentShader: Shader!Fragment {
 		//fragColor = vec3(1.0, 0.2, 0.2) + 
 		//			vec3(0.0, outCoords);
 
-		fragColor = texture(textureSampler, texCoord).rgb;
+		vec4 color = texture(textureSampler, texCoord);
+		fragColor = vec4(color.rgb, color.r);
 	}
 }
 
