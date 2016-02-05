@@ -31,6 +31,9 @@ class StbFont {
 	ubyte[] fontData;
 
 	this (string filename) {
+		if (1/* run at compile time */)
+			return;
+
 		if (!exists(filename) || !attrIsFile(getAttributes(filename)))
 			throw new ResourceError("Cannot load font file '%s'", filename);
 
@@ -114,12 +117,22 @@ class Log {
 	}
 }
 
+//immutable string DEFAULT_FONT = "/Library/Fonts/Verdana.ttf";
+//immutable string[string] DEFAULT_TYPEFACE = [
+//	"default": "~/Library/Application Support/GLSandbox/fonts/Anonymous Pro.ttf",
+//	"bold":    "~/Library/Application Support/GLSandbox/fonts/Anonymous Pro B.ttf",
+//	"italic":  "~/Library/Application Support/GLSandbox/fonts/Anonymous Pro I.ttf",
+//	"bolditalic": "~/Library/Application Support/GLSandbox/fonts/Anonymous Pro BI.ttf"
+//];
+
 class LogView {
 	Log log;
 	uint lastLineCount = 0;
 
 	public vec2 bounds;
 	public mat4 transform;
+
+	BasicTextRenderer textRenderer = new BasicTextRenderer();
 
 	vec2 currentTextBounds; // total bounds of layouted text
 	vec2 nextLayoutPosition;
@@ -132,11 +145,25 @@ class LogView {
 		log = _log;
 	}
 
+	void render () {
+		maybeUpdate();
+		textRenderer.render();	
+	}
+
 	void maybeUpdate () {
-		auto nlines = log.lines.length;
-		if (lastLineCount != nlines) {
-			writeln("Needs update!");
+		// TODO: Move this to async task; breakup logview / basictextrenderer into two parts:
+		//	- async cpu-bound relayouting   (main thread => worker thread)
+		//  - immediate gpu-bound rendering (gl thread)
+		auto lines = log.lines;
+		if (lastLineCount != lines.length) {
+			for (auto i = lastLineCount; i < lines.length; ++i) {
+				textRenderer.appendLine(log.lines[i]);
+			}
+			lastLineCount = lines.length;
 		}
+	}
+	void render () {
+		renderer.render();
 	}
 }
 
@@ -148,6 +175,23 @@ LogView setBounds (LogView view, float x, float y) {
 LogView setTransform (LogView view, mat4 transform) {
 	view.transform = transform;
 	return view;
+}
+
+class BasicTextRenderer {
+	StbFont font = new StbFont("/Library/Fonts/Anonymous Pro.ttf");
+	float   fontSize = 24;
+
+	vec2 textSize;
+	vec2 nextLayoutPosition;
+
+	PackedFontAtlas atlas;
+	auto shader = new TextShader();
+	auto gbuffer = new TextGeometryBuffer();
+
+	void render () {
+		shader.bind();
+		gbuffer.draw();
+	}
 }
 
 
@@ -189,13 +233,13 @@ class Font {
 		ubyte[] contents = cast(ubyte[])read(filename);
 		stbtt_InitFont(&font, &contents[0], 0);
 
-		scale = stbtt_ScaleForPixelHeight(&font, 120);
+		scale = stbtt_ScaleForPixelHeight(&font, 24);
 		stbtt_GetFontVMetrics(&font, &ascent, null, null);
 		baseline = cast(int)(ascent * scale);
 
 		bitmapTexture = new GlTexture();
 		ubyte[] bitmapData = new ubyte[512*512];
-		stbtt_BakeFontBitmap(contents.ptr,0, 120.0, bitmapData.ptr,512,512, 32,96, chrdata.ptr);
+		stbtt_BakeFontBitmap(contents.ptr,0, 24.0, bitmapData.ptr,512,512, 32,96, chrdata.ptr);
 
 		writeln("Finished loading font");
 
@@ -263,6 +307,102 @@ class TextFragmentShader: Shader!Fragment {
 		fragColor = vec4(color.rgb, color.r);
 	}
 }
+class TextShader {
+	TextFragmentShader fs = null;
+	TextVertexShader vs = null;
+	Program!(TextVertexShader, TextFragmentShader) prog = null;
+
+	void lazyInit ()
+	in { assert(prog is null); }
+	body {
+		fs = new TextFragmentShader(); fs.compile(); CHECK_CALL("compiling text fragment shader");
+		vs = new TextVertexShader();   vs.compile(); CHECK_CALL("compiling text vertex shader");
+		prog = makeProgram(vs, fs); CHECK_CALL("compiling/linking text shader program");
+	}
+
+	void bind () {
+		if (prog is null)
+			lazyInit();
+		glUseProgram(prog.id); CHECK_CALL("glUseProgram(text shader)");
+	}
+}
+class TextGeometryBuffer {
+	uint gl_positionBuffer = 0;
+	uint gl_texcoordBuffer = 0;
+	uint gl_vao = 0;
+
+	vec3[] cachedPositionData;
+	vec2[] cachedTexcoordData;
+	bool dirtyPositionData = false;
+	bool dirtyTexcoordData = false;
+
+	void lazyInit ()
+	in { assert(gl_vao == 0); }
+	body {
+		glGenVertexArrays(1, &gl_vao); CHECK_CALL("glGenVertexArray");
+		glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
+		glEnableVertexAttribArray(0); CHECK_CALL("glEnableVertexAttribArray");
+		glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray");
+
+		glGenBuffers(1, &gl_positionBuffer); CHECK_CALL("glGenBuffer");
+		glBindBuffer(GL_ARRAY_BUFFER, gl_positionBuffer); CHECK_CALL("glBindBuffer");
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+
+		glGenBuffers(1, &gl_texcoordBuffer); CHECK_CALL("glGenBuffers");
+		glBindBuffer(GL_ARRAY_BUFFER, gl_texcoordBuffer); CHECK_CALL("glBindBuffer");
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+
+		glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
+	}
+	~this () {
+		if (gl_vao) glDeleteVertexArrays(1, &gl_vao);
+		if (gl_positionBuffer) glDeleteBuffers(1, &gl_positionBuffer);
+		if (gl_texcoordBuffer) glDeleteBuffers(1, &gl_texcoordBuffer);
+	}
+
+	void pushQuad (vec2[4] points, vec2[4] uvs) {
+		foreach (pt; points) {
+			cachedPositionData ~= vec3(pt.x, pt.y, 0);
+		}
+		cachedTexcoordData ~= uvs;
+		dirtyPositionData = dirtyTexcoordData = true;
+	}
+	void clear () {
+		dirtyPositionData = cachedPositionData.length != 0;
+		dirtyTexcoordData = cachedPositionData.length != 0;
+		cachedPositionData.length = 0;
+		cachedTexcoordData.length = 0;
+	}
+	void flushChanges () {
+		if (dirtyPositionData) {
+			glBindBuffer(GL_ARRAY_BUFFER, gl_positionBuffer); CHECK_CALL("glBindBuffer");
+			glBufferData(GL_ARRAY_BUFFER, cachedPositionData.length * 4, cachedPositionData.ptr, GL_STATIC_DRAW); 
+			CHECK_CALL("glBufferData (TextGeometryBuffer.flushChanges() (quads))");
+			dirtyPositionData = false;
+		}
+		if (dirtyTexcoordData) {
+			glBindBuffer(GL_ARRAY_BUFFER, gl_texcoordBuffer); CHECK_CALL("glBindBuffer");
+			glBufferData(GL_ARRAY_BUFFER, cachedTexcoordData.length * 4, cachedTexcoordData.ptr, GL_STATIC_DRAW); 
+			CHECK_CALL("glBufferData (TextGeometryBuffer.flushChanges() (uvs))");
+			dirtyTexcoordData = false;
+		}
+	}
+
+	void bind () {
+		if (!gl_vao) lazyInit();
+		flushChanges();
+		glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray (TextGeometryBuffer.bind())");
+	}
+	void draw () {
+		if (cachedPositionData.length != 0) {
+			bind();
+			glDrawArrays(GL_TRIANGLES, 0, cast(int) cachedPositionData.length); CHECK_CALL("glDrawArrays (TextGeometryBuffer.draw())");
+		}
+	}
+}
+
+
+
 
 
 class TextBuffer {

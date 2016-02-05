@@ -168,7 +168,8 @@ void graphicsThread (Tid mainThreadId) {
 
 	try {
 		//font = loadFont("/Library/Fonts/Arial.ttf");
-		font = loadFont("/Library/Fonts/Trattatello.ttf");
+		//font = loadFont("/Library/Fonts/Trattatello.ttf");
+		font = loadFont("/Library/Fonts/Anonymous Pro.ttf");
 		text = new TextBuffer(font);
 		text.appendText("Hello world!");
 	} catch (Exception e) {
