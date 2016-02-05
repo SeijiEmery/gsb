@@ -181,8 +181,8 @@ class BasicTextRenderer {
 	StbFont font = new StbFont("/Library/Fonts/Anonymous Pro.ttf");
 	float   fontSize = 24;
 
-	vec2 textSize;
 	vec2 nextLayoutPosition;
+	vec2 currentBounds;
 
 	PackedFontAtlas atlas;
 	auto shader = new TextShader();
@@ -192,31 +192,32 @@ class BasicTextRenderer {
 		shader.bind();
 		gbuffer.draw();
 	}
+
+	void appendLine (string line) {
+		foreach (chr; line) {
+			appendChar(chr);
+		}
+	}
+	void appendChar (char chr) {
+		if (chr == '\n') {
+			nextLayoutPosition.y += // something...
+			nextLayoutPosition.x = 0;
+		} else {
+			// get quad from atlas (atlas lazy loads char if not in charset)
+			
+			// do layout with quad and baseline, etc
+
+			// push final quad + uvs to gbuffer (gbuffer.pushQuad(points, uvs))
+		}
+	}
+
+
+
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+class BasicTextLayouter {
+	// tbd
+}
 
 
 
@@ -327,44 +328,65 @@ class TextShader {
 	}
 }
 class TextGeometryBuffer {
-	uint gl_positionBuffer = 0;
-	uint gl_texcoordBuffer = 0;
+	//uint gl_positionBuffer = 0;
+	//uint gl_texcoordBuffer = 0;
 	uint gl_vao = 0;
+	uint[3] gl_buffers;
 
 	vec3[] cachedPositionData;
 	vec2[] cachedTexcoordData;
+	vec4[] cachedColorData;
+
 	bool dirtyPositionData = false;
 	bool dirtyTexcoordData = false;
+	bool dirtyColorData = false;
 
 	void lazyInit ()
 	in { assert(gl_vao == 0); }
 	body {
 		glGenVertexArrays(1, &gl_vao); CHECK_CALL("glGenVertexArray");
 		glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
-		glEnableVertexAttribArray(0); CHECK_CALL("glEnableVertexAttribArray");
-		glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray");
 
-		glGenBuffers(1, &gl_positionBuffer); CHECK_CALL("glGenBuffer");
-		glBindBuffer(GL_ARRAY_BUFFER, gl_positionBuffer); CHECK_CALL("glBindBuffer");
+		glGenBuffers(3, &gl_buffers[0]);  CHECK_CALL("glGenBuffers");
+
+		glEnableVertexAttribArray(0); CHECK_CALL("glEnableVertexAttribArray")
+		glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
 
-		glGenBuffers(1, &gl_texcoordBuffer); CHECK_CALL("glGenBuffers");
-		glBindBuffer(GL_ARRAY_BUFFER, gl_texcoordBuffer); CHECK_CALL("glBindBuffer");
+		glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray")
+		glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
 		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+
+		glEnableVertexAttribArray(2); CHECK_CALL("glEnableVertexAttribArray")
+		glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
+		glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
 
 		glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
 	}
 	~this () {
-		if (gl_vao) glDeleteVertexArrays(1, &gl_vao);
-		if (gl_positionBuffer) glDeleteBuffers(1, &gl_positionBuffer);
-		if (gl_texcoordBuffer) glDeleteBuffers(1, &gl_texcoordBuffer);
+		if (gl_vao) {
+			glDeleteVertexArrays(1, &gl_vao);
+			glDeleteBuffers(3, &gl_buffers[0]);
+		}
 	}
 
-	void pushQuad (vec2[4] points, vec2[4] uvs) {
-		foreach (pt; points) {
-			cachedPositionData ~= vec3(pt.x, pt.y, 0);
-		}
-		cachedTexcoordData ~= uvs;
+	void pushQuad (vec2[4] points, vec2[4] uvs, float depth = 0) {
+		cachedPositionData ~= vec3(points[0], depth);
+		cachedPositionData ~= vec3(points[1], depth);
+		cachedPositionData ~= vec3(points[2], depth);
+
+		cachedPositionData ~= vec3(points[2], depth);
+		cachedPositionData ~= vec3(points[1], depth);
+		cachedPositionData ~= vec3(points[3], depth);
+
+		cachedTexcoordData ~= uvs[0];
+		cachedTexcoordData ~= uvs[1];
+		cachedTexcoordData ~= uvs[2];
+
+		cachedTexcoordData ~= uvs[2];
+		cachedTexcoordData ~= uvs[1];
+		cachedTexcoordData ~= uvs[3];
+
 		dirtyPositionData = dirtyTexcoordData = true;
 	}
 	void clear () {
@@ -375,17 +397,25 @@ class TextGeometryBuffer {
 	}
 	void flushChanges () {
 		if (dirtyPositionData) {
-			glBindBuffer(GL_ARRAY_BUFFER, gl_positionBuffer); CHECK_CALL("glBindBuffer");
+			glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
 			glBufferData(GL_ARRAY_BUFFER, cachedPositionData.length * 4, cachedPositionData.ptr, GL_STATIC_DRAW); 
 			CHECK_CALL("glBufferData (TextGeometryBuffer.flushChanges() (quads))");
 			dirtyPositionData = false;
 		}
 		if (dirtyTexcoordData) {
-			glBindBuffer(GL_ARRAY_BUFFER, gl_texcoordBuffer); CHECK_CALL("glBindBuffer");
+			glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[1]); CHECK_CALL("glBindBuffer");
 			glBufferData(GL_ARRAY_BUFFER, cachedTexcoordData.length * 4, cachedTexcoordData.ptr, GL_STATIC_DRAW); 
 			CHECK_CALL("glBufferData (TextGeometryBuffer.flushChanges() (uvs))");
 			dirtyTexcoordData = false;
 		}
+		if (dirtyColorData) {
+			// Note: look into using vertex divisor for color data (ie. only upload 1 color per every quad (6 verts), not every vert...)
+			glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[2]); CHECK_CALL("glBindBuffer");
+			glBufferData(GL_ARRAY_BUFFER, cachedColorData.length * 4, cachedColorData.ptr, GL_STATIC_DRAW);
+			CHECK_CALL("glBufferData (TextGeometryBuffer.flushChanges() (colors))");
+			dirtyColorData = false;
+		}
+
 	}
 
 	void bind () {
