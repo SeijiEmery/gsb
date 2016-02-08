@@ -48,7 +48,7 @@ private class FragmentShader : Shader!Fragment {
 }
 
 class StbTextRenderTest {
-    public string fontPath = "/Library/Fonts/Arial Unifoob.ttf";
+    public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
     public int BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024;
     public float fontSize = 40; // in pixels
     float fontScale;
