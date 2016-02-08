@@ -45,7 +45,7 @@ static __gshared GLFWwindow * g_mainWindow = null;
 __gshared Log g_graphicsLog = null;
 __gshared Log g_mainLog     = null;  
 
-Log log = null;    
+Log log = null;  // thread-local
 
 void graphicsThread (Tid mainThreadId) {
 	log = g_graphicsLog = new Log("graphics-thread");
@@ -146,17 +146,6 @@ void enterGraphicsThread (Tid mainThreadId) {
 		prioritySend(mainThreadId, ThreadSyncEvent.NOTIFY_THREAD_DIED);
 	}
 }
-void enterMainThread (Tid graphicsThreadId) {
-	try {
-		mainThread(graphicsThreadId);
-	} catch (Error e) {
-		if (g_mainLog)
-			g_mainLog.write("Error: %s", e);
-		else
-			writefln("[main-thread] Error: %s", e);
-		prioritySend(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
-	}
-}
 
 void mainThread (Tid graphicsThreadId) {
 	log = g_mainLog = new Log("main-thread");
@@ -182,22 +171,34 @@ void mainThread (Tid graphicsThreadId) {
 	nextFrame:
 	}
 	log.write("Killing graphics thread");
-	send(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
+	prioritySend(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
 	{
 		ThreadSyncEvent evt;
 		while ((evt = receiveOnly!(ThreadSyncEvent)()) != ThreadSyncEvent.NOTIFY_THREAD_DIED) {
-			log.write("Waiting on thread kill event (recieved %d)", evt);
+			writefln("[main-thread] Waiting on thread kill event (recieved %d)", evt);
 		}
 	}
 gthreadDied:
-	log.write("Shutting down");
-
-	glfwDestroyWindow(g_mainWindow);
-	glfwTerminate();
+}
+void enterMainThread (Tid graphicsThreadId) {
+	try {
+		mainThread(graphicsThreadId);
+	} catch (Error e) {
+		if (g_mainLog)
+			g_mainLog.write("Error: %s", e);
+		else
+			writefln("[main-thread] Error: %s", e);
+		prioritySend(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
+		ThreadSyncEvent evt;
+		while ((evt = receiveOnly!(ThreadSyncEvent)()) != ThreadSyncEvent.NOTIFY_THREAD_DIED) {
+			writefln("[main-thread] Waiting on thread kill event (recieved %d)", evt);
+		}
+	}
 }
 
 void main()
 {
+	// Preload gl + glfw
 	DerelictGLFW3.load();
 	DerelictGL3.load();
 
@@ -206,6 +207,7 @@ void main()
 		return;
 	}
 
+	// Create window
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
@@ -218,7 +220,28 @@ void main()
 		return;
 	}
 
-	auto graphicsThread = spawn(&enterGraphicsThread, thisTid);
+	// And then hand our gl context off to the graphics thread (via the __gshared window handle)
+	auto gthreadHandle = spawn(&enterGraphicsThread, thisTid);
 
-	enterMainThread(graphicsThread);
+	// We'll finish initializing and run our control + event code on the main thread, but opengl
+	// access is confined _strictly_ to the graphics thread.
+
+	try {
+		enterMainThread(gthreadHandle);
+	} catch (Error e) {
+		writeln(e);
+	}
+
+	// Finally, we run our shutdown code here.
+	// Note: the main thread terminates iff
+	// - app exits normally (cmd+q / window closed / etc)
+	// - main thread threw an exception and must terminate
+	// - a critical / core thread (like the graphics thread) threw an exception and terminated.
+	//
+	// In the first two cases, mainThread / enterMainThread will kill all worker threads and wait
+	// for confirmation before returning
+	//
+	log.write("Shutting down");
+	glfwDestroyWindow(g_mainWindow);
+	glfwTerminate();
 }

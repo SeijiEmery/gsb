@@ -50,9 +50,14 @@ private class FragmentShader : Shader!Fragment {
 class StbTextRenderTest {
     public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
     public int BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024;
-    public float fontSize = 40; // in pixels
+    public float fontSize = 30; // in pixels
     float fontScale;
     float fontBaseline;
+
+    int ascent;
+    int descent;
+    int lineGap;
+
 
     uint[3] gl_vbos;
     uint    gl_vao = 0;
@@ -62,7 +67,7 @@ class StbTextRenderTest {
 
     // debug
     auto fullScreenQuad = new FullScreenTexturedQuad();
-    static immutable bool RENDER_FULLSCREEN_QUAD = true;
+    static immutable bool RENDER_FULLSCREEN_QUAD = false;
 
     public void setText (string text) {
         if (__ctfe) 
@@ -83,10 +88,7 @@ class StbTextRenderTest {
             throw new ResourceError("stb: Failed to load font '%s'");
 
         fontScale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
-        writefln("Font scale = %0.2f", fontScale);
-        int ascent;
-        stbtt_GetFontVMetrics(&fontInfo, &ascent, null, null);
-        fontBaseline = ascent * fontScale;
+        stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
 
         // Determine charset
         auto rbcharset = new RedBlackTree!dchar();
@@ -121,7 +123,7 @@ class StbTextRenderTest {
 
         // Pack charset
         stbtt_pack_range r;
-        r.font_size = fontScale;
+        r.font_size = fontSize;
         r.first_unicode_codepoint_in_range = 0;
         r.array_of_unicode_codepoints = cast(int*)charset.ptr;
         r.num_chars = cast(int)charset.length;
@@ -132,55 +134,37 @@ class StbTextRenderTest {
         stbtt_PackEnd(&pck);
 
         // Render to quads
-        static if (RENDER_FULLSCREEN_QUAD)        
-            float[] quads = [ 
-                0, 0, 0,     //-1, -1, 0, 
-                800, 600, 0, //+1, +1, 0, 
-                800, 0, 0, //+1, -1, 0,
-
-                0, 0, 0, //-1, -1, 0,
-                0, 600, 0, //-1, +1, 0,
-                800, 600, 0,//+1, +1, 0,
-            ];
-        else
-            float[] quads;
+        float[] quads;
 
         // UVs are flipped since stb_truetype uses flipped y-coords
-        static if (RENDER_FULLSCREEN_QUAD)
-            float[] uvs   = [ 
-                0, 1,
-                1, 0,
-                1, 1,
+        float[] uvs;
 
-                0, 1,
-                0, 0,
-                1, 0
-            ];
-        else
-            float[] uvs;
-
-        int pw = BITMAP_WIDTH, ph = BITMAP_HEIGHT;
-        //int pw = 800, ph = 600;
-        float x = 0, y = 0;
-        bool align_to_integer = false;
+        float x = 0, y = (ascent - descent + lineGap) * fontScale;
+        bool align_to_integer = true;
         foreach (chr; text.byDchar()) {
             if (chr == '\n') {
                 x = 0;
-                y += fontScale * 1.4;
+                writefln("ascent = %d, descent = %d, lineGap = %d, total = %d, scaled = %0.2f",
+                    ascent, descent, lineGap, (ascent - descent + lineGap), (ascent - descent + lineGap) * fontScale);
+
+                y += (ascent - descent + lineGap) * fontScale;
+                //y += 10;
+                //y += fontSize;// * 1.4;
+                //writefln("fontBaseline = %0.2f", fontBaseline);
             } else {
                 stbtt_aligned_quad q;
-                stbtt_GetPackedQuad(packedChrData.ptr, pw, ph, chrLookup[chr], &x, &y, &q, align_to_integer);
+                stbtt_GetPackedQuad(packedChrData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, chrLookup[chr], &x, &y, &q, align_to_integer);
                 writefln("Encoding %c (%d) => quad (%0.2f,%0.2f),(%0.2f,%0.2f) at (%0.2f,%0.2f)", chr, chrLookup[chr], q.x0, q.y0, q.x1, q.y1, x, y);
 
                 // Push geometry
                 quads ~= [
-                    q.x0, q.y0, 0.0,
-                    q.x1, q.y1, 0.0,
-                    q.x1, q.y0, 0.0,
+                    q.x0, -q.y1, 0.0,   // flip y-axis
+                    q.x1, -q.y0, 0.0,
+                    q.x1, -q.y1, 0.0,
 
-                    q.x0, q.y0, 0.0,
-                    q.x0, q.y1, 0.0,
-                    q.x1, q.y1, 0.0,
+                    q.x0, -q.y1, 0.0,
+                    q.x0, -q.y0, 0.0,
+                    q.x1, -q.y0, 0.0,
                 ];
                 uvs ~= [
                     q.s0, q.t1,
@@ -259,14 +243,15 @@ class StbTextRenderTest {
             glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
             glBindTexture(GL_TEXTURE_2D, gl_texture); CHECK_CALL("glBindTexture");
             glUseProgram(shader.id); CHECK_CALL("glUseProgram");
+            
             shader.transform = mat4.identity();
-            //shader.transform = mat4.identity().scale(1.0 / 800.0, 1.0 / 600.0, 1.0);
+            fullScreenQuad.draw();
 
+            shader.transform = mat4.identity().scale(1.0 / 800.0, 1.0 / 600.0, 1.0);
             glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
             glDrawArrays(GL_TRIANGLES, 0, ntriangles); CHECK_CALL("glDrawArrays");
             writefln("Drew %d triangles", ntriangles);
 
-            //fullScreenQuad.draw();
 
             glUseProgram(0); CHECK_CALL("glUseProgram(0)");
             glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
@@ -294,47 +279,54 @@ private class FullScreenTexturedQuad {
     uint gl_vao = 0;
     uint[2] gl_vbos;
 
-    this () {
-        if (__ctfe) return;
-
-        glGenVertexArrays(1, &gl_vao); CHECK_CALL("glGenVertexArrays");
-        glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
-
-        float[] quad = [
-            -1, -1, 0,
-            -1, +1, 0,
-            +1, +1, 0,
-
-            +1, +1, 0,
-            -1, +1, 0,
-            -1, -1, 0,
-        ];
-        float[] uvs = [
-            -1, -1,
-            -1, +1,
-            +1, +1,
-
-            +1, +1,
-            -1, +1,
-            -1, -1
-        ];
-        glGenBuffers(2, gl_vbos.ptr); CHECK_CALL("glGenBuffers");
-
-        glEnableVertexAttribArray(0); CHECK_CALL("glEnableVertexAttribArray");
-        glBindBuffer(GL_ARRAY_BUFFER, gl_vbos[0]); CHECK_CALL("glBindBuffer");
-        glBufferData(GL_ARRAY_BUFFER, quad.length * 4, quad.ptr, GL_STATIC_DRAW); CHECK_CALL("glBufferData");
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
-
-        glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray");
-        glBindBuffer(GL_ARRAY_BUFFER, gl_vbos[1]); CHECK_CALL("glBindBuffer");
-        glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_STATIC_DRAW); CHECK_CALL("glBufferData");
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
-
-        glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
-    }
     void draw () {
+        if (!gl_vao) {
+            glGenVertexArrays(1, &gl_vao); CHECK_CALL("glGenVertexArrays");
+            glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
+
+            float[] quads = [ 
+                0, 0, 0, 
+                1, 1, 0,
+                1, 0, 0,
+
+                0, 0, 0,
+                0, 1, 0,
+                1, 1, 0,
+            ];
+            // Note: UVs are flipped for stb_truetype
+            float[] uvs   = [ 
+                0, 1,
+                1, 0,
+                1, 1,
+
+                0, 1,
+                0, 0,
+                1, 0
+            ];
+
+            glGenBuffers(2, gl_vbos.ptr); CHECK_CALL("glGenBuffers");
+
+            glEnableVertexAttribArray(0); CHECK_CALL("glEnableVertexAttribArray");
+            glBindBuffer(GL_ARRAY_BUFFER, gl_vbos[0]); CHECK_CALL("glBindBuffer");
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+            glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_STATIC_DRAW); CHECK_CALL("glBufferData");
+
+            glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray");
+            glBindBuffer(GL_ARRAY_BUFFER, gl_vbos[1]); CHECK_CALL("glBindBuffer");
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+            glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_STATIC_DRAW); CHECK_CALL("glBufferData");
+
+            glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
+        }
+
         glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
-        glDrawArrays(GL_TRIANGLES, 0, 6); CHECK_CALL("glDrawArrays (fstq)");
+        glDrawArrays(GL_TRIANGLES, 0, 6); CHECK_CALL("glDrawArrays");
+    }
+    ~this () {
+        if (gl_vao) {
+            glDeleteVertexArrays(1, &gl_vao);
+            glDeleteBuffers(2, gl_vbos.ptr);
+        }
     }
 }
 
