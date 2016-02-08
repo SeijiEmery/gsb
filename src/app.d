@@ -11,6 +11,7 @@ import gl3n.linalg;
 import gsb.glutils;
 import gsb.text.textrenderer;
 import gsb.triangles_test;
+import gsb.text.textrendertest;
 
 auto todstr(inout(char)* cstr) {
 	import core.stdc.string: strlen;
@@ -125,9 +126,18 @@ static __gshared GLFWwindow * g_mainWindow = null;
 __gshared Log g_graphicsLog = null;
 __gshared Log g_mainLog     = null;      
 
-
 void graphicsThread (Tid mainThreadId) {
-	auto log = g_graphicsLog = new Log("graphics-thread");
+	Log log = null;
+
+	try {
+		log = g_graphicsLog = new Log("graphics-thread");
+	} catch (Error e) {
+		writefln("Failed to create logging system: %s (%s:%d)",
+			e, e.file, e.line);
+	}
+
+	try {
+
 
 	log.write("Launched graphics thread");
 
@@ -166,17 +176,17 @@ void graphicsThread (Tid mainThreadId) {
 	TextBuffer text;
 
 
-	try {
+	//try {
 		//font = loadFont("/Library/Fonts/Arial.ttf");
 		//font = loadFont("/Library/Fonts/Trattatello.ttf");
 		font = loadFont("/Library/Fonts/Anonymous Pro.ttf");
 		text = new TextBuffer(font);
 		text.appendText("Hello world!");
-	} catch (Exception e) {
-		log.write("Error: %s on %s:%d", e.msg, e.file, e.line);
-		//writeln(e);
-		return;
-	}
+	//} catch (Exception e) {
+	//	log.write("Error: %s on %s:%d", e.msg, e.file, e.line);
+	//	//writeln(e);
+	//	return;
+	//}
 
 	auto createView (Log targetLog, float width, float height, mat4 transform) {
 		return new LogView(targetLog).setBounds(width, height).setTransform(transform);
@@ -186,6 +196,8 @@ void graphicsThread (Tid mainThreadId) {
 		"graphics": createView(g_graphicsLog, 800, 200, mat4.translation(0, +0.5, 0)),
 		"main": createView(g_mainLog, 800, 200, mat4.translation(0, -0.5, 0))
 	];
+
+	auto utfTest = StbTextRenderTest.defaultTest();
 
 	int frame = 0;
 	while (running) {
@@ -202,14 +214,17 @@ void graphicsThread (Tid mainThreadId) {
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+
+				utfTest.render();
+
 				//test.render(camera);
 				text.render(camera);
 				text.clear();
 				text.appendText(format("Hello World!\nCurrent frame is %d", frame));
 
-				foreach (logView; logViews.values) {
-					logView.maybeUpdate();
-				}
+				//foreach (logView; logViews.values) {
+				//	logView.maybeUpdate();
+				//}
 
 				glfwSwapBuffers(g_mainWindow);
 				checkGlErrors();
@@ -222,6 +237,11 @@ void graphicsThread (Tid mainThreadId) {
 		}
 	}
 	prioritySend(mainThreadId, ThreadSyncEvent.NOTIFY_THREAD_DIED);	
+
+	} catch (Error e) {
+		writefln("Error: %s on %s:%d", e, e.file, e.line);
+		prioritySend(mainThreadId, ThreadSyncEvent.NOTIFY_THREAD_DIED);
+	}
 }
 
 void main()
