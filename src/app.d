@@ -217,7 +217,6 @@ void graphicsThread (Tid mainThreadId) {
 
 				utfTest.render();
 
-				//test.render(camera);
 				//text.render(camera);
 				//text.clear();
 				//text.appendText(format("Hello World!\nCurrent frame is %d", frame));
@@ -291,18 +290,23 @@ void main()
 		auto evt = receiveOnly!(ThreadSyncEvent)();
 
 		while (evt != ThreadSyncEvent.READY_FOR_NEXT_FRAME) {
+			if (evt == ThreadSyncEvent.NOTIFY_THREAD_DIED) {
+				log.write("Graphics thread terminated (unexpected)");
+				goto gthreadDied;
+			}
 			evt = receiveOnly!(ThreadSyncEvent)();
 		}
 	}
 	log.write("Killing graphics thread");
 	send(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
-
-	ThreadSyncEvent evt;
-	while ((evt = receiveOnly!(ThreadSyncEvent)()) != ThreadSyncEvent.NOTIFY_THREAD_DIED) {
-		log.write("Waiting on thread kill event (recieved %d)", evt);
+	{
+		ThreadSyncEvent evt;
+		while ((evt = receiveOnly!(ThreadSyncEvent)()) != ThreadSyncEvent.NOTIFY_THREAD_DIED) {
+			log.write("Waiting on thread kill event (recieved %d)", evt);
+		}
 	}
-
-	log.write("Deinitializing");
+gthreadDied:
+	log.write("Shutting down");
 
 	glfwDestroyWindow(g_mainWindow);
 	glfwTerminate();

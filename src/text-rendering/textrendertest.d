@@ -23,8 +23,10 @@ private class VertexShader : Shader!Vertex {
 
     @output vec2 texCoord;
 
+    @uniform mat4 transform;
+
     void main () {
-        gl_Position = vec4(textPosition, 1.0);
+        gl_Position = transform * vec4(textPosition, 1.0);
         texCoord = texCoordIn;
     }
 }
@@ -36,20 +38,29 @@ private class FragmentShader : Shader!Fragment {
 
     void main () {
         vec4 color = texture(textureSampler, texCoord);
-        fragColor  = vec4(color.r);
+
+        //fragColor = color.r > 0.1 ?
+        //    vec4(color.r) :
+        //    vec4(0.5, 1.0, 0.5, 1.0);
+
+        fragColor = vec4(color.r);
     }
 }
 
 class StbTextRenderTest {
-    public string fontPath = "/Library/Fonts/Arial.ttf";
+    public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
     public int BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024;
-    public float fontSize = 24;
+    public float fontSize = 40;
 
     uint[3] gl_vbos;
     uint    gl_vao = 0;
     uint    gl_texture = 0;
     Program!(VertexShader, FragmentShader) shader = null;
     uint ntriangles = 0;
+
+    // debug
+    auto fullScreenQuad = new FullScreenTexturedQuad();
+    static immutable bool RENDER_FULLSCREEN_QUAD = true;
 
     public void setText (string text) {
         if (__ctfe) 
@@ -83,10 +94,13 @@ class StbTextRenderTest {
         int[dchar] chrLookup;
         {
             int i = 0;
+            writef("Text := ");
             foreach (chr; rbcharset) {
                 charset ~= chr;
                 chrLookup[chr] = i++;
+                writef("%c", chr);
             }
+            writefln(" (%d)", i);
         }
 
         // Create bitmap + pack chars
@@ -110,8 +124,32 @@ class StbTextRenderTest {
         stbtt_PackEnd(&pck);
 
         // Render to quads
-        float[] quads;
-        float[] uvs;
+        static if (RENDER_FULLSCREEN_QUAD)        
+            float[] quads = [ 
+                0, 0, 0,     //-1, -1, 0, 
+                800, 600, 0, //+1, +1, 0, 
+                800, 0, 0, //+1, -1, 0,
+
+                0, 0, 0, //-1, -1, 0,
+                0, 600, 0, //-1, +1, 0,
+                800, 600, 0,//+1, +1, 0,
+            ];
+        else
+            float[] quads;
+
+        // UVs are flipped since stb_truetype uses flipped y-coords
+        static if (RENDER_FULLSCREEN_QUAD)
+            float[] uvs   = [ 
+                0, 1,
+                1, 0,
+                1, 1,
+
+                0, 1,
+                0, 0,
+                1, 0
+            ];
+        else
+            float[] uvs;
 
         int pw = 800, ph = 600;
         float x = 0, y = 0;
@@ -123,20 +161,21 @@ class StbTextRenderTest {
             } else {
                 stbtt_aligned_quad q;
                 stbtt_GetPackedQuad(packedChrData.ptr, pw, ph, chrLookup[chr], &x, &y, &q, align_to_integer);
+                writefln("Encoding %c (%d) => quad (%0.2f,%0.2f),(%0.2f,%0.2f) at (%0.2f,%0.2f)", chr, chrLookup[chr], q.x0, q.y0, q.x1, q.y1, x, y);
 
                 // Push geometry
                 quads ~= [
-                    q.x1, -q.y0, 0.0,
-                    q.x0, -q.y1, 0.0,
-                    q.x1, -q.y1, 0.0,
+                    q.x0, q.y0, 0.0,
+                    q.x1, q.y1, 0.0,
+                    q.x1, q.y0, 0.0,
 
-                    q.x0, -q.y1, 0.0,
-                    q.x0, -q.y0, 0.0,
-                    q.x1, -q.y0, 0.0,
+                    q.x0, q.y0, 0.0,
+                    q.x0, q.y1, 0.0,
+                    q.x1, q.y1, 0.0,
                 ];
                 uvs ~= [
-                    q.s1, q.t0,
                     q.s0, q.t1,
+                    q.s1, q.t0,
                     q.s1, q.t1,
 
                     q.s0, q.t1,
@@ -178,7 +217,9 @@ class StbTextRenderTest {
 
             glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
             glBindTexture(GL_TEXTURE_2D, gl_texture); CHECK_CALL("glBindTexture");
-            shader.textureSampler = 0; CHECK_CALL("shader.textureSampler = 0");
+            //shader.textureSampler = 0; CHECK_CALL("shader.textureSampler = 0");
+            auto loc = glGetUniformLocation(shader.id, "textureSampler"); CHECK_CALL("glGetUniformLocation");
+            glUniform1i(loc, 0); CHECK_CALL("glUniform1i (setting texture sampler = 0)");
         }
 
         // Upload bitmap to gpu
@@ -196,7 +237,12 @@ class StbTextRenderTest {
         glBindBuffer(GL_ARRAY_BUFFER, 0); CHECK_CALL("glBindBuffer(0)");
 
         ntriangles = cast(uint)quads.length / 3;
-        assert(quads.length / 3 == uvs.length / 2);
+        //assert(quads.length / 3 == uvs.length / 2);
+
+        writefln("Setup utf text render test");
+        writefln("text = %s", text);
+        writefln("tris = %d", ntriangles);
+        writefln("expected: %d", text.length * 2);
     }
 
     public void render () {
@@ -204,8 +250,13 @@ class StbTextRenderTest {
             glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
             glBindTexture(GL_TEXTURE_2D, gl_texture); CHECK_CALL("glBindTexture");
             glUseProgram(shader.id); CHECK_CALL("glUseProgram");
+            shader.transform = mat4.identity().scale(1.0 / 800.0, 1.0 / 600.0, 1.0);
+
             glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
             glDrawArrays(GL_TRIANGLES, 0, ntriangles); CHECK_CALL("glDrawArrays");
+            writefln("Drew %d triangles", ntriangles);
+
+            //fullScreenQuad.draw();
 
             glUseProgram(0); CHECK_CALL("glUseProgram(0)");
             glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
@@ -229,19 +280,53 @@ class StbTextRenderTest {
     }
 }
 
+private class FullScreenTexturedQuad {
+    uint gl_vao = 0;
+    uint[2] gl_vbos;
 
+    this () {
+        if (__ctfe) return;
 
+        glGenVertexArrays(1, &gl_vao); CHECK_CALL("glGenVertexArrays");
+        glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
 
+        float[] quad = [
+            -1, -1, 0,
+            -1, +1, 0,
+            +1, +1, 0,
 
+            +1, +1, 0,
+            -1, +1, 0,
+            -1, -1, 0,
+        ];
+        float[] uvs = [
+            -1, -1,
+            -1, +1,
+            +1, +1,
 
+            +1, +1,
+            -1, +1,
+            -1, -1
+        ];
+        glGenBuffers(2, gl_vbos.ptr); CHECK_CALL("glGenBuffers");
 
+        glEnableVertexAttribArray(0); CHECK_CALL("glEnableVertexAttribArray");
+        glBindBuffer(GL_ARRAY_BUFFER, gl_vbos[0]); CHECK_CALL("glBindBuffer");
+        glBufferData(GL_ARRAY_BUFFER, quad.length * 4, quad.ptr, GL_STATIC_DRAW); CHECK_CALL("glBufferData");
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
 
+        glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray");
+        glBindBuffer(GL_ARRAY_BUFFER, gl_vbos[1]); CHECK_CALL("glBindBuffer");
+        glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_STATIC_DRAW); CHECK_CALL("glBufferData");
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
 
-
-
-
-
-
+        glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
+    }
+    void draw () {
+        glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
+        glDrawArrays(GL_TRIANGLES, 0, 6); CHECK_CALL("glDrawArrays (fstq)");
+    }
+}
 
 
 
