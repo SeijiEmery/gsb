@@ -107,6 +107,7 @@ void graphicsThread (Tid mainThreadId) {
 				running = false;
 			} break;
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
+				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
 				log.write("on frame %d", frame++);
 
@@ -126,8 +127,6 @@ void graphicsThread (Tid mainThreadId) {
 
 				glfwSwapBuffers(g_mainWindow);
 				checkGlErrors();
-
-				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 			} break;
 			default: {
 				log.write("Unexpected event: %d", evt);
