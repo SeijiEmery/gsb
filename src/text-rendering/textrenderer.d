@@ -409,11 +409,11 @@ class TextGeometryBuffer {
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
 
         glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray");
-        glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
+        glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[1]); CHECK_CALL("glBindBuffer");
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
 
         glEnableVertexAttribArray(2); CHECK_CALL("glEnableVertexAttribArray");
-        glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
+        glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[2]); CHECK_CALL("glBindBuffer");
         glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
 
         glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");

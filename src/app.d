@@ -218,9 +218,9 @@ void graphicsThread (Tid mainThreadId) {
 				utfTest.render();
 
 				//test.render(camera);
-				text.render(camera);
-				text.clear();
-				text.appendText(format("Hello World!\nCurrent frame is %d", frame));
+				//text.render(camera);
+				//text.clear();
+				//text.appendText(format("Hello World!\nCurrent frame is %d", frame));
 
 				//foreach (logView; logViews.values) {
 				//	logView.maybeUpdate();
