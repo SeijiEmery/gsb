@@ -124,20 +124,12 @@ static __gshared GLFWwindow * g_mainWindow = null;
 //}
 
 __gshared Log g_graphicsLog = null;
-__gshared Log g_mainLog     = null;      
+__gshared Log g_mainLog     = null;  
+
+Log log = null;    
 
 void graphicsThread (Tid mainThreadId) {
-	Log log = null;
-
-	try {
-		log = g_graphicsLog = new Log("graphics-thread");
-	} catch (Error e) {
-		writefln("Failed to create logging system: %s (%s:%d)",
-			e, e.file, e.line);
-	}
-
-	try {
-
+	log = g_graphicsLog = new Log("graphics-thread");
 
 	log.write("Launched graphics thread");
 
@@ -163,8 +155,6 @@ void graphicsThread (Tid mainThreadId) {
 
 	bool running = true;
 
-	send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
-
 	log.write("Running GLSandbox");
 	log.write("Renderer: %s", todstr(glGetString(GL_RENDERER)));
 	log.write("Opengl version: %s", todstr(glGetString(GL_VERSION)));
@@ -175,18 +165,11 @@ void graphicsThread (Tid mainThreadId) {
 	Font font;
 	TextBuffer text;
 
-
-	//try {
-		//font = loadFont("/Library/Fonts/Arial.ttf");
-		//font = loadFont("/Library/Fonts/Trattatello.ttf");
-		font = loadFont("/Library/Fonts/Anonymous Pro.ttf");
-		text = new TextBuffer(font);
-		text.appendText("Hello world!");
-	//} catch (Exception e) {
-	//	log.write("Error: %s on %s:%d", e.msg, e.file, e.line);
-	//	//writeln(e);
-	//	return;
-	//}
+	//font = loadFont("/Library/Fonts/Arial.ttf");
+	//font = loadFont("/Library/Fonts/Trattatello.ttf");
+	font = loadFont("/Library/Fonts/Anonymous Pro.ttf");
+	text = new TextBuffer(font);
+	text.appendText("Hello world!");
 
 	auto createView (Log targetLog, float width, float height, mat4 transform) {
 		return new LogView(targetLog).setBounds(width, height).setTransform(transform);
@@ -231,71 +214,57 @@ void graphicsThread (Tid mainThreadId) {
 				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 			} break;
 			default: {
-
+				log.write("Unexpected event: %d", evt);
 			}
 		}
 	}
 	prioritySend(mainThreadId, ThreadSyncEvent.NOTIFY_THREAD_DIED);	
-
+}
+void enterGraphicsThread (Tid mainThreadId) {
+	try {
+		graphicsThread(mainThreadId);
 	} catch (Error e) {
-		writefln("Error: %s on %s:%d", e, e.file, e.line);
+		if (g_graphicsLog)
+			g_graphicsLog.write("Error: %s", e);
+		else
+			writefln("[graphics-thread] Error: %s", e);
 		prioritySend(mainThreadId, ThreadSyncEvent.NOTIFY_THREAD_DIED);
 	}
 }
-
-void main()
-{
-	auto log = g_mainLog = new Log("main-thread");
-
-	DerelictGLFW3.load();
-	DerelictGL3.load();
-
-	if (!glfwInit()) {
-		log.write("Failed to initialize glfw");
-		return;
+void enterMainThread (Tid graphicsThreadId) {
+	try {
+		mainThread(graphicsThreadId);
+	} catch (Error e) {
+		if (g_mainLog)
+			g_mainLog.write("Error: %s", e);
+		else
+			writefln("[main-thread] Error: %s", e);
+		prioritySend(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
 	}
+}
 
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-	g_mainWindow = glfwCreateWindow(800, 600, "GL Sandbox", null, null);
-	if (!g_mainWindow) {
-		log.write("Failed to create window");
-		glfwTerminate();
-		return;
-	}
-
-	auto graphicsThreadId = spawn(&graphicsThread, thisTid);
-
-	bool initialized = false;
-	while (!initialized) {
-		receive (
-			(ThreadSyncEvent evt) {
-				if (evt == ThreadSyncEvent.READY_FOR_NEXT_FRAME) {
-					initialized = true;
-					log.write("Initialized.");
-				} else {
-					log.write("Recieved unexpected event");
-				}
-			}
-		);
-	}	
+void mainThread (Tid graphicsThreadId) {
+	log = g_mainLog = new Log("main-thread");
 
 	while (!glfwWindowShouldClose(g_mainWindow)) {
 		glfwPollEvents();
 
 		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
-		auto evt = receiveOnly!(ThreadSyncEvent)();
 
-		while (evt != ThreadSyncEvent.READY_FOR_NEXT_FRAME) {
-			if (evt == ThreadSyncEvent.NOTIFY_THREAD_DIED) {
-				log.write("Graphics thread terminated (unexpected)");
-				goto gthreadDied;
+		while (1) {
+			auto evt = receiveOnly!(ThreadSyncEvent)();
+			switch (evt) {
+				case ThreadSyncEvent.READY_FOR_NEXT_FRAME: goto nextFrame;
+				case ThreadSyncEvent.NOTIFY_THREAD_DIED: {
+					log.write("Graphics thread terminated (unexpected!)");
+					goto gthreadDied;
+				}
+				default: {
+					log.write("Recieved unhandled event: %d", evt);
+				}
 			}
-			evt = receiveOnly!(ThreadSyncEvent)();
 		}
+	nextFrame:
 	}
 	log.write("Killing graphics thread");
 	send(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
@@ -310,4 +279,31 @@ gthreadDied:
 
 	glfwDestroyWindow(g_mainWindow);
 	glfwTerminate();
+}
+
+void main()
+{
+	DerelictGLFW3.load();
+	DerelictGL3.load();
+
+	if (!glfwInit()) {
+		writeln("Failed to initialize glfw");
+		return;
+	}
+
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+	g_mainWindow = glfwCreateWindow(800, 600, "GL Sandbox", null, null);
+	if (!g_mainWindow) {
+		writeln("Failed to create glfw window");
+		glfwTerminate();
+		return;
+	}
+
+	auto graphicsThread = spawn(&enterGraphicsThread, thisTid);
+
+	enterMainThread(graphicsThread);
 }

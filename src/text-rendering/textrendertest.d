@@ -48,9 +48,11 @@ private class FragmentShader : Shader!Fragment {
 }
 
 class StbTextRenderTest {
-    public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
+    public string fontPath = "/Library/Fonts/Arial Unifoob.ttf";
     public int BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024;
-    public float fontSize = 40;
+    public float fontSize = 40; // in pixels
+    float fontScale;
+    float fontBaseline;
 
     uint[3] gl_vbos;
     uint    gl_vao = 0;
@@ -79,6 +81,12 @@ class StbTextRenderTest {
         stbtt_fontinfo fontInfo;
         if (!stbtt_InitFont(&fontInfo, fontData.ptr, 0))
             throw new ResourceError("stb: Failed to load font '%s'");
+
+        fontScale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
+        writefln("Font scale = %0.2f", fontScale);
+        int ascent;
+        stbtt_GetFontVMetrics(&fontInfo, &ascent, null, null);
+        fontBaseline = ascent * fontScale;
 
         // Determine charset
         auto rbcharset = new RedBlackTree!dchar();
@@ -113,7 +121,7 @@ class StbTextRenderTest {
 
         // Pack charset
         stbtt_pack_range r;
-        r.font_size = fontSize;
+        r.font_size = fontScale;
         r.first_unicode_codepoint_in_range = 0;
         r.array_of_unicode_codepoints = cast(int*)charset.ptr;
         r.num_chars = cast(int)charset.length;
@@ -151,13 +159,14 @@ class StbTextRenderTest {
         else
             float[] uvs;
 
-        int pw = 800, ph = 600;
+        int pw = BITMAP_WIDTH, ph = BITMAP_HEIGHT;
+        //int pw = 800, ph = 600;
         float x = 0, y = 0;
         bool align_to_integer = false;
         foreach (chr; text.byDchar()) {
             if (chr == '\n') {
                 x = 0;
-                y += fontSize * 1.4;
+                y += fontScale * 1.4;
             } else {
                 stbtt_aligned_quad q;
                 stbtt_GetPackedQuad(packedChrData.ptr, pw, ph, chrLookup[chr], &x, &y, &q, align_to_integer);
@@ -250,7 +259,8 @@ class StbTextRenderTest {
             glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
             glBindTexture(GL_TEXTURE_2D, gl_texture); CHECK_CALL("glBindTexture");
             glUseProgram(shader.id); CHECK_CALL("glUseProgram");
-            shader.transform = mat4.identity().scale(1.0 / 800.0, 1.0 / 600.0, 1.0);
+            shader.transform = mat4.identity();
+            //shader.transform = mat4.identity().scale(1.0 / 800.0, 1.0 / 600.0, 1.0);
 
             glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
             glDrawArrays(GL_TRIANGLES, 0, ntriangles); CHECK_CALL("glDrawArrays");
