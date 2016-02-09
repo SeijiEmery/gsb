@@ -8,6 +8,9 @@ import Derelict.glfw3.glfw3;
 import Derelict.opengl3.gl3;
 import gl3n.linalg;
 
+import gsb.core.window;
+
+
 import gsb.glutils;
 import gsb.text.textrenderer;
 import gsb.triangles_test;
@@ -40,7 +43,7 @@ enum ThreadSyncEvent {
 	NOTIFY_THREAD_DIED           // sent from worker thread to main thread
 }
 
-static __gshared GLFWwindow * g_mainWindow = null;
+//static __gshared GLFWwindow * g_mainWindow = null;
 
 __gshared Log g_graphicsLog = null;
 __gshared Log g_mainLog     = null;  
@@ -52,7 +55,7 @@ void graphicsThread (Tid mainThreadId) {
 
 	log.write("Launched graphics thread");
 
-	glfwMakeContextCurrent(g_mainWindow);
+	glfwMakeContextCurrent(g_mainWindow.handle);
 	glfwSwapInterval(1);
 
 	DerelictGL3.reload();
@@ -125,7 +128,7 @@ void graphicsThread (Tid mainThreadId) {
 				//	logView.maybeUpdate();
 				//}
 
-				glfwSwapBuffers(g_mainWindow);
+				glfwSwapBuffers(g_mainWindow.handle);
 				checkGlErrors();
 			} break;
 			default: {
@@ -150,7 +153,7 @@ void enterGraphicsThread (Tid mainThreadId) {
 void mainThread (Tid graphicsThreadId) {
 	log = g_mainLog = new Log("main-thread");
 
-	while (!glfwWindowShouldClose(g_mainWindow)) {
+	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
 		glfwPollEvents();
 
 		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
@@ -213,7 +216,7 @@ void main()
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	g_mainWindow = glfwCreateWindow(800, 600, "GL Sandbox", null, null);
+	g_mainWindow = new Window(glfwCreateWindow(800, 600, "GL Sandbox", null, null), false);
 	if (!g_mainWindow) {
 		writeln("Failed to create glfw window");
 		glfwTerminate();
@@ -242,6 +245,6 @@ void main()
 	// for confirmation before returning
 	//
 	log.write("Shutting down");
-	glfwDestroyWindow(g_mainWindow);
+	glfwDestroyWindow(g_mainWindow.handle);
 	glfwTerminate();
 }

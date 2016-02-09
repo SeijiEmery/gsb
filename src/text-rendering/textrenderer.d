@@ -10,9 +10,7 @@ import derelict.opengl3.gl3;
 import dglsl;
 
 class GlTexture {
-    uint id;
-
-        
+    uint id;       
 
     this () {
         glGenTextures(1, &id); CHECK_CALL("glGenTexture");

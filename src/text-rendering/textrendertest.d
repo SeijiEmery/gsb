@@ -6,7 +6,7 @@ import std.file;
 import std.utf;
 import std.container.rbtree;
 
-
+import gsb.core.window;
 import gsb.glutils;
 
 import stb.truetype;
@@ -43,14 +43,14 @@ private class FragmentShader : Shader!Fragment {
         //    vec4(color.r) :
         //    vec4(0.5, 1.0, 0.5, 1.0);
 
-        fragColor = vec4(color.r);
+        fragColor = vec4(color.r); // stored as 1-channel bitmap, 
     }
 }
 
 class StbTextRenderTest {
     public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
     public int BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024;
-    public float fontSize = 30; // in pixels
+    public float fontSize = 50; // in pixels
     float fontScale;
     float fontBaseline;
 
@@ -220,6 +220,7 @@ class StbTextRenderTest {
         glBindTexture(GL_TEXTURE_2D, gl_texture); CHECK_CALL("glBindTexture");
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, bitmapData.ptr); CHECK_CALL("glTexImage2D");
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); CHECK_CALL("glTexParameteri(MIN_FILTER = LINEAR)");
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); CHECK_CALL("glTexParameteri(MAG_FILTER = LINEAR)");
         glBindTexture(GL_TEXTURE_2D, 0); CHECK_CALL("glBindTexture(0)");
 
         // Upload geometry to gpu
@@ -247,11 +248,12 @@ class StbTextRenderTest {
             shader.transform = mat4.identity();
             fullScreenQuad.draw();
 
-            shader.transform = mat4.identity().scale(1.0 / 800.0, 1.0 / 600.0, 1.0);
+            auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
+            auto inv_scale_y = 1.0 / g_mainWindow.pixelDimensions.y;
+
+            shader.transform = mat4.identity().scale(inv_scale_x, inv_scale_y, 1.0);
             glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
             glDrawArrays(GL_TRIANGLES, 0, ntriangles); CHECK_CALL("glDrawArrays");
-            writefln("Drew %d triangles", ntriangles);
-
 
             glUseProgram(0); CHECK_CALL("glUseProgram(0)");
             glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
