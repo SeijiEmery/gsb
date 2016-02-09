@@ -5,6 +5,7 @@ import std.stdio;
 import std.file;
 import std.utf;
 import std.container.rbtree;
+import std.math;
 
 import gsb.core.window;
 import gsb.glutils;
@@ -69,9 +70,21 @@ class StbTextRenderTest {
     auto fullScreenQuad = new FullScreenTexturedQuad();
     static immutable bool RENDER_FULLSCREEN_QUAD = false;
 
+    string lastText;
+    vec2   currentScalingFactor;
+
+    public void rescale () {
+
+    }
+
     public void setText (string text) {
         if (__ctfe) 
             return;
+
+        lastText = text;
+        currentScalingFactor.x = g_mainWindow.screenScalingFactor.x;
+        currentScalingFactor.y = g_mainWindow.screenScalingFactor.y;
+        auto scaleFactor = currentScalingFactor.y;
 
         writeln("Starting StbTextRenderTest");
 
@@ -87,7 +100,7 @@ class StbTextRenderTest {
         if (!stbtt_InitFont(&fontInfo, fontData.ptr, 0))
             throw new ResourceError("stb: Failed to load font '%s'");
 
-        fontScale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
+        fontScale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize * scaleFactor);
         stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
 
         // Determine charset
@@ -123,7 +136,7 @@ class StbTextRenderTest {
 
         // Pack charset
         stbtt_pack_range r;
-        r.font_size = fontSize;
+        r.font_size = fontSize * scaleFactor;
         r.first_unicode_codepoint_in_range = 0;
         r.array_of_unicode_codepoints = cast(int*)charset.ptr;
         r.num_chars = cast(int)charset.length;
@@ -148,9 +161,6 @@ class StbTextRenderTest {
                     ascent, descent, lineGap, (ascent - descent + lineGap), (ascent - descent + lineGap) * fontScale);
 
                 y += (ascent - descent + lineGap) * fontScale;
-                //y += 10;
-                //y += fontSize;// * 1.4;
-                //writefln("fontBaseline = %0.2f", fontBaseline);
             } else {
                 stbtt_aligned_quad q;
                 stbtt_GetPackedQuad(packedChrData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, chrLookup[chr], &x, &y, &q, align_to_integer);
@@ -257,6 +267,16 @@ class StbTextRenderTest {
 
             glUseProgram(0); CHECK_CALL("glUseProgram(0)");
             glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
+
+            float epsilon = 0.1;
+            if (abs(currentScalingFactor.x - g_mainWindow.screenScalingFactor.x) > epsilon ||
+                abs(currentScalingFactor.y - g_mainWindow.screenScalingFactor.y) > epsilon)
+            {
+                writefln("Rescaling text: %0.2f -> %0.2f, %0.2f -> %0.2f",
+                    currentScalingFactor.x, g_mainWindow.screenScalingFactor.x,
+                    currentScalingFactor.y, g_mainWindow.screenScalingFactor.y);
+                setText(lastText);
+            }
         }
     }
     ~this () {
