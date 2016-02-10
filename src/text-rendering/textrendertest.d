@@ -49,7 +49,8 @@ private class FragmentShader : Shader!Fragment {
 }
 
 class StbTextRenderTest {
-    public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
+    public string fontPath = "/System/Library/Fonts/LucidaGrande.ttc";
+    //public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
     public int BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024;
     public float fontSize = 50; // in pixels
     float fontScale;
@@ -93,8 +94,12 @@ class StbTextRenderTest {
             throw new ResourceError("Failed to load font file '%s'", fontPath);
 
         stbtt_fontinfo fontInfo;
-        if (!stbtt_InitFont(&fontInfo, fontData.ptr, 0))
-            throw new ResourceError("stb: Failed to load font '%s'");
+        int offs = stbtt_GetFontOffsetForIndex(fontData.ptr, 0);
+        if (offs == -1)
+            throw new ResourceError("stb_truetype: Failed to get font index for '%s'", fontPath);
+
+        if (!stbtt_InitFont(&fontInfo, fontData.ptr, offs))
+            throw new ResourceError("stb_trutype: Failed to load font '%s'", fontPath);
 
         fontScale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize * scaleFactor);
         stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
