@@ -346,8 +346,6 @@ class TextShader {
     TextVertexShader vs = null;
     Program!(TextVertexShader, TextFragmentShader) prog = null;
 
-    GlTexture bitmapTexture; // attached texture
-
     void lazyInit ()
     in { assert(prog is null); }
     body {
@@ -355,31 +353,32 @@ class TextShader {
         vs = new TextVertexShader();   vs.compile(); CHECK_CALL("compiling text vertex shader");
         prog = makeProgram(vs, fs); CHECK_CALL("compiling/linking text shader program");
 
-        glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
-        glBindTexture(GL_TEXTURE_2D, bitmapTexture.id); CHECK_CALL("glBindTexture");
-        auto loc = glGetUniformLocation(prog.id, "textureSampler"); CHECK_CALL("glGetUniformLocation");
-        writefln("texture uniform = %d", loc);
-        glUniform1i(loc, 0); CHECK_CALL("glUniform1i");
-    }
-
-    void setTextureData (ubyte[] data) {
-        glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
-        glBindTexture(GL_TEXTURE_2D, bitmapTexture.id); CHECK_CALL("glBindTexture");
-        //glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 512,512); CHECK_CALL("glTexStorage2D");
-        //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512,512, GL_RGBA, GL_UNSIGNED_BYTE, bitmapData.ptr); CHECK_CALL("glTexSubImage2D");
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 512,512, 0, GL_RED, GL_UNSIGNED_BYTE, data.ptr); CHECK_CALL("glTexImage2D");
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); CHECK_CALL("set gl texture parameter MIN_FILTER=GL_LINEAR");
-        glBindTexture(GL_TEXTURE_2D, 0); CHECK_CALL("glBindTexture");
+        checked_glUseProgram(prog.id);
+        prog.textureSampler = 0; CHECK_CALL("set texture sampler");
+        checked_glUseProgram(0);
     }
 
     void bind () {
         if (prog is null)
             lazyInit();
-        glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
-        glBindTexture(GL_TEXTURE_2D, bitmapTexture.id); CHECK_CALL("glBindTexture");
-        glUseProgram(prog.id); CHECK_CALL("glUseProgram(text shader)");
+        checked_glUseProgram(prog.id);
     }
 }
+//class TextGeometryBuffer {
+
+//}
+
+
+
+
+
+
+
+
+
+
+
+
 class TextGeometryBuffer {
     //uint gl_positionBuffer = 0;
     //uint gl_texcoordBuffer = 0;
@@ -397,24 +396,24 @@ class TextGeometryBuffer {
     void lazyInit ()
     in { assert(gl_vao == 0); }
     body {
-        glGenVertexArrays(1, &gl_vao); CHECK_CALL("glGenVertexArray");
-        glBindVertexArray(gl_vao); CHECK_CALL("glBindVertexArray");
+        checked_glGenVertexArrays(1, &gl_vao);
+        checked_glBindVertexArray(gl_vao);
 
-        glGenBuffers(3, &gl_buffers[0]);  CHECK_CALL("glGenBuffers");
+        checked_glGenBuffers(3, &gl_buffers[0]);
 
-        glEnableVertexAttribArray(0); CHECK_CALL("glEnableVertexAttribArray");
-        glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+        checked_glEnableVertexAttribArray(0);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]);
+        checked_glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null);
 
-        glEnableVertexAttribArray(1); CHECK_CALL("glEnableVertexAttribArray");
-        glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[1]); CHECK_CALL("glBindBuffer");
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+        checked_glEnableVertexAttribArray(1);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[1]);
+        checked_glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
 
-        glEnableVertexAttribArray(2); CHECK_CALL("glEnableVertexAttribArray");
-        glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[2]); CHECK_CALL("glBindBuffer");
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null); CHECK_CALL("glVertexAttribPointer");
+        checked_glEnableVertexAttribArray(2);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[2]);
+        checked_glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null);
 
-        glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
+        checked_glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
     }
     ~this () {
         if (gl_vao) {
@@ -450,14 +449,14 @@ class TextGeometryBuffer {
     }
     void flushChanges () {
         if (dirtyPositionData) {
-            glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
-            glBufferData(GL_ARRAY_BUFFER, cachedPositionData.length * 4, cachedPositionData.ptr, GL_STATIC_DRAW); 
+            checked_glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[0]); CHECK_CALL("glBindBuffer");
+            checked_glBufferData(GL_ARRAY_BUFFER, cachedPositionData.length * 4, cachedPositionData.ptr, GL_STATIC_DRAW); 
             CHECK_CALL("glBufferData (TextGeometryBuffer.flushChanges() (quads))");
             dirtyPositionData = false;
         }
         if (dirtyTexcoordData) {
-            glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[1]); CHECK_CALL("glBindBuffer");
-            glBufferData(GL_ARRAY_BUFFER, cachedTexcoordData.length * 4, cachedTexcoordData.ptr, GL_STATIC_DRAW); 
+            checked_glBindBuffer(GL_ARRAY_BUFFER, gl_buffers[1]); CHECK_CALL("glBindBuffer");
+            checked_glBufferData(GL_ARRAY_BUFFER, cachedTexcoordData.length * 4, cachedTexcoordData.ptr, GL_STATIC_DRAW); 
             CHECK_CALL("glBufferData (TextGeometryBuffer.flushChanges() (uvs))");
             dirtyTexcoordData = false;
         }
