@@ -112,7 +112,7 @@ void graphicsThread (Tid mainThreadId) {
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
-				log.write("on frame %d", frame++);
+				//log.write("on frame %d", frame++);
 
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -141,7 +141,7 @@ void graphicsThread (Tid mainThreadId) {
 void enterGraphicsThread (Tid mainThreadId) {
 	try {
 		graphicsThread(mainThreadId);
-	} catch (Error e) {
+	} catch (Throwable e) {
 		if (g_graphicsLog)
 			g_graphicsLog.write("Error: %s", e);
 		else
@@ -186,7 +186,7 @@ gthreadDied:
 void enterMainThread (Tid graphicsThreadId) {
 	try {
 		mainThread(graphicsThreadId);
-	} catch (Error e) {
+	} catch (Throwable e) {
 		if (g_mainLog)
 			g_mainLog.write("Error: %s", e);
 		else

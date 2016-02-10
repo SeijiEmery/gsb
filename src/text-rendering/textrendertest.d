@@ -73,10 +73,6 @@ class StbTextRenderTest {
     string lastText;
     vec2   currentScalingFactor;
 
-    public void rescale () {
-
-    }
-
     public void setText (string text) {
         if (__ctfe) 
             return;
@@ -220,9 +216,12 @@ class StbTextRenderTest {
 
             glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
             glBindTexture(GL_TEXTURE_2D, gl_texture); CHECK_CALL("glBindTexture");
+            //glUseProgram(shader.id); CHECK_CALL("glUseProgram");
+            checked_glUseProgram(shader.id);
+            shader.textureSampler = 0; CHECK_CALL("shader.textureSampler = 0");
             //shader.textureSampler = 0; CHECK_CALL("shader.textureSampler = 0");
-            auto loc = glGetUniformLocation(shader.id, "textureSampler"); CHECK_CALL("glGetUniformLocation");
-            glUniform1i(loc, 0); CHECK_CALL("glUniform1i (setting texture sampler = 0)");
+            //auto loc = glGetUniformLocation(shader.id, "textureSampler"); CHECK_CALL("glGetUniformLocation");
+            //glUniform1i(loc, 0); CHECK_CALL("glUniform1i (setting texture sampler = 0)");
         }
 
         // Upload bitmap to gpu
