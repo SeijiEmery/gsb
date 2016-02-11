@@ -86,9 +86,9 @@ void graphicsThread (Tid mainThreadId) {
 
 	//font = loadFont("/Library/Fonts/Arial.ttf");
 	//font = loadFont("/Library/Fonts/Trattatello.ttf");
-	font = loadFont("/Library/Fonts/Anonymous Pro.ttf");
-	text = new TextBuffer(font);
-	text.appendText("Hello world!");
+	//font = loadFont("/Library/Fonts/Anonymous Pro.ttf");
+	//text = new TextBuffer(font);
+	//text.appendText("Hello world!");
 
 	auto createView (Log targetLog, float width, float height, mat4 transform) {
 		return new LogView(targetLog).setBounds(width, height).setTransform(transform);

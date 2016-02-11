@@ -3,6 +3,183 @@
 //
 
 module stb.truetype;
+import std.stdio;
+import std.algorithm;
+import std.format;
+import std.typecons : Unique;
+import std.experimental.allocator.common : Ternary;
+import std.experimental.allocator.building_blocks.free_tree : FreeTree;
+import std.experimental.allocator.building_blocks.region : Region;
+import std.experimental.allocator.building_blocks.allocator_list : AllocatorList;
+import std.experimental.allocator.building_blocks.stats_collector : StatsCollector, Options;
+import std.experimental.allocator.mallocator : Mallocator;
+
+import core.sync.mutex : Mutex;
+
+void * our_allocator = null;
+
+extern (C) void * stbtt_alloc (size_t sz, void * ctx) {
+    if (__ctfe)
+        return null;
+    if (sz == 0) return null;
+
+    writeln("allocating; ctx = ", ctx);
+    if (!our_allocator)
+        our_allocator = ctx;
+    else if (our_allocator != ctx)
+        ctx = our_allocator;
+        //throw new Exception(format("%x != %x", our_allocator, ctx));
+
+    return allocToPtr(ctx ? *cast(PoolAllocator*)ctx : g_stbttAllocator, sz);
+}
+extern (C) void stbtt_free (void * ptr, void * ctx) {
+    if (__ctfe)
+        return;
+    if (!ptr) return;
+
+    writeln("deallocating; ctx = ", ctx);
+    if (!our_allocator)
+        our_allocator = ctx;
+    else if (our_allocator != ctx)
+        ctx = our_allocator;
+
+
+    deallocFromPtr(ctx ? *cast(PoolAllocator*)ctx : g_stbttAllocator, ptr);
+}
+
+void * allocToPtr (Allocator)(ref Allocator a, size_t sz) {
+    void[] blk = a.allocate(sz = size_t.sizeof);
+    if (blk.length == 0)
+        return null;
+    (cast(size_t*)blk)[0] = blk.length;
+    return blk.ptr + size_t.sizeof;
+}
+void deallocFromPtr (Allocator)(ref Allocator a, void * ptr) {
+    auto realptr = ptr - size_t.sizeof;
+    auto sz = (cast(size_t*)ptr)[0];
+    auto blk = realptr[0..sz];
+    a.deallocate(blk);
+}
+
+//alias PoolAllocator = StatsCollector!(FreeTree!(Region!Mallocator), Options.all);
+
+//alias PoolAllocator = Mallocator;
+//auto createAllocator () {
+//    return Mallocator();   
+//}
+
+//__gshared auto g_stbttMallocator = Mallocator();
+//__gshared auto g_stbttFreeTree   = FreeTree(g_stbttMallocator);
+//__gshared auto g_stbttAllocator = StatsCollector(g_stbttFreeTree);
+
+auto stbtt_createAllocator () {
+    return StatsCollector!(FreeTree!Mallocator)(FreeTree!Mallocator());
+}
+alias PoolAllocator = typeof(stbtt_createAllocator());
+__gshared auto g_stbttAllocator = stbtt_createAllocator();
+
+//__gshared auto g_stbttAllocator = StatsCollector!(FreeTree!Mallocator)(FreeTree!Mallocator());
+
+
+//__gshared auto g_stbttAllocator = StatsCollector!(FreeTree!(Mallocaftor()));
+//private __gshared Unique!PoolAllocator g_stbttAllocator;
+//shared static this () {
+//    g_stbttAllocator = createAllocator();
+//}
+
+
+
+//shared static this () {
+//    if (!__ctfe) {
+//        g_stbttAllocator = StatsCollector!(FreeTree!(Region!Mallocator(1024 * 1024)), Options.all);
+//    }
+//}
+
+
+
+
+//private __gshared SharedStbttAllocator _shared_stbtt_allocator = null;
+////shared static this () {
+////    _shared_stbtt_allocator = new SharedStbttAllocator();
+////}
+
+//void dumpStbttGlobalAllocatorStats () {
+//    _shared_stbtt_allocator.dumpStats();
+//}
+
+////private auto createAllocator () {
+////    assert(!__ctfe);
+////    return StatsCollector!(FreeTree!(Region!Mallocator(1024 * 1024)), Options.all);
+////}
+
+
+//class StbttPoolAllocator {
+//    auto allocator = StatsCollector!(FreeTree!(Region!Mallocator(1024 * 1024)), Options.all);
+
+//    ~this () {
+//        dumpStats();
+//        allocator.deallocateAll();
+//    }
+//    unittest {
+//        //auto allocator = new StbttPoolAllocator();
+//        //assert(allocator.allocator.empty() != Ternary.no, "allocator should be empty at startup");
+//        //auto alloc = allocator.allocator.allocate(50);
+//        //assert(alloc.length != 0, "allocator should be capable of allocating memory");
+//        //allocator.allocator.deallocate(alloc);
+//        //assert(allocator.allocator.empty() != Ternary.no, "allocator should be empty after all memory has been released");
+//    }
+
+
+//    void dumpStats () {
+//        //allocator.reportStatistics(stdout);
+//    }
+//    void * alloc (size_t sz) {
+//        if (__ctfe) return null;
+//        writefln("trying to allocate %d bytes", sz + size_t.sizeof);
+//        void[] data = allocator.allocate(sz + size_t.sizeof);
+//        writefln("allocated %d bytes", data.length);
+//        if (data.length <= size_t.sizeof)
+//            return null;
+//        (cast(size_t[])data)[0] = data.length;
+//        return data.ptr + size_t.sizeof;
+//    }
+//    void free (void * ptr) {
+//        if (__ctfe) return;
+//        void * real_ptr = ptr - size_t.sizeof;
+//        size_t sz = (cast(size_t*)real_ptr)[0];
+//        allocator.deallocate(real_ptr[0..sz]);
+//    }
+//}
+
+//class SharedStbttAllocator : StbttPoolAllocator {
+//    Mutex mutex;
+
+//    override void dumpStats () {
+//        //mutex.lock();
+//        //scope(exit) mutex.unlock();
+
+//        super.dumpStats();
+//    }
+//    override void * alloc (size_t sz) {
+//        writeln("In shared allocator (alloc)");
+//        //mutex.lock();
+//        //scope(exit) mutex.unlock();
+
+//        return super.alloc(sz);
+//    }
+//    override void free (void * ptr) {
+//        writeln("In shared allocator (free)");
+//        //mutex.lock();
+//        //scope(exit) mutex.unlock();
+
+//        super.free(ptr);
+//    }
+//}
+
+
+
+
+
 
 extern (C) {
 

@@ -51,7 +51,6 @@ class Window {
         if (!g_mainWindow)
             g_mainWindow = this;
 
-        Window * self = &this;
         glfwSetWindowUserPointer(m_window, cast(void*)this);
         glfwSetWindowSizeCallback(m_window, &windowSizeCallback);
         glfwSetFramebufferSizeCallback(m_window, &windowFramebufferSizeCallback);

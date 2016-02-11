@@ -9,3 +9,5 @@ dub.selections.json
 gsb.sublime-workspace
 
 build/*
+
+ext/libs/libstb.a
