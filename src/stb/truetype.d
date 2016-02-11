@@ -6,14 +6,29 @@ module stb.truetype;
 import std.stdio;
 import std.algorithm;
 import std.format;
-import std.typecons : Unique;
-import std.experimental.allocator.common : Ternary;
-import std.experimental.allocator.building_blocks.free_tree : FreeTree;
-import std.experimental.allocator.building_blocks.region : Region;
-import std.experimental.allocator.building_blocks.allocator_list : AllocatorList;
-import std.experimental.allocator.building_blocks.stats_collector : StatsCollector, Options;
-import std.experimental.allocator.mallocator : Mallocator;
+//import std.typecons : Unique;
+//import std.experimental.allocator.common : Ternary;
+//import std.experimental.allocator.building_blocks.free_tree : FreeTree;
+//import std.experimental.allocator.building_blocks.region : Region;
+//import std.experimental.allocator.building_blocks.allocator_list : AllocatorList;
+//import std.experimental.allocator.building_blocks.stats_collector : StatsCollector, Options;
+//import std.experimental.allocator.mallocator : Mallocator;
+import core.stdc.stdlib : free, malloc;
 
+extern (C) void * stbtt_alloc (size_t sz, void * ctx) {
+    return malloc(sz);
+}
+extern (C) void stbtt_free (void * ptr, void * ctx) {
+    free(ptr);
+}
+
+void * stbtt_createAllocator () {
+    return null;
+}
+
+
+
+/+
 import core.sync.mutex : Mutex;
 
 void * our_allocator = null;
@@ -77,6 +92,10 @@ auto stbtt_createAllocator () {
 }
 alias PoolAllocator = typeof(stbtt_createAllocator());
 __gshared auto g_stbttAllocator = stbtt_createAllocator();
+
++/
+
+
 
 //__gshared auto g_stbttAllocator = StatsCollector!(FreeTree!Mallocator)(FreeTree!Mallocator());
 

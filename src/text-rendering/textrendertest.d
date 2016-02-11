@@ -50,8 +50,8 @@ private class FragmentShader : Shader!Fragment {
 
 class StbTextRenderTest {
     //public string fontPath = "/System/Library/Fonts/Helvetica.dfont";
-    public string fontPath = "/System/Library/Fonts/LucidaGrande.ttc";
-    //public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
+    //public string fontPath = "/System/Library/Fonts/Menlo.ttc";
+    public string fontPath = "/Library/Fonts/Arial Unicode.ttf";
     public int BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024;
     public float fontSize = 50; // in pixels
     float fontScale;
@@ -82,15 +82,16 @@ class StbTextRenderTest {
             return;
 
         void enterExit (string msg, lazy void expr) {
-            writeln("entering ", msg);
+            //writeln("entering ", msg);
             expr();
-            writeln("exiting ", msg);
+            //writeln("exiting ", msg);
         }
         void debugCall (string fcn, Args...)(Args args) if (__traits(compiles, (mixin(fcn))(args))) {
-            //debug
-            enterExit(fcn, mixin(fcn)(args));
-            //else
-            //    mixin(fcn)(args);
+            mixin(fcn)(args);
+            ////debug
+            //enterExit(fcn, mixin(fcn)(args));
+            ////else
+            ////    mixin(fcn)(args);
         }
 
         lastText = text;
@@ -108,7 +109,7 @@ class StbTextRenderTest {
         if (fontData.length == 0)
             throw new ResourceError("Failed to load font file '%s'", fontPath);
 
-        writeln("loading font");
+        //writeln("loading font");
 
         stbtt_fontinfo fontInfo;
         int offs = stbtt_GetFontOffsetForIndex(fontData.ptr, 0);
@@ -125,12 +126,12 @@ class StbTextRenderTest {
         if (!stbtt_InitFont(&fontInfo, fontData.ptr, offs))
             throw new ResourceError("stb_trutype: Failed to load font '%s'", fontPath);
 
-        writeln("font loaded");
+        //writeln("font loaded");
 
         fontScale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize * scaleFactor);
         stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
 
-        writeln("getting charset");
+        //writeln("getting charset");
 
         // Determine charset
         auto rbcharset = new RedBlackTree!dchar();
@@ -149,13 +150,13 @@ class StbTextRenderTest {
         writef("\n");
 
         {
-            dchar[] unsupportedChrs;
+            dchar[] missingChrs;
             foreach (chr; rbcharset) {
-                if (!stbtt_FindGlyphIndex(&fontInfo, chr))
-                    unsupportedChrs ~= chr;
+                if (chr >= 0x20 && !stbtt_FindGlyphIndex(&fontInfo, chr))
+                    missingChrs ~= chr;
             }
-            if (unsupportedChrs.length != 0)
-                writefln("Unsupported character(s): %s", unsupportedChrs);
+            if (missingChrs.length != 0)
+                writefln("%d unsupported character(s): %s", missingChrs.length, missingChrs);
         }
         // Convert charset to an array and create lookup table
         dchar[] charset;
@@ -171,24 +172,24 @@ class StbTextRenderTest {
             //writefln(" (%d)", i);
         }
 
-        writeln("got charset");
+        //writeln("got charset");
 
         // Create bitmap + pack chars
         ubyte[] bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * 1];
 
-        writeln("packing charset");
+        //writeln("packing charset");
 
         stbtt_pack_context pck;
         //stbtt_PackBegin(&pck, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, cast(void*)&allocator);
         debugCall!"stbtt_PackBegin"(&pck, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, cast(void*)&allocator);
         //enterExit("stbtt_PackBegin", stbtt_PackBegin(&pck, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, cast(void*)&allocator));
 
-        if (pck.user_allocator_context != cast(void*)&allocator) {
-            throw new Exception("allocator context != our allocator");
-        } else {
-            writeln("our allocator = ", cast(void*)&allocator);
-            writeln("stored alloctor = ", pck.user_allocator_context);
-        }
+        //if (pck.user_allocator_context != cast(void*)&allocator) {
+        //    throw new Exception("allocator context != our allocator");
+        //} else {
+        //    writeln("our allocator = ", cast(void*)&allocator);
+        //    writeln("stored alloctor = ", pck.user_allocator_context);
+        //}
 
 
         auto packedChrData = new stbtt_packedchar[ charset.length ];
@@ -205,7 +206,7 @@ class StbTextRenderTest {
         debugCall!"stbtt_PackFontRanges"(&pck, fontData.ptr, 0, &r, 1);
         debugCall!"stbtt_PackEnd"(&pck);
 
-        writeln("done packing charset");
+        //writeln("done packing charset");
 
         // Render to quads
         float[] quads;
@@ -213,7 +214,7 @@ class StbTextRenderTest {
         // UVs are flipped since stb_truetype uses flipped y-coords
         float[] uvs;
 
-        writeln("getting quads");
+        //writeln("getting quads");
 
         float x = 0, y = (ascent - descent + lineGap) * fontScale;
         bool align_to_integer = true;
@@ -251,7 +252,7 @@ class StbTextRenderTest {
             }
         }
 
-        writeln("creating gl resources");
+        //writeln("creating gl resources");
 
         // Create gl resources
         if (!gl_vao) {
@@ -293,7 +294,7 @@ class StbTextRenderTest {
             //glUniform1i(loc, 0); CHECK_CALL("glUniform1i (setting texture sampler = 0)");
         }
 
-        writeln("writing data to gpu");
+        //writeln("writing data to gpu");
 
         // Upload bitmap to gpu
         glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
@@ -312,7 +313,7 @@ class StbTextRenderTest {
 
         ntriangles = cast(uint)quads.length / 3;
 
-        writeln("finished updating text");
+        //writeln("finished updating text");
         //assert(quads.length / 3 == uvs.length / 2);
 
         //writefln("Setup utf text render test");
