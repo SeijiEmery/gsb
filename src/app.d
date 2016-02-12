@@ -4,6 +4,8 @@ import std.concurrency;
 import std.traits;
 import std.format;
 
+import std.parallelism;
+
 import Derelict.glfw3.glfw3;
 import Derelict.opengl3.gl3;
 import gl3n.linalg;
@@ -120,10 +122,25 @@ void enterGraphicsThread (Tid mainThreadId) {
 	}
 }
 
+void loadFonts () {
+	createWorkerLog();
+	TextRenderer.instance.loadDefaultFonts();
+}
+
+
 void mainThread (Tid graphicsThreadId) {
 	log = g_mainLog = new Log("main-thread");
 
-	TextRenderer.instance.loadDefaultFonts();
+	taskPool.put(task!loadFonts());
+
+	log.write("parallelism -- cpus = %u", totalCPUs);
+	log.write("parallelism -- default work threads = %u", defaultPoolThreads);
+	defaultPoolThreads(8);
+
+	auto stuff = new int[100];
+	foreach (i, ref elem; taskPool.parallel(stuff, 1)) {
+		createWorkerLog().write("foo %d", i);
+	}
 
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
 		glfwPollEvents();
@@ -173,6 +190,8 @@ void enterMainThread (Tid graphicsThreadId) {
 
 void main()
 {
+	defaultPoolThreads(16);
+
 	// Preload gl + glfw
 	DerelictGLFW3.load();
 	DerelictGL3.load();

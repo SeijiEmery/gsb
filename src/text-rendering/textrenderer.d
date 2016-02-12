@@ -66,6 +66,9 @@ final:
             //atlas.registerFonts("helvetica", "/System/Library/Fonts/Helvetica")
             atlas.registerFont("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
             atlas.registerFont("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
+            atlas.registerFont("menlo-italic", "/System/Library/Fonts/Menlo.ttc", 1);
+            atlas.registerFont("menlo-bold", "/System/Library/Fonts/Menlo.ttc", 2);
+            atlas.registerFont("menlo-bold-italic", "/System/Library/Fonts/Menlo.ttc", 3);
             atlas.loadFonts();
 
             //atlas.setFontScale("menlo", 1.0, sz => sz * 1.0);

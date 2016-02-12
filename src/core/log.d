@@ -9,6 +9,18 @@ public Log log = null;
 // Global references to all logs
 public __gshared Log g_graphicsLog = null;
 public __gshared Log g_mainLog = null;
+public __gshared Log[string] g_workerLogs = null;
+private __gshared int nextWorker = 0;
+
+auto createWorkerLog () {
+    if (log is null) {
+        synchronized {
+            auto name = format("work-thread %d", nextWorker++);
+            log = g_workerLogs[name] = new Log(name);
+        }
+    }
+    return log;
+}
 
 class Log {
     string title;
