@@ -316,6 +316,50 @@ final:
         }
     }
 
+    enum RelPos {
+        TOP_LEFT
+    }
+
+    auto createTextElement () {
+        log.write("Created text element");
+        return new TextElement();
+    }
+
+    class TextElement {
+        auto style (string name) {
+            log.write("Set style '%s'", name);
+            return this;
+        }
+        auto fontSize (double size) {
+            log.write("Set font size '%0.2f'", size);
+            return this;
+        }
+        auto position (RelPos rel, float x, float y) {
+            log.write("Set position to %0.2f, %0.2f", x, y);
+            return this;
+        }
+        auto bounds (float x, float y) {
+            log.write("Set bounds %0.2f, %0.2f", x, y);
+            return this;
+        }
+        auto color (string colorHash) {
+            log.write("Set color %s", colorHash);
+            return this;
+        }
+        auto scroll (bool scrollEnabled) {
+            log.write("Set scrolling = %s", scrollEnabled ? "true" : "false");
+            return this;
+        }
+        auto append (string text) {
+            log.write("Appending text ");
+            return this;
+        }
+
+    }
+
+
+
+
 
 
 /+

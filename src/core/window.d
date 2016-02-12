@@ -93,6 +93,7 @@ class Window {
     }
 
     void notifyWindowSizeChanged (int width, int height) {
+        log.write("Window size changed to %d, %d", width, height);
         m_screenSize.x = width; m_screenSize.y = height;
         m_dirtyScalingFactor = true;
         //writeln("Screen size changed");
@@ -104,6 +105,7 @@ class Window {
         //}
     }
     void notifyFramebufferSizeChanged (int width, int height) {
+        log.write("Framebuffer size changed to %d, %d", width, height);
         m_framebufferSize.x = width; m_framebufferSize.y = height;
         m_dirtyScalingFactor = true;
 
