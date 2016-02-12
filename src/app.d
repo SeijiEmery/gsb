@@ -8,6 +8,7 @@ import Derelict.glfw3.glfw3;
 import Derelict.opengl3.gl3;
 import gl3n.linalg;
 
+import gsb.core.log;
 import gsb.core.window;
 
 
@@ -43,13 +44,6 @@ enum ThreadSyncEvent {
 	NOTIFY_THREAD_DIED           // sent from worker thread to main thread
 }
 
-//static __gshared GLFWwindow * g_mainWindow = null;
-
-__gshared Log g_graphicsLog = null;
-__gshared Log g_mainLog     = null;  
-
-Log log = null;  // thread-local
-
 void graphicsThread (Tid mainThreadId) {
 	log = g_graphicsLog = new Log("graphics-thread");
 
@@ -81,23 +75,7 @@ void graphicsThread (Tid mainThreadId) {
 	auto camera = new Camera();
 	auto test = new TriangleRenderer();
 
-	Font font;
-	TextBuffer text;
-
-	//font = loadFont("/Library/Fonts/Arial.ttf");
-	//font = loadFont("/Library/Fonts/Trattatello.ttf");
-	//font = loadFont("/Library/Fonts/Anonymous Pro.ttf");
-	//text = new TextBuffer(font);
-	//text.appendText("Hello world!");
-
-	auto createView (Log targetLog, float width, float height, mat4 transform) {
-		return new LogView(targetLog).setBounds(width, height).setTransform(transform);
-	}
-
-	LogView[string] logViews = [
-		"graphics": createView(g_graphicsLog, 800, 200, mat4.translation(0, +0.5, 0)),
-		"main": createView(g_mainLog, 800, 200, mat4.translation(0, -0.5, 0))
-	];
+	auto textRenderer = TextRenderer.instance.getGraphicsThreadHandle();
 
 	auto utfTest = StbTextRenderTest.defaultTest();
 
@@ -117,16 +95,8 @@ void graphicsThread (Tid mainThreadId) {
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-
 				utfTest.render();
-
-				//text.render(camera);
-				//text.clear();
-				//text.appendText(format("Hello World!\nCurrent frame is %d", frame));
-
-				//foreach (logView; logViews.values) {
-				//	logView.maybeUpdate();
-				//}
+				textRenderer.render();
 
 				glfwSwapBuffers(g_mainWindow.handle);
 				checkGlErrors();
@@ -152,6 +122,8 @@ void enterGraphicsThread (Tid mainThreadId) {
 
 void mainThread (Tid graphicsThreadId) {
 	log = g_mainLog = new Log("main-thread");
+
+	TextRenderer.instance.loadDefaultFonts();
 
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
 		glfwPollEvents();

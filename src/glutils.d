@@ -180,6 +180,7 @@ void checked (string fname, Args...)(Args args) if (
 
 alias checked_glGenVertexArrays = checked!("glGenVertexArrays", GLsizei, GLuint*);
 alias checked_glBindVertexArray = checked!("glBindVertexArray", GLuint);
+alias checked_glDeleteVertexArrays = checked!("glDeleteVertexArrays", GLsizei, GLuint*);
 
 alias checked_glVertexAttribPointer = checked!("glVertexAttribPointer", GLuint, GLint, GLenum, GLboolean, GLsizei, const(void)*);
 alias checked_glEnableVertexAttribArray = checked!("glEnableVertexAttribArray", GLuint);

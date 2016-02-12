@@ -1,10 +1,15 @@
 
 module gsb.text.textrenderer;
 
+import gsb.core.log;
+
 import std.stdio;
 import std.file;
 import std.format;
 import std.algorithm.setops;
+import std.algorithm.mutation : move;
+import std.algorithm.iteration : map;
+import std.array : join;
 
 
 import stb.truetype;
@@ -24,17 +29,23 @@ class GlTexture {
 }
 
 // Shared data; owned by main thread / app startup
-// Should only be one instance of this in the entire program
+// There should only be one instance of this in the entire program
 class TextRenderer {
+    public static __gshared auto instance = new TextRenderer();
+
+    protected this () {}
+
+final:
     private struct PerFrameGraphicsState {
 
     }
-    PerFrameGraphicsState graphicsState[2];
+    PerFrameGraphicsState[2] graphicsState;
 
     // Graphics-thread handle used to render + buffer data for the TextRenderer instance
     // – The only instance of this should be owned by the graphics thread
     // - The graphics thread should not touch any other aspects of TextRenderer
     class GThreadHandle {
+    final:
         public int curFrame = 0;
         void render () {
             // exec graphicsState[curFrame]
@@ -44,47 +55,50 @@ class TextRenderer {
         return new GThreadHandle();
     }
 
-    FontAtlas atlas;
+    
+    auto atlas = new FontAtlas();
+
     public void registerFont (string name, string path, int index, bool loadImmediate=false) {
         atlas.registerFont(name, path, index, loadImmediate);
     }
     public void loadDefaultFonts () {
         version(OSX) {
             //atlas.registerFonts("helvetica", "/System/Library/Fonts/Helvetica")
-            atlas.registerFonts("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
-            atlas.registerFonts("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
+            atlas.registerFont("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
+            atlas.registerFont("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
             atlas.loadFonts();
 
-            atlas.setFontScale("menlo", 1.0, sz => sz * 1.0);
-            atlas.setFontScale("menlo", 2.0, sz => sz * 1.5);
+            //atlas.setFontScale("menlo", 1.0, sz => sz * 1.0);
+            //atlas.setFontScale("menlo", 2.0, sz => sz * 1.5);
 
-            atlas.setFontScale("arial", 1.0, sz => sz * 1.0);
-            atlas.setFontScale("arial", 2.0, sz => sz * 1.5);
+            //atlas.setFontScale("arial", 1.0, sz => sz * 1.0);
+            //atlas.setFontScale("arial", 2.0, sz => sz * 1.5);
 
-            atlas.addFontClass("default", {
-                .size = 50,
-                .color = "#114015",
-                .fonts = [ "menlo", "arial" ]
-            });
-            atlas.extendClass("default", "console", {
-                .size = 30,
-                .color = "#12092F",
-                .fonts = [ "menlo", "arial" ]
-            });
+            //atlas.addFontClass("default", {
+            //    .size = 50,
+            //    .color = "#114015",
+            //    .fonts = [ "menlo", "arial" ]
+            //});
+            //atlas.extendClass("default", "console", {
+            //    .size = 30,
+            //    .color = "#12092F",
+            //    .fonts = [ "menlo", "arial" ]
+            //});
         }
     }
 
     static class FontAtlas {
+    final:
         struct FontPath {
             string path;
             int index;
         }
-        [string][string]            fontClasses;
+        string[][string]            fontClasses;
         FontPath[string]            registeredFonts;
         stbtt_fontinfo[string]      loadedFonts;
     
         void registerFont (string name, string path, int index, bool loadImmediate=false) {
-            if (!exists(fontPath) || (!attrIsFile(getAttributes(fontPath))))
+            if (!exists(path) || (!attrIsFile(getAttributes(path))))
                 throw new ResourceError("Font '%s' does not exist", path);
 
             if (name in registeredFonts) {
@@ -95,7 +109,7 @@ class TextRenderer {
                     throw new ResourceError(format("Conflicting entries for font '%s': '%s'(%d), '%s'(%d)",
                         path, prevPath, prevIndex, path, index));
             } else {
-                registeredFonts[name] = FontAtlas { .path = path, .index = index };
+                registeredFonts[name] = FontPath(path, index);
             }
             if (loadImmediate && !(name in loadedFonts)) {
                 loadFonts();
@@ -104,25 +118,24 @@ class TextRenderer {
 
         void loadFonts () {
             auto toLoad = setDifference(registeredFonts.keys, loadedFonts.keys);
-            if (toLoad.length == 0)
-                return;
 
             // Order fonts by filepath
             struct FontPair { string name; int index; }
-            (FontPair[])[string] fontsByFilepath;
+            FontPair[][string] fontsByFilepath;
 
             foreach (name; toLoad) {
                 auto path = registeredFonts[name].path;
                 auto index = registeredFonts[name].index;
 
                 if (path in fontsByFilepath)
-                    fontsByFilepath[path] ~= { .name = name, .index = index };
+                    fontsByFilepath[path] ~= FontPair(name, index);
                 else
-                    fontsByFilepath[path] = [ { .name = name, .index = index } ];
+                    fontsByFilepath[path] = [ FontPair(name, index) ];
             }
 
+            log.write("Loading paths: %s", join(fontsByFilepath.keys, ", "));
             foreach (elem; fontsByFilepath.byKeyValue()) {
-                auto path = pair.key;
+                auto path = elem.key;
                 assert(exists(path) && attrIsFile(getAttributes(path)));
 
                 auto contents = cast(ubyte[])read(path);
@@ -132,7 +145,7 @@ class TextRenderer {
                 foreach (pair; elem.value) {
                     assert(!(pair.name in loadedFonts));
 
-                    int offs = stbtt_getFontOffsetForIndex(contents.ptr, pair.index);
+                    int offs = stbtt_GetFontOffsetForIndex(contents.ptr, pair.index);
                     if (offs == -1)
                         throw new ResourceError(format("Invalid font index: '%d' in '%s' (%s)", pair.index, path, pair.name));
 
@@ -141,7 +154,9 @@ class TextRenderer {
                         throw new ResourceError(format("stb_truetype: Failed to load font '%s'[%d] (%s)", path, pair.index, pair.name));
                     loadedFonts[pair.name] = move(info);
                 }
+                log.write("Loaded %d font(s) from '%s': %s", elem.value.length, path, join(map!(x => x.name)(elem.value), ", "));
             }
+            log.write("Loaded fonts: %s", join(loadedFonts.keys, ", "));
         }
 
         ref stbtt_fontinfo getExactFont(string name) {
@@ -156,6 +171,8 @@ class TextRenderer {
     }
 
 
+
+/+
     // Utility that defines how font sizes get translated into real screen pixels.
     // This can be defined:
     //  - per font-id (ie. "arial", "helvetica", defined in FontAtlas)
@@ -258,7 +275,7 @@ class TextRenderer {
         }
     }
 
-
++/
 
 
 
@@ -293,7 +310,7 @@ class ResourceError : Error {
     }
 }
 
-class TextGeometryBuffer {
+class TextGeometryBuffer2 {
     GLuint vao = 0;
     GLuint[3] buffers;
     private bool dirty = true;
@@ -320,8 +337,8 @@ class TextGeometryBuffer {
 
     void bufferData () {
         dirty = false;
-        if (!gl_vao) {
-            chedked_glGenVertexArrays(1, &vao);
+        if (!vao) {
+            checked_glGenVertexArrays(1, &vao);
             checked_glBindVertexArray(vao);
 
             checked_glGenBuffers(3, buffers.ptr);
@@ -341,11 +358,11 @@ class TextGeometryBuffer {
             checked_glBindVertexArray(0);
         }
         checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-        checked_glBindBuffer(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_STATIC_DRAW);
+        checked_glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_DYNAMIC_DRAW);
         checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
-        checked_glBindBuffer(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_STATIC_DRAW);
+        checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
         checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[2]);
-        checked_glBindBuffer(GL_ARRAY_BUFFER, colors.length * 4, colors.ptr, GL_STATIC_DRAW);
+        checked_glBufferData(GL_ARRAY_BUFFER, colors.length * 4, colors.ptr, GL_DYNAMIC_DRAW);
         checked_glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
     void draw () {
@@ -395,108 +412,67 @@ class TextGeometryBuffer {
 //    "default": [ fontdb["menlo"], fontdb["anonymous-pro"], fontdb["helvetica"] ]
 //];
 
-class StbFont {
-    stbtt_fontinfo fontInfo;
-    ubyte[] fontData;
+//class PackedFontAtlas {
+//    StbFont font;
+//    stbtt_pack_context packCtx;
+//    ubyte[] bitmapData; // single channel bitmap
+//    int width, height;
+//    int fontSize = 24;
 
-    this (string filename) {
-        if (__ctfe) // uses files, so disable during ctfe. dunno why this would be run in the first place, but w/e
-            return;
+//    stbtt_packedchar*[dchar] chrLookup;
+//    stbtt_packedchar[] chrData = new stbtt_packedchar[1];
 
-        if (!exists(filename) || !attrIsFile(getAttributes(filename)))
-            throw new ResourceError("Cannot load font file '%s'", filename);
+//    this (StbFont _font, int textureWidth, int textureHeight) {
+//        if (_font is null)
+//            throw new ResourceError("null font");
 
-        fontData = cast(ubyte[])read(filename);
-        if (fontData.length == 0)
-            throw new ResourceError("Failed to load font file '%s'", filename);
+//        font = _font;
+//        width = textureWidth;
+//        height = textureHeight;
+//        bitmapData = new ubyte[width * height];
 
-        if (!stbtt_InitFont(&fontInfo, fontData.ptr, 0))
-            throw new ResourceError("stb: Failed to load font '%s'", filename);
-    }
-    auto getScaleForPixelHeight (float height) {
-        return stbtt_ScaleForPixelHeight(&fontInfo, height);
-    }
-}
+//        if (!stbtt_PackBegin(&packCtx, bitmapData.ptr, width, height, 0, 1, null))
+//            throw new ResourceError("stbtt_PackBegin(...) failed");
+//    }
 
-class PackedFontAtlas {
-    StbFont font;
-    stbtt_pack_context packCtx;
-    ubyte[] bitmapData; // single channel bitmap
-    int width, height;
-    int fontSize = 24;
+//    void packCharset (string chars) {
+//        foreach (chr; chars) {
+//            // pseudocode
+//            if (!chrLookup[chr]) {
+//                chrData.length += 1;
+//                chrLookup[chr] = &chrData[chrData.length-1];
+//                //stbtt_PackFontRange(packCtx, font.fontData, 0, fontSize, chr, 1, &chrData[chrData.length-1]);
+//            }
+//        }
+//    }
+//    void getPackedQuad (dchar chr, int pw, int ph, float * xpos, float * ypos, stbtt_aligned_quad * q, int align_to_integer) {
+//        //if (!chrLookup[chr])
+//        //    packCharset("" ~ chr);
+//        stbtt_GetPackedQuad(chrLookup[chr], pw, ph, 0, xpos, ypos, q, align_to_integer);
+//    }
 
-    stbtt_packedchar*[dchar] chrLookup;
-    stbtt_packedchar[] chrData = new stbtt_packedchar[1];
+//    ~this () {
+//        stbtt_PackEnd(&packCtx);
+//    }
+//}
 
-    this (StbFont _font, int textureWidth, int textureHeight) {
-        if (_font is null)
-            throw new ResourceError("null font");
+//class RasterizedTextElement {
+//    PackedFontAtlas atlas;
+//    vec2 nextPos;
+//    vec2 bounds;
+//    public float depth = 0;
+//    public mat4 transform;
 
-        font = _font;
-        width = textureWidth;
-        height = textureHeight;
-        bitmapData = new ubyte[width * height];
+//    private GlTexture bitmapTexture;
 
-        if (!stbtt_PackBegin(&packCtx, bitmapData.ptr, width, height, 0, 1, null))
-            throw new ResourceError("stbtt_PackBegin(...) failed");
-    }
+//    this (PackedFontAtlas _atlas)
+//    in { assert(!(atlas is null)); }
+//    body {
+//        atlas = _atlas;
+//    }
+//}
 
-    void packCharset (string chars) {
-        foreach (chr; chars) {
-            // pseudocode
-            if (!chrLookup[chr]) {
-                chrData.length += 1;
-                chrLookup[chr] = &chrData[chrData.length-1];
-                //stbtt_PackFontRange(packCtx, font.fontData, 0, fontSize, chr, 1, &chrData[chrData.length-1]);
-            }
-        }
-    }
-    void getPackedQuad (dchar chr, int pw, int ph, float * xpos, float * ypos, stbtt_aligned_quad * q, int align_to_integer) {
-        //if (!chrLookup[chr])
-        //    packCharset("" ~ chr);
-        stbtt_GetPackedQuad(chrLookup[chr], pw, ph, 0, xpos, ypos, q, align_to_integer);
-    }
 
-    ~this () {
-        stbtt_PackEnd(&packCtx);
-    }
-}
-
-class RasterizedTextElement {
-    PackedFontAtlas atlas;
-    vec2 nextPos;
-    vec2 bounds;
-    public float depth = 0;
-    public mat4 transform;
-
-    private GlTexture bitmapTexture;
-
-    this (PackedFontAtlas _atlas)
-    in { assert(!(atlas is null)); }
-    body {
-        atlas = _atlas;
-    }
-}
-
-class Log {
-    string title;
-    string[] lines;
-    public bool writeToStdout = true;
-
-    this (string title_) {
-        title = title_;
-    }
-
-    void write (string msg) {
-        lines ~= msg;
-        if (writeToStdout) {
-            writefln("[%s] %s", title, msg);
-        }
-    }
-    void write (T...)(string msg, T args) {
-        write(format(msg, args));
-    }
-}
 
 //immutable string DEFAULT_FONT = "/Library/Fonts/Verdana.ttf";
 //immutable string[string] DEFAULT_TYPEFACE = [
@@ -506,6 +482,8 @@ class Log {
 //  "bolditalic": "~/Library/Application Support/GLSandbox/fonts/Anonymous Pro BI.ttf"
 //];
 
+
+/+
 class LogView {
     Log log;
     uint lastLineCount = 0;
@@ -556,8 +534,9 @@ LogView setBounds (LogView view, float x, float y) {
 LogView setTransform (LogView view, mat4 transform) {
     view.transform = transform;
     return view;
-}
+}+/
 
+/+
 class BasicTextRenderer {
     StbFont font = new StbFont("/Library/Fonts/Anonymous Pro.ttf");
     float   fontSize = 24;
@@ -599,68 +578,7 @@ class BasicTextRenderer {
             }
         }
     }
-}
-
-class BasicTextLayouter {
-    // tbd
-}
-
-
-
-
-
-class Font {
-    stbtt_fontinfo font;
-    float scale;
-    int ascent, baseline;
-    GlTexture bitmapTexture = null;
-    stbtt_bakedchar[96] chrdata;
-
-    this (string filename) {
-        ubyte[] contents = cast(ubyte[])read(filename);
-        stbtt_InitFont(&font, &contents[0], 0);
-
-        scale = stbtt_ScaleForPixelHeight(&font, 24);
-        stbtt_GetFontVMetrics(&font, &ascent, null, null);
-        baseline = cast(int)(ascent * scale);
-
-        bitmapTexture = new GlTexture();
-        ubyte[] bitmapData = new ubyte[512*512];
-        stbtt_BakeFontBitmap(contents.ptr,0, 24.0, bitmapData.ptr,512,512, 32,96, chrdata.ptr);
-
-        writeln("Finished loading font");
-
-        glActiveTexture(GL_TEXTURE0); CHECK_CALL("glActiveTexture");
-        glBindTexture(GL_TEXTURE_2D, bitmapTexture.id); CHECK_CALL("glBindTexture");
-        //glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 512,512); CHECK_CALL("glTexStorage2D");
-        //glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512,512, GL_RGBA, GL_UNSIGNED_BYTE, bitmapData.ptr); CHECK_CALL("glTexSubImage2D");
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, 512,512, 0, GL_RED, GL_UNSIGNED_BYTE, bitmapData.ptr); CHECK_CALL("glTexImage2D");
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); CHECK_CALL("set gl texture parameter MIN_FILTER=GL_LINEAR");
-        glBindTexture(GL_TEXTURE_2D, 0); CHECK_CALL("glBindTexture");
-    }
-
-    //GLTexture getFontTexture () {
-    //  if (!bitmapTexture) {
-    //      bitmapTexture = new GlTexture();
-
-    //      ubyte[] buffer = new ubyte[1<<20];
-    //      ubyte[] bitmapData = new ubyte[512*512];
-    //      stbtt_BakeFontBitmap(buffer, 0, 32.0, bitmapData,512,512, 32,96, cdata)
-
-
-    //      glBindTexture()
-    //  }
-    //}
-}
-
-Font loadFont (string filename) {
-    if (!exists(filename) || !attrIsFile(getAttributes(filename))) {
-        writefln("Cannot open '%s'", filename);
-        return null;
-    }
-    writefln("Loading font '%s'", filename);
-    return new Font(filename);
-}
+}+/
 
 class TextVertexShader: Shader!Vertex {
     @layout(location=0)
@@ -694,6 +612,7 @@ class TextFragmentShader: Shader!Fragment {
         fragColor = vec4(color.r, color.r, color.r, color.r);
     }
 }
+
 class TextShader {
     TextFragmentShader fs = null;
     TextVertexShader vs = null;
@@ -717,21 +636,8 @@ class TextShader {
         checked_glUseProgram(prog.id);
     }
 }
-//class TextGeometryBuffer {
 
-//}
-
-
-
-
-
-
-
-
-
-
-
-
+/+
 class TextGeometryBuffer {
     //uint gl_positionBuffer = 0;
     //uint gl_texcoordBuffer = 0;
@@ -834,11 +740,9 @@ class TextGeometryBuffer {
             glDrawArrays(GL_TRIANGLES, 0, cast(int) cachedPositionData.length); CHECK_CALL("glDrawArrays (TextGeometryBuffer.draw())");
         }
     }
-}
+}+/
 
-
-
-
+/+
 
 class TextBuffer {
     Font font;
@@ -979,10 +883,7 @@ class TextBuffer {
         glBindVertexArray(vao); CHECK_CALL("glBindVertexArray");
         glDrawArrays(GL_TRIANGLES, 0, cast(int)quads.length / 3); CHECK_CALL("glDrawArrays");
     }
-}
-
-
-
+}+/
 
 
 
