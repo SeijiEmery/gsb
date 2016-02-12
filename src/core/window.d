@@ -3,9 +3,10 @@ module gsb.core.window;
 import Derelict.glfw3.glfw3;
 import gl3n.linalg;
 
-import std.stdio;
 import std.exception;
 import std.math;
+
+import gsb.core.log;
 
 public __gshared Window g_mainWindow = null;
 
@@ -29,7 +30,7 @@ class Window {
             m_dirtyScalingFactor = false;
             m_cachedScalingFactor.x = cast(double)m_framebufferSize.x / cast(double)m_screenSize.x;
             m_cachedScalingFactor.y = cast(double)m_framebufferSize.y / cast(double)m_screenSize.y;
-            writefln("Set screen scaling factor to %0.2f, %0.2f", m_cachedScalingFactor.x, m_cachedScalingFactor.y);
+            log.write("Set screen scaling factor to %0.2f, %0.2f", m_cachedScalingFactor.x, m_cachedScalingFactor.y);
         }
         return m_cachedScalingFactor;
     }
@@ -77,7 +78,7 @@ class Window {
     extern (C) static void windowSizeCallback (GLFWwindow * window, int width, int height) nothrow {
         auto ptr = cast(Window)glfwGetWindowUserPointer(window);
         if (!ptr) {
-            assumeWontThrow(writeln("null user data pointer!"));
+            assumeWontThrow(log.write("null user data pointer!"));
         } else {
             assumeWontThrow(ptr.notifyWindowSizeChanged(width, height));
         }
@@ -85,7 +86,7 @@ class Window {
     extern (C) static void windowFramebufferSizeCallback (GLFWwindow * window, int width, int height) nothrow {
         Window ptr = cast(Window)glfwGetWindowUserPointer(window);
         if (!ptr) {
-            assumeWontThrow(writeln("null user data pointer!"));
+            assumeWontThrow(log.write("null user data pointer!"));
         } else {
             assumeWontThrow(ptr.notifyFramebufferSizeChanged(width, height));
         }

@@ -1,13 +1,15 @@
 
 module gsb.text.textrendertest;
 import gsb.text.textrenderer;
-import std.stdio;
 import std.file;
 import std.utf;
 import std.container.rbtree;
 import std.math;
+import std.format;
+import std.algorithm.mutation;
 
 import gsb.core.window;
+import gsb.core.log;
 import gsb.glutils;
 
 import stb.truetype;
@@ -99,7 +101,7 @@ class StbTextRenderTest {
         currentScalingFactor.y = g_mainWindow.screenScalingFactor.y;
         auto scaleFactor = currentScalingFactor.y;
 
-        writeln("Starting StbTextRenderTest");
+        log.write("Starting StbTextRenderTest");
 
         // Load font
         if (!exists(fontPath) || (!attrIsFile(getAttributes(fontPath))))
@@ -119,7 +121,7 @@ class StbTextRenderTest {
         {
             int i = 0;
             while (stbtt_GetFontOffsetForIndex(fontData.ptr, i) != -1) ++i;
-            writefln("Font '%s' contains %d fonts (font indices)", fontPath, i);
+            log.write("Font '%s' contains %d fonts (font indices)", fontPath, i);
         }
 
 
@@ -137,17 +139,8 @@ class StbTextRenderTest {
         auto rbcharset = new RedBlackTree!dchar();
         foreach (chr; byDchar(text))
             rbcharset.insert(chr);
-        writef("charset: ");
-        foreach (chr; rbcharset) {
-            switch (chr) {
-                case '\0': write("\\0"); break;
-                case '\n': write("\\n"); break;
-                case '\r': write("\\r"); break;
-                case '\t': write("\\t"); break;
-                default: writef("%c", chr);
-            }
-        }
-        writef("\n");
+
+        
 
         {
             dchar[] missingChrs;
@@ -156,22 +149,31 @@ class StbTextRenderTest {
                     missingChrs ~= chr;
             }
             if (missingChrs.length != 0)
-                writefln("%d unsupported character(s): %s", missingChrs.length, missingChrs);
+                log.write("%d unsupported character(s): %s", missingChrs.length, missingChrs);
         }
         // Convert charset to an array and create lookup table
         dchar[] charset;
         int[dchar] chrLookup;
         {
+            string escaped (dchar chr) {
+                switch (chr) {
+                    case '\0': return "\\0";
+                    case '\n': return "\\n";
+                    case '\t': return "\\t";
+                    case '\r': return "\\r";
+                    default: return format("%c", chr);
+                }
+            }
+
             int i = 0;
-            //writef("Text := ");
+            string pretty_charset = "charset: ";
             foreach (chr; rbcharset) {
                 charset ~= chr;
                 chrLookup[chr] = i++;
-                //writef("%c", chr);
+                pretty_charset ~= escaped(chr);
             }
-            //writefln(" (%d)", i);
+            log.write(pretty_charset);
         }
-
         //writeln("got charset");
 
         // Create bitmap + pack chars
@@ -345,7 +347,7 @@ class StbTextRenderTest {
             if (abs(currentScalingFactor.x - g_mainWindow.screenScalingFactor.x) > epsilon ||
                 abs(currentScalingFactor.y - g_mainWindow.screenScalingFactor.y) > epsilon)
             {
-                writefln("Rescaling text: %0.2f -> %0.2f, %0.2f -> %0.2f",
+                log.write("Rescaling text: %0.2f -> %0.2f, %0.2f -> %0.2f",
                     currentScalingFactor.x, g_mainWindow.screenScalingFactor.x,
                     currentScalingFactor.y, g_mainWindow.screenScalingFactor.y);
                 setText(lastText);

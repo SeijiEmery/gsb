@@ -4,7 +4,22 @@ import std.stdio;
 import std.format;
 
 // Thread-local log (created in respective thread)
-public Log log = null;
+private Log localLog = null;
+//public @property Log log () {
+//    if (!localLog)
+//        log = createWorkerLog();
+//    return log;
+//}
+public @property Log log (Log log_ = null) {
+    if (!localLog) {
+        localLog = log_ ?
+            log_ :
+            createEnumeratedWorkerLog();
+
+    }
+    return localLog;
+}
+//public Log log = null;
 
 // Global references to all logs
 public __gshared Log g_graphicsLog = null;
@@ -12,14 +27,14 @@ public __gshared Log g_mainLog = null;
 public __gshared Log[string] g_workerLogs = null;
 private __gshared int nextWorker = 0;
 
-auto createWorkerLog () {
-    if (log is null) {
+auto createEnumeratedWorkerLog () {
+    if (localLog is null) {
         synchronized {
             auto name = format("work-thread %d", nextWorker++);
-            log = g_workerLogs[name] = new Log(name);
+            localLog = g_workerLogs[name] = new Log(name);
         }
     }
-    return log;
+    return localLog;
 }
 
 class Log {

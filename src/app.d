@@ -19,6 +19,9 @@ import gsb.text.textrenderer;
 import gsb.triangles_test;
 import gsb.text.textrendertest;
 
+import std.datetime;
+
+
 auto todstr(inout(char)* cstr) {
 	import core.stdc.string: strlen;
 	return cstr ? cstr[0 .. strlen(cstr)] : "";
@@ -123,7 +126,6 @@ void enterGraphicsThread (Tid mainThreadId) {
 }
 
 void loadFonts () {
-	createWorkerLog();
 	TextRenderer.instance.loadDefaultFonts();
 }
 
@@ -131,16 +133,22 @@ void loadFonts () {
 void mainThread (Tid graphicsThreadId) {
 	log = g_mainLog = new Log("main-thread");
 
-	taskPool.put(task!loadFonts());
+	auto loadFontTime = benchmark!loadFonts(1);
+	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
-	log.write("parallelism -- cpus = %u", totalCPUs);
-	log.write("parallelism -- default work threads = %u", defaultPoolThreads);
-	defaultPoolThreads(8);
 
-	auto stuff = new int[100];
-	foreach (i, ref elem; taskPool.parallel(stuff, 1)) {
-		createWorkerLog().write("foo %d", i);
-	}
+
+
+
+	//taskPool.put(task!loadFonts());
+
+	//log.write("parallelism -- cpus = %u", totalCPUs);
+	//log.write("parallelism -- default work threads = %u", defaultPoolThreads);
+
+	//auto stuff = new int[100];
+	//foreach (i, ref elem; taskPool.parallel(stuff, 1)) {
+	//	createWorkerLog().write("foo %d", i);
+	//}
 
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
 		glfwPollEvents();
