@@ -4,6 +4,9 @@ module gsb.text.textrenderer;
 import std.stdio;
 import std.file;
 import std.format;
+import std.algorithm.setops;
+
+
 import stb.truetype;
 import gsb.glutils;
 import derelict.opengl3.gl3;
@@ -20,11 +23,361 @@ class GlTexture {
     }
 }
 
+// Shared data; owned by main thread / app startup
+// Should only be one instance of this in the entire program
+class TextRenderer {
+    private struct PerFrameGraphicsState {
+
+    }
+    PerFrameGraphicsState graphicsState[2];
+
+    // Graphics-thread handle used to render + buffer data for the TextRenderer instance
+    // – The only instance of this should be owned by the graphics thread
+    // - The graphics thread should not touch any other aspects of TextRenderer
+    class GThreadHandle {
+        public int curFrame = 0;
+        void render () {
+            // exec graphicsState[curFrame]
+        }
+    }
+    auto getGraphicsThreadHandle () {
+        return new GThreadHandle();
+    }
+
+    FontAtlas atlas;
+    public void registerFont (string name, string path, int index, bool loadImmediate=false) {
+        atlas.registerFont(name, path, index, loadImmediate);
+    }
+    public void loadDefaultFonts () {
+        version(OSX) {
+            //atlas.registerFonts("helvetica", "/System/Library/Fonts/Helvetica")
+            atlas.registerFonts("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
+            atlas.registerFonts("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
+            atlas.loadFonts();
+
+            atlas.setFontScale("menlo", 1.0, sz => sz * 1.0);
+            atlas.setFontScale("menlo", 2.0, sz => sz * 1.5);
+
+            atlas.setFontScale("arial", 1.0, sz => sz * 1.0);
+            atlas.setFontScale("arial", 2.0, sz => sz * 1.5);
+
+            atlas.addFontClass("default", {
+                .size = 50,
+                .color = "#114015",
+                .fonts = [ "menlo", "arial" ]
+            });
+            atlas.extendClass("default", "console", {
+                .size = 30,
+                .color = "#12092F",
+                .fonts = [ "menlo", "arial" ]
+            });
+        }
+    }
+
+    static class FontAtlas {
+        struct FontPath {
+            string path;
+            int index;
+        }
+        [string][string]            fontClasses;
+        FontPath[string]            registeredFonts;
+        stbtt_fontinfo[string]      loadedFonts;
+    
+        void registerFont (string name, string path, int index, bool loadImmediate=false) {
+            if (!exists(fontPath) || (!attrIsFile(getAttributes(fontPath))))
+                throw new ResourceError("Font '%s' does not exist", path);
+
+            if (name in registeredFonts) {
+                auto prevPath = registeredFonts[name].path;
+                auto prevIndex = registeredFonts[name].index;
+
+                if (path != prevPath || index != prevIndex)
+                    throw new ResourceError(format("Conflicting entries for font '%s': '%s'(%d), '%s'(%d)",
+                        path, prevPath, prevIndex, path, index));
+            } else {
+                registeredFonts[name] = FontAtlas { .path = path, .index = index };
+            }
+            if (loadImmediate && !(name in loadedFonts)) {
+                loadFonts();
+            }
+        }
+
+        void loadFonts () {
+            auto toLoad = setDifference(registeredFonts.keys, loadedFonts.keys);
+            if (toLoad.length == 0)
+                return;
+
+            // Order fonts by filepath
+            struct FontPair { string name; int index; }
+            (FontPair[])[string] fontsByFilepath;
+
+            foreach (name; toLoad) {
+                auto path = registeredFonts[name].path;
+                auto index = registeredFonts[name].index;
+
+                if (path in fontsByFilepath)
+                    fontsByFilepath[path] ~= { .name = name, .index = index };
+                else
+                    fontsByFilepath[path] = [ { .name = name, .index = index } ];
+            }
+
+            foreach (elem; fontsByFilepath.byKeyValue()) {
+                auto path = pair.key;
+                assert(exists(path) && attrIsFile(getAttributes(path)));
+
+                auto contents = cast(ubyte[])read(path);
+                if (contents.length == 0)
+                    throw new ResourceError(format("Failed to load font data '%s'", path));
+
+                foreach (pair; elem.value) {
+                    assert(!(pair.name in loadedFonts));
+
+                    int offs = stbtt_getFontOffsetForIndex(contents.ptr, pair.index);
+                    if (offs == -1)
+                        throw new ResourceError(format("Invalid font index: '%d' in '%s' (%s)", pair.index, path, pair.name));
+
+                    stbtt_fontinfo info;
+                    if (!stbtt_InitFont(&info, contents.ptr, offs))
+                        throw new ResourceError(format("stb_truetype: Failed to load font '%s'[%d] (%s)", path, pair.index, pair.name));
+                    loadedFonts[pair.name] = move(info);
+                }
+            }
+        }
+
+        ref stbtt_fontinfo getExactFont(string name) {
+            if (!(name in loadedFonts)) {
+                if (!(name in registeredFonts))
+                    throw new ResourceError(format("No registered font named '%s'", name));
+                loadFonts();
+            }
+            assert(name in loadedFonts);
+            return loadedFonts[name];
+        }
+    }
+
+
+    // Utility that defines how font sizes get translated into real screen pixels.
+    // This can be defined:
+    //  - per font-id (ie. "arial", "helvetica", defined in FontAtlas)
+    //  - with arbitrary mechanics (eg. real-screen-size = 20 * lg(px, 10) + 13 * sin(px / 40 * pi))
+    //  - for specific screen resolutions (1x pixel density, 2x, etc).
+    //
+    // To enable all of these options, we implement this by calling setFontScale for each supported
+    // resolution:
+    //     setFontScale("arial", 1.0, px => px * 1.0 * some_scaling_factor);
+    //     setFontScale("arial", 2.0, px => px * 2.0 * some_scaling_factor);
+    // If an unsupported screen scale is used, we'll default to interpolating between the two
+    // nearest points (linear interpolation); this handles the "2.5" case decently (though it's
+    // dubious if this will ever be useful), and for "3.0", "0.5", etc., it just defaults to
+    // the nearest defined case ("2.0" / "1.0" respectively).
+    //
+    // This implementation is overkill (scaling options that won't / shouldn't ever get used?), but it _does_ 
+    // implement resolution scaling and arbitrary font scaling quite nicely
+    //
+    // For cases that are not explicitely defined, we default to screen_scale * px.
+    //
+    static class FontScaler {
+        struct ControlPoint { double pt; delegate double(double) calcSz; }
+        enum ScalingType { Linear };
+        struct ScaleHint {
+            ControlPoint[] points;
+            ScalingType type = ScalingType.Linear;
+        }
+        ScaleHint[string] fontScalingHints;
+
+        void setFontScale (string name, double scale, delegate double(double) calcSz) {
+            if (name in fontScalingHints) {
+                fontScalingHints[name].points ~= ControlPoint(scale, calcSz);
+                sort!"a.pt < b.pt"(fontScalingHints[name].points);
+            } else {
+                fontScalingHints[name] = ScaleHint();
+                fontScalingHints[name].points = [ ControlPoint(scale, calcSz) ];
+            }
+        }
+
+        double getFontScale (string name, double scale, double sz) {
+            if (name in fontScalingHints) {
+                auto ref hint = fontScalingHints[name];
+                assert(hint.points.length != 0);
+
+                // If scale is at or beyond end bounds, return scaled by end bounds
+                if (scale <= hint.points[0].pt || hints.points.length == 1)
+                    return hint.points[0].calc(sz);
+                if (scale >= hint.points[$-1].pt)
+                    return hint.points[$-1].calc(sz);
+
+                // Otherwise, find nearest two + interpolate
+                int n = 0, m = 1;
+                while (hint.points[m].pt < scale && m < hint.points.length)
+                    ++n, ++m;
+                assert(n < scale && m > scale);
+                switch (hint.type) {
+                    case ScalingType.Linear:
+                        return hint.points[m].calc(sz) * (scale - n) / (n - m) +
+                               hint.points[n].calc(sz) * (m - scale) / (n - m);
+                }
+            } else {
+                return sz * scale;
+            }
+        }
+
+        unittest {
+            import std.math: approxEqual;
+
+            auto s = new FontScaler();
+            s.setFontScale("foo", 1.0, s => s * 0.9);
+            s.setFontScale("foo", 2.0, s => s * 2.5);
+            s.setFontScale("foo", 2.5, s => s * 3.0);
+
+            // Check that font scaling works w/ 3 control points
+            // (uses linear interpolation for inbetweens; clamps to last points at ends)
+            assert(approxEqual(s.getFontScale("foo", 0.5, 1.0), 0.9, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 1.0, 1.0), 0.9, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 1.2, 1.0), 1.22, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 1.5, 1.0), 1.7, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 1.9, 1.0), 2.34, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 2.0, 1.0), 2.5, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 2.2, 1.0), 2.7, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 2.5, 1.0), 3.0, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 3.0, 1.0), 3.0, 1e-5));
+
+            // Check that we're applying font-size scaling as well
+            assert(approxEqual(s.getFontScale("foo", 1.0, 40.0), 36.0, 1e-5));
+            assert(approxEqual(s.getFontScale("foo", 1.25, 53.4), 62.745, 1e-5));
+
+            // Check that:
+            // - one-point scaling works properly (rule is applied to all scales)
+            // - 
+            s.setFontScale("bar", 31.5, s => 20.0 + s * 0.35);
+            assert(approxEqual(s.getFontScale("bar", 1.0, 40.0), 34.0, 1e-5));
+            assert(approxEqual(s.getFontScale("bar", 3.14159, 50.0), 37.5, 1e-5));
+
+            assert(approxEqual(s.getFontScale("baz", 1.0, 40.0), 40.0, 1e-5));
+            assert(approxEqual(s.getFontScale("baz", 2.0, 40.0), 80.0, 1e-5));
+            assert(approxEqual(s.getFontScale("baz", 1.95, 40.0), 78.0, 1e-5));
+        }
+    }
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class ResourceError : Error {
     this (T...) (string fmt, T args) {
         super(format(fmt, args));
     }
 }
+
+class TextGeometryBuffer {
+    GLuint vao = 0;
+    GLuint[3] buffers;
+    private bool dirty = true;
+    private int ntriangles = 0;
+
+    protected float[] quads;
+    protected float[] uvs;
+    protected float[] colors;
+
+    void deleteBuffers () {
+        if (vao) {
+            checked_glDeleteVertexArrays(1, &vao);
+            checked_glDeleteBuffers(3, buffers.ptr);
+            vao = 0;
+        }
+    }
+    ~this () {
+        deleteBuffers();   
+    }
+
+    void pushQuad (ref stbtt_aligned_quad q, vec4 color) {
+
+    }
+
+    void bufferData () {
+        dirty = false;
+        if (!gl_vao) {
+            chedked_glGenVertexArrays(1, &vao);
+            checked_glBindVertexArray(vao);
+
+            checked_glGenBuffers(3, buffers.ptr);
+
+            checked_glEnableVertexAttribArray(0);
+            checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+            checked_glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null);
+
+            checked_glEnableVertexAttribArray(1);
+            checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
+            checked_glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+            checked_glEnableVertexAttribArray(2);
+            checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[2]);
+            checked_glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null);
+
+            checked_glBindVertexArray(0);
+        }
+        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_STATIC_DRAW);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_STATIC_DRAW);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[2]);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, colors.length * 4, colors.ptr, GL_STATIC_DRAW);
+        checked_glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+    void draw () {
+        if (dirty)
+            bufferData();
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, ntriangles);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //static const string[string] fontdb = [
 //    "helvetica": "/System/Library/Fonts/Helvetica.dfont",
