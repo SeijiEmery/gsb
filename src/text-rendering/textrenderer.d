@@ -404,7 +404,7 @@ class TextRenderer {
         //}
         log.write("generated lookup table");
 
-        layouter.lineAscent = font.getLineHeight(screenScale);
+        layouter.lineAscent = font.getLineHeight(scale);
 
         //synchronized (atlas.read) {
             //synchronized (buffer.write) {
@@ -553,6 +553,8 @@ class TextRenderer {
         float x = 0, y = 0;
         float _lineAscent = 10.0;
         mat4  _transform  = mat4.identity;
+        bool init = false;
+
 
         public @property float lineAscent () { return _lineAscent; }
         public @property void  lineAscent (float v) { _lineAscent = v; log.write("Set lineAscent %f", v); }
@@ -783,19 +785,21 @@ class TextRenderer {
                 testQuadBackend.update();
 
                 textShader.bind();
+                packedAtlasBackend.bindTexture();
 
                 auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
                 auto inv_scale_y = 1.0 / g_mainWindow.pixelDimensions.y;
-                textShader.transform = mat4.identity().scale(inv_scale_x, inv_scale_y, 1.0);
+                textShader.transform = mat4.identity().translate(-0.5, -0.5, 0.0)
+                                                        .scale(inv_scale_x, inv_scale_y, 1.0);
 
-                textShader.transform = layouter.transform;
-                textShader.backgroundColor = vec3(0.8, 0.5, 0.4);
-                packedAtlasBackend.bindTexture();
+                textShader.backgroundColor = vec3(0, 0, 0);// vec3(0.8, 0.5, 0.4);
                 textBufferBackend.draw();
 
-                textShader.transform = mat4.identity();
+                //textShader.transform = mat4.identity();
                 textShader.backgroundColor = vec3(0.2, 0.7, 0.45);
-                testQuadBackend.draw();
+                //testQuadBackend.draw();
+
+                
             }
         }
     }
@@ -1292,9 +1296,10 @@ class TextFragmentShader: Shader!Fragment {
         //          vec3(0.0, outCoords);
 
         vec4 color = texture(textureSampler, texCoord);
-        fragColor = color.r > 0.02 ?
-            vec4(color.r) :
-            vec4(backgroundColor + vec3(texCoord, 0.0), 1.0) * 0.5;
+        fragColor = vec4(color.r);
+        //fragColor = color.r > 0.02 ?
+        //    vec4(color.r) :
+        //    vec4(backgroundColor + vec3(texCoord, 0.0), 1.0) * 0.5;
     }
 }
 

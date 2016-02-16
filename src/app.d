@@ -136,8 +136,8 @@ void mainThread (Tid graphicsThreadId) {
 	auto loadFontTime = benchmark!loadFonts(1);
 	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
-	auto text = TextRenderer.instance.createTextElement("arial", 100);
-	text.append("Hello world!");
+	auto text = TextRenderer.instance.createTextElement("menlo", 50);
+	text.append("Hello world!\nü@asdlfj;\n");
 
 
 	//auto text = TextRenderer.instance.createTextElement()
@@ -149,8 +149,8 @@ void mainThread (Tid graphicsThreadId) {
 	//	.scroll(true);
 
 	//text.append("Hello World!");
-	//auto curLine = g_mainLog.lines.length;
-	//text.append(join(g_mainLog.lines[0..curLine], "\n"));
+	auto curLine = g_mainLog.lines.length;
+	text.append(join(g_mainLog.lines[0..curLine], "\n"));
 
 	//taskPool.put(task!loadFonts());
 	//log.write("parallelism -- cpus = %u", totalCPUs);
