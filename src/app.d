@@ -136,7 +136,7 @@ void mainThread (Tid graphicsThreadId) {
 	auto loadFontTime = benchmark!loadFonts(1);
 	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
-	auto text = TextRenderer.instance.createTextElement("arial", 25);
+	auto text = TextRenderer.instance.createTextElement("arial", 100);
 	text.append("Hello world!");
 
 

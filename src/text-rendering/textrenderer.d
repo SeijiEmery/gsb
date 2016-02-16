@@ -353,6 +353,7 @@ class TextRenderer {
     class FontSpec {
         string name;
         FontAtlas.FontData fontData = void;
+        float  rawFontSize;
         float  rawFontScale;
         int    rawAscent;
         int    rawDescent;
@@ -361,11 +362,15 @@ class TextRenderer {
         this (string fontName, float fontSize) {
             name     = fontName;
             fontData = atlas.getFontData(fontName);
+            rawFontSize  = fontSize;
             rawFontScale = stbtt_ScaleForPixelHeight(&fontData.fontInfo, fontSize);
             stbtt_GetFontVMetrics(&fontData.fontInfo, &rawAscent, &rawDescent, &rawLineGap);
         }
         auto getScale (float screenScale) {
             return rawFontScale * screenScale;
+        }
+        auto getSize (float screenScale) {
+            return rawFontSize * screenScale;
         }
         auto getLineHeight (float screenScale) {
             return (rawAscent - rawDescent + rawLineGap) * screenScale;
@@ -394,7 +399,7 @@ class TextRenderer {
         size_t[dchar] chrLookup;
         //synchronized (atlas.write) {
             foreach (chr; rbcharset) {
-                chrLookup[chr] = atlas.insertAndGetIndex(chr, font.name, scale, font);
+                chrLookup[chr] = atlas.insertAndGetIndex(chr, font.name, screenScale, font);
             }
         //}
         log.write("generated lookup table");
@@ -439,6 +444,7 @@ class TextRenderer {
                 if (!stbtt_PackBegin(&pack, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
                     throw new ResourceError("stbtt_PackBegin failed");
                 }
+                stbtt_PackSetOversampling(&pack, 1, 1);
             }
         }
         public void deleteResources () {
@@ -452,17 +458,33 @@ class TextRenderer {
             deleteResources();
         }
 
-        auto insertAndGetIndex (dchar chr, string fontname, float fontScale, ref FontSpec font) {
+        auto insertAndGetIndex (dchar chr, string fontname, float screenScale, ref FontSpec font) {
             lazyInit();
             needsUpdate = true;
 
-            auto hashedName = format("%s.%d:%c", fontname, to!int(fontScale * 1e5), chr);
+            auto hashedName = format("%s.%d:%c", fontname, to!int(font.getSize(screenScale)), chr);
             if (hashedName !in packedCharLookup) {
                 log.write("PackedFontAtlas frontend: Adding %s", hashedName);
 
+                //if (!stbtt_PackBegin(&pack, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
+                //    throw new ResourceError("stbtt_PackBegin failed");
+                //}
+                //stbtt_PackSetOversampling(&pack, 1, 1);
+
                 packedChars.length += 1;
-                stbtt_PackFontRange(&pack, font.fontData.contents.ptr, font.fontData.index, fontScale, 
-                    chr, 1, &packedChars[$-1]);
+
+                stbtt_pack_range r;
+                r.font_size = font.getSize(screenScale);
+                r.first_unicode_codepoint_in_range = 0;
+                r.array_of_unicode_codepoints = cast(int*)&chr;
+                r.num_chars = 1;
+                r.chardata_for_range = &packedChars[$-1];
+                stbtt_PackFontRanges(&pack, font.fontData.contents.ptr, 0, &r, 1);
+
+                //stbtt_PackFontRange(&pack, font.fontData.contents.ptr, font.fontData.index, fontScale, 
+                    //chr, 1, &packedChars[$-1]);
+
+                //stbtt_PackEnd(&pack);
                 return packedCharLookup[hashedName] = packedChars.length -1;
             }
             return packedCharLookup[hashedName];
@@ -493,8 +515,11 @@ class TextRenderer {
                 //}
             }
             if (texture != 0) {
+                log.write("binding texture");
                 checked_glActiveTexture(GL_TEXTURE0);
                 checked_glBindTexture(GL_TEXTURE_2D, texture);
+            } else {
+                log.write("null texture!");
             }
         }
         this () {
@@ -626,7 +651,7 @@ class TextRenderer {
         }
         void draw () {
             if (vao) {
-                log.write("drawing %d triangles", num_triangles);
+                log.write("drawing %d triangles", num_triangles / 3);
                 checked_glBindVertexArray(vao);
                 checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles);
             } else {
@@ -766,7 +791,7 @@ class TextRenderer {
                 textShader.transform = layouter.transform;
                 textShader.backgroundColor = vec3(0.8, 0.5, 0.4);
                 packedAtlasBackend.bindTexture();
-                //textBufferBackend.draw();
+                textBufferBackend.draw();
 
                 textShader.transform = mat4.identity();
                 textShader.backgroundColor = vec3(0.2, 0.7, 0.45);
@@ -1269,7 +1294,7 @@ class TextFragmentShader: Shader!Fragment {
         vec4 color = texture(textureSampler, texCoord);
         fragColor = color.r > 0.02 ?
             vec4(color.r) :
-            vec4(backgroundColor, 1.0);
+            vec4(backgroundColor + vec3(texCoord, 0.0), 1.0) * 0.5;
     }
 }
 
