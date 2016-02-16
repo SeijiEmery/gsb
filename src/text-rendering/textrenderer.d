@@ -55,7 +55,7 @@ class TextRenderer {
 
     auto atlas = new FontAtlas();
     auto textShader = new TextShader();
-    GraphicsComponentList componentList;
+    auto componentList = new GraphicsComponentList();
 
     //private struct PerFrameGraphicsState {}
     //PerFrameGraphicsState[2] graphicsState;
@@ -64,31 +64,40 @@ class TextRenderer {
         void render ();
         bool active ();
     }
-    struct GraphicsComponentList {
+    static class GraphicsComponentList {
         IGraphicsComponent[] components;
         ReadWriteMutex       rwMutex;
-        public auto @property read () { return rwMutex.reader(); }
-        public auto @property write () { return rwMutex.writer(); }
+        private auto @property doRead () { return rwMutex.reader(); }
+        private auto @property doWrite () { return rwMutex.writer(); }
 
         void processFrame () {
-            synchronized (write) {
-                for (auto i = components.length - 1; i >= 0; --i) {
+            log.write("TextRenderer -- preparing to draw frame");
+            synchronized {
+                for (auto i = cast(int)components.length - 1; i >= 0; --i) {
+                    //log.write("-- checking component %d", i);
                     if (!components[i].active()) {
+                        log.write("-- removing component %d", i);
                         if (i != components.length - 1)
                             swap(components[i], components[$-1]);
                         components.length -= 1;
                     } else {
+                        log.write("-- rendering component %d", i);
                         components[i].render();
                     }
                 }
             }
+            log.write("TextRenderer: Finished drawing frame");
+        }
+        void registerComponent (IGraphicsComponent component) {
+            synchronized {
+                components ~= component;
+            }
+            log.write("registered component");
         }
     }
 
     void registerComponent (IGraphicsComponent component) {
-        synchronized (componentList.write) {
-            componentList.components ~= component;
-        }
+        componentList.registerComponent(component);
     }
 
     // Graphics-thread handle used to render + buffer data for the TextRenderer instance
@@ -98,10 +107,12 @@ class TextRenderer {
     final:
         public int curFrame = 0;
         void render () {
+            log.write("TextRenderer.render()");
             componentList.processFrame();
         }
     }
     auto getGraphicsThreadHandle () {
+        log.write("Creating new TextRenderer graphics thread handle");
         return new GThreadHandle();
     }
 
@@ -369,24 +380,29 @@ class TextRenderer {
         TextLayouter layouter,
         float screenScale = 1.0
     ) {
+        log.write("Determining charset");
         auto rbcharset = new RedBlackTree!dchar();
         foreach (chr; byDchar(text))
             if (chr >= 0x20)
                 rbcharset.insert(chr);
 
+        log.write("charset contains %u characters", rbcharset.length);
+
         auto scale = font.getScale(screenScale);
+        log.write("font scale = %f", scale);
 
         size_t[dchar] chrLookup;
-        synchronized (atlas.write) {
+        //synchronized (atlas.write) {
             foreach (chr; rbcharset) {
                 chrLookup[chr] = atlas.insertAndGetIndex(chr, font.name, scale, font);
             }
-        }
+        //}
+        log.write("generated lookup table");
 
         layouter.lineAscent = font.getLineHeight(screenScale);
 
-        synchronized (atlas.read) {
-            synchronized (buffer.write) {
+        //synchronized (atlas.read) {
+            //synchronized (buffer.write) {
                 stbtt_aligned_quad q;
                 foreach (chr; byDchar(text)) {
                     if (chr >= 0x20) {
@@ -397,8 +413,8 @@ class TextRenderer {
                         log.write("character %d not supported (%s)", fullyQualifiedName!(writeText));
                     }
                 }
-            }
-        }
+            //}
+        //}
     }
 
     static uint BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024, BITMAP_CHANNELS = 1;
@@ -418,6 +434,7 @@ class TextRenderer {
 
         private void lazyInit () {
             if (!bitmapData) {
+                log.write("Initializing PackedFontAtlas frontend data");
                 bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
                 if (!stbtt_PackBegin(&pack, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
                     throw new ResourceError("stbtt_PackBegin failed");
@@ -426,6 +443,7 @@ class TextRenderer {
         }
         public void deleteResources () {
             if (bitmapData) {
+                log.write("Cleaning up PackedFontAtlas frontend data");
                 stbtt_PackEnd(&pack);
                 bitmapData = null;
             }
@@ -434,16 +452,16 @@ class TextRenderer {
             deleteResources();
         }
 
-        auto insertAndGetIndex (dchar chr, string fontname, float scale, ref FontSpec font) {
+        auto insertAndGetIndex (dchar chr, string fontname, float fontScale, ref FontSpec font) {
             lazyInit();
             needsUpdate = true;
 
-            auto hashedName = format("%s.%d:%c", fontname, to!int(scale), chr);
+            auto hashedName = format("%s.%d:%c", fontname, to!int(fontScale * 1e5), chr);
             if (hashedName !in packedCharLookup) {
-                log.write("Adding %s", hashedName);
+                log.write("PackedFontAtlas frontend: Adding %s", hashedName);
 
                 packedChars.length += 1;
-                stbtt_PackFontRange(&pack, font.fontData.contents.ptr, font.fontData.index, font.getScale(scale), 
+                stbtt_PackFontRange(&pack, font.fontData.contents.ptr, font.fontData.index, fontScale, 
                     chr, 1, &packedChars[$-1]);
                 return packedCharLookup[hashedName] = packedChars.length -1;
             }
@@ -462,30 +480,38 @@ class TextRenderer {
         void bindTexture () {
             if (target && target.needsUpdate) {
                 lazyInitResources();
-                synchronized (target.read()) {
+                //synchronized (target.read()) {
                     checked_glActiveTexture(GL_TEXTURE0);
                     checked_glBindTexture(GL_TEXTURE_2D, texture);
-                    checked_glTexImage2D(GL_TEXTURE, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, target.bitmapData.ptr);
+                    checked_glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, target.bitmapData.ptr);
                     checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
                     checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
                     checked_glBindTexture(GL_TEXTURE_2D, 0);
-                }
-                synchronized (target.write()) {
+                //}
+                //synchronized (target.write()) {
                     target.needsUpdate = false;
-                }
+                //}
             }
             if (texture != 0) {
                 checked_glActiveTexture(GL_TEXTURE0);
                 checked_glBindTexture(GL_TEXTURE_2D, texture);
             }
         }
+        this () {
+            log.write("Creating PackedFontAtlas graphics backend");
+        }
         private void lazyInitResources () {
             if (!texture) {
+                log.write("Initializing PackedFontAtlas graphics resources");
                 checked_glGenTextures(1, &texture);
             }
         }
         void deleteResources () {
-            checked_glDeleteTextures(1, &texture);
+            if (texture) {
+                log.write("Cleaning up PackedFontAtlas graphics resources");
+                checked_glDeleteTextures(1, &texture);
+                texture = 0;
+            }
         }
     }
 
@@ -499,25 +525,26 @@ class TextRenderer {
     }
 
     static class BasicLayouter : TextLayouter {
-        vec2 position;
+        float x = 0, y = 0;
         float _lineAscent = 10.0;
         mat4  _transform  = mat4.identity;
 
         public @property float lineAscent () { return _lineAscent; }
-        public @property void  lineAscent (float v) { _lineAscent = v; }
+        public @property void  lineAscent (float v) { _lineAscent = v; log.write("Set lineAscent %f", v); }
         public @property mat4  transform  () { return _transform; }
+
+        this () {
+            log.write("creating Textlayouter");
+        }
 
         override void writeChar (size_t charIndex, FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas) {
             stbtt_aligned_quad q;
-            float x, y;
             atlas.getQuad(charIndex, &q, &x, &y, true);
             buffer.appendQuad(q);
-            position.x = x;
-            position.y = y;
         }
         override void writeEndl () {
-            position.x = 0;
-            position.y += _lineAscent;
+            x = 0;
+            y += _lineAscent;
         }
     }
 
@@ -540,6 +567,10 @@ class TextRenderer {
         protected auto @property uvBuffer       () { return uvData; }
 
         void appendQuad (stbtt_aligned_quad q) {
+            log.write("appending quad: (%0.2f,%0.2f),(%0.2f,%0.2f), (%0.2f,%0.2f),(%0.2f,%0.2f)",
+                q.x0,q.y0,q.x1,q.y1, q.s0,q.t0,q.s1,q.t1);
+
+
             positionData ~= [
                 q.x0, -q.y1, 0.0,   // flip y-axis
                 q.x1, -q.y0, 0.0,
@@ -570,9 +601,14 @@ class TextRenderer {
         int    num_triangles = -1;
 
         void update () {
+            if (!target)
+                log.write("no target!");
+
             if (target && target.needsUpdate) {
+                log.write("Updating text buffer contents");
+
                 lazyInitResources();
-                synchronized (target.write()) {
+                //synchronized (target.write()) {
                     target.needsUpdate = false;
                     if (const auto quads = target.positionBuffer) {
                         checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
@@ -583,18 +619,30 @@ class TextRenderer {
                         checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
                         checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
                     }
-                }
+                //}
+            } else {
+                log.write("no updates");
             }
         }
         void draw () {
             if (vao) {
+                log.write("drawing %d triangles", num_triangles);
                 checked_glBindVertexArray(vao);
                 checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles);
+            } else {
+                log.write("no vao!");
             }
+        }
+
+        this () {
+            //if (!__ctfe)
+                log.write("Creating TextBuffer backend");
         }
 
         private void lazyInitResources () {
             if (!vao) {
+                log.write("Creating TextBuffer graphics resources");
+
                 checked_glGenVertexArrays(1, &vao);
                 checked_glGenBuffers(3, buffers.ptr);
 
@@ -616,6 +664,8 @@ class TextRenderer {
 
         public void deleteResources () {
             if (vao) {
+                log.write("Deleting TextBuffer graphics resources");
+
                 checked_glDeleteVertexArrays(1, &vao);
                 checked_glDeleteBuffers(3, buffers.ptr);
                 vao = 0;
@@ -627,38 +677,72 @@ class TextRenderer {
     }
 
     class TextElement {
-        FrontendTextBuffer textBuffer = new FrontendTextBuffer();
-        FrontendPackedFontAtlas packedAtlas = new FrontendPackedFontAtlas();
-        BasicLayouter layouter   = new BasicLayouter();
+        FrontendTextBuffer textBuffer;// = new FrontendTextBuffer();
+        FrontendPackedFontAtlas packedAtlas;// = new FrontendPackedFontAtlas();
+        BasicLayouter layouter;//   = new BasicLayouter();
         GraphicsBackend graphicsBackend;
         vec2 screenScaleFactor;
         FontSpec font;
 
-
+        FrontendTextBuffer testQuad;
 
         this (string fontName, float textSize) {
+            log.write("Creating new TextElement");
+
             screenScaleFactor = g_mainWindow.screenScalingFactor;
+
+            textBuffer = new FrontendTextBuffer();
+            packedAtlas = new FrontendPackedFontAtlas();
+            layouter    = new BasicLayouter();
+
+            testQuad = new FrontendTextBuffer();
+
             graphicsBackend = new GraphicsBackend(); // note to self: this needs to be initialized last since it uses
                                    // outer class properties (apparently the initialization order is buggy otherwise)
+
+
+            log.write("Creating font spec");
             font = new FontSpec(fontName, textSize);
+            log.write("done");
+
+
+            
+            stbtt_aligned_quad q;
+            q.x0 = 0.1; q.y0 = 0.1; q.x1 = 0.9; q.y1 = 0.9;
+            q.s0 = 0; q.t0 = 0; q.s1 = 1; q.t1 = 1;
+            testQuad.appendQuad(q);
         }
         ~this () {
+            log.write("Deleting TextElement");
             graphicsBackend.deactivate();
+            packedAtlas.deleteResources();
         }
 
         void append (string text) {
+            log.write("Writing text '%s'", text);
             writeText(text, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
         }
 
         class GraphicsBackend : IGraphicsComponent {
-            BackendTextBuffer textBufferBackend = new BackendTextBuffer();
-            BackendPackedFontAtlas packedAtlasBackend = new BackendPackedFontAtlas();
+            BackendTextBuffer textBufferBackend;// = new BackendTextBuffer();
+            BackendPackedFontAtlas packedAtlasBackend;// = new BackendPackedFontAtlas();
             bool isActive = true;
 
+            BackendTextBuffer testQuadBackend;
+
             this () {
+                log.write("Creating new TextElement.GraphicsBackend");
+
+                textBufferBackend = new BackendTextBuffer();
+                packedAtlasBackend = new BackendPackedFontAtlas();
+
+                testQuadBackend = new BackendTextBuffer();
+                testQuadBackend.target = testQuad;
+
                 textBufferBackend.target = textBuffer;
                 packedAtlasBackend.target = packedAtlas;
 
+                log.write("Registering component");
                 registerComponent(this);
             }
             void deactivate () {
@@ -669,12 +753,24 @@ class TextRenderer {
             bool active () { return isActive; }
 
             void render () {
+                log.write("Rendering TextElement");
                 textBufferBackend.update();
+                testQuadBackend.update();
 
                 textShader.bind();
+
+                auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
+                auto inv_scale_y = 1.0 / g_mainWindow.pixelDimensions.y;
+                textShader.transform = mat4.identity().scale(inv_scale_x, inv_scale_y, 1.0);
+
                 textShader.transform = layouter.transform;
+                textShader.backgroundColor = vec3(0.8, 0.5, 0.4);
                 packedAtlasBackend.bindTexture();
-                textBufferBackend.draw();
+                //textBufferBackend.draw();
+
+                textShader.transform = mat4.identity();
+                textShader.backgroundColor = vec3(0.2, 0.7, 0.45);
+                testQuadBackend.draw();
             }
         }
     }
@@ -1148,9 +1244,10 @@ class TextVertexShader: Shader!Vertex {
     @output vec2 texCoord;
 
     @uniform mat4 transform;
+    @uniform vec3 backgroundColor;
 
     void main () {
-        gl_Position = vec4(textPosition, 1.0);
+        gl_Position = transform * vec4(textPosition, 1.0);
         //gl_Position = vec4(
         //  textPosition.x * (1.0 / 800.0),
         //  textPosition.y * (1.0 / 600.0),
@@ -1163,13 +1260,16 @@ class TextFragmentShader: Shader!Fragment {
     @output vec4 fragColor;
 
     @uniform sampler2D textureSampler;
+    @uniform vec3 backgroundColor;
 
     void main () {
         //fragColor = vec3(1.0, 0.2, 0.2) + 
         //          vec3(0.0, outCoords);
 
         vec4 color = texture(textureSampler, texCoord);
-        fragColor = vec4(color.r, color.r, color.r, color.r);
+        fragColor = color.r > 0.02 ?
+            vec4(color.r) :
+            vec4(backgroundColor, 1.0);
     }
 }
 
@@ -1199,6 +1299,10 @@ class TextShader {
     @property void transform (mat4 transformMatrix) {
         checked_glUseProgram(prog.id);
         prog.transform = transformMatrix; CHECK_CALL("set textShader transform");
+    }
+    @property void backgroundColor (vec3 backgroundColor) {
+        checked_glUseProgram(prog.id);
+        prog.backgroundColor = backgroundColor; CHECK_CALL("set backgroundColor");
     }
 }
 

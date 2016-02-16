@@ -82,7 +82,7 @@ void graphicsThread (Tid mainThreadId) {
 
 	auto textRenderer = TextRenderer.instance.getGraphicsThreadHandle();
 
-	auto utfTest = StbTextRenderTest.defaultTest();
+	//auto utfTest = StbTextRenderTest.defaultTest();
 
 	int frame = 0;
 	while (running) {
@@ -95,12 +95,12 @@ void graphicsThread (Tid mainThreadId) {
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
-				//log.write("on frame %d", frame++);
+				log.write("on frame %d", frame++);
 
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-				utfTest.render();
+				//utfTest.render();
 				textRenderer.render();
 
 				glfwSwapBuffers(g_mainWindow.handle);
@@ -136,7 +136,7 @@ void mainThread (Tid graphicsThreadId) {
 	auto loadFontTime = benchmark!loadFonts(1);
 	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
-	auto text = TextRenderer.instance.createTextElement("console", 25);
+	auto text = TextRenderer.instance.createTextElement("arial", 25);
 	text.append("Hello world!");
 
 
