@@ -160,15 +160,19 @@ class TextRenderer {
         RELATIVE_TO_BASELINE
     }
 
-
     static class FontAtlas {
     final:
         struct FontPath {
             string path;
             int index;
         }
-        FontPath[string]            registeredFonts;
-        stbtt_fontinfo[string]      loadedFonts;
+        struct FontData {
+            stbtt_fontinfo fontInfo;
+            ubyte[]        contents;
+            int            index;
+        }
+        FontPath[string]      registeredFonts;
+        FontData[string]      loadedFonts;
 
         struct FontClass {
             string[][string] typefaces;
@@ -212,7 +216,7 @@ class TextRenderer {
         in { assert(name in loadedFonts); }
         body {
             if (!(name in fontScales)) {
-                fontScales[name] = FontScalingFactors(getFontData(name));
+                fontScales[name] = FontScalingFactors(&getFontData(name).fontInfo);
             }
             return fontScales[name].getFontScale(size, screenScale);
         }
@@ -234,7 +238,7 @@ class TextRenderer {
         }
         void defineScreenScaling (string name, double scale, double function(double) cb) {
             if (!(name in fontScales))
-                fontScales[name] = FontScalingFactors(getFontData(name));
+                fontScales[name] = FontScalingFactors(&getFontData(name).fontInfo);
             fontScales[name].userDefinedScreenScaling ~= tuple(scale, cb);
         }
         void defineFontScaling (string name, FontScaling scalingType, double function(double,double) cb) {
@@ -242,7 +246,7 @@ class TextRenderer {
                 fontScales[name] = FontScalingFactors();
             fontScales[name].fontScalingType = scalingType;
             fontScales[name].userDefinedFontScaling = cb;
-            fontScales[name].setScalingFactor(getFontData(name));
+            fontScales[name].setScalingFactor(&getFontData(name).fontInfo);
         }
 
 
@@ -314,7 +318,7 @@ class TextRenderer {
                         stbtt_fontinfo info;
                         if (!stbtt_InitFont(&info, contents.ptr, offs))
                             throw new ResourceError(format("stb_truetype: Failed to load font '%s'[%d] (%s)", path, pair.index, pair.name));
-                        loadedFonts[pair.name] = move(info);
+                        loadedFonts[pair.name] = FontData(info, contents, pair.index);
                     }
                     log.write("Loaded %d font(s) from '%s': %s", elem.value.length, path, join(map!(x => x.name)(elem.value), ", "));
                 }
@@ -324,35 +328,37 @@ class TextRenderer {
             //}
         }
 
-        const(stbtt_fontinfo)* getFontData (string name) {
+        FontData getFontData (string name) {
             if (name in loadedFonts)
-                return &loadedFonts[name];
+                return loadedFonts[name];
             if (name in registeredFonts) {
                 loadFonts();
                 if (name in loadedFonts)
-                    return &loadedFonts[name];
+                    return loadedFonts[name];
             }
             throw new ResourceError(format("No registered font named '%s'", name));
         }
-
-        ref stbtt_fontinfo getExactFont(string name) {
-            //synchronized (mutex.reader) {
-
-            if (!(name in loadedFonts)) {
-                if (!(name in registeredFonts))
-                    throw new ResourceError(format("No registered font named '%s'", name));
-                loadFonts();
-            }
-            assert(name in loadedFonts);
-            return loadedFonts[name];
-
-            //}
-        }
     }
-    struct FontSpec {
-        FontAtlas atlas;
-        string name;     // font name
-        float  size;     // font size
+    class FontSpec {
+        string name;
+        FontAtlas.FontData fontData = void;
+        float  rawFontScale;
+        int    rawAscent;
+        int    rawDescent;
+        int    rawLineGap;
+
+        this (string fontName, float fontSize) {
+            name     = fontName;
+            fontData = atlas.getFontData(fontName);
+            rawFontScale = stbtt_ScaleForPixelHeight(&fontData.fontInfo, fontSize);
+            stbtt_GetFontVMetrics(&fontData.fontInfo, &rawAscent, &rawDescent, &rawLineGap);
+        }
+        auto getScale (float screenScale) {
+            return rawFontScale * screenScale;
+        }
+        auto getLineHeight (float screenScale) {
+            return (rawAscent - rawDescent + rawLineGap) * screenScale;
+        }
     }
 
     static void writeText (
@@ -363,22 +369,21 @@ class TextRenderer {
         TextLayouter layouter,
         float screenScale = 1.0
     ) {
-        auto scale = font.atlas.getFontScale(font.name, font.size, screenScale);
-        auto fontinfo = font.atlas.getFontData(font.name);
-
         auto rbcharset = new RedBlackTree!dchar();
         foreach (chr; byDchar(text))
             if (chr >= 0x20)
                 rbcharset.insert(chr);
 
-        int[dchar] chrLookup;
+        auto scale = font.getScale(screenScale);
+
+        size_t[dchar] chrLookup;
         synchronized (atlas.write) {
             foreach (chr; rbcharset) {
-                chrLookup[chr] = atlas.insertAndGetIndex(chr, font.name, scale, fontinfo);
+                chrLookup[chr] = atlas.insertAndGetIndex(chr, font.name, scale, font);
             }
         }
 
-        layouter.lineAscent = font.lineHeight;
+        layouter.lineAscent = font.getLineHeight(screenScale);
 
         synchronized (atlas.read) {
             synchronized (buffer.write) {
@@ -438,7 +443,7 @@ class TextRenderer {
                 log.write("Adding %s", hashedName);
 
                 packedChars.length += 1;
-                stbtt_PackFontRange(&pack, fontData, font.fontData, font.fontIndex, font.scale, 
+                stbtt_PackFontRange(&pack, font.fontData.contents.ptr, font.fontData.index, font.getScale(scale), 
                     chr, 1, &packedChars[$-1]);
                 return packedCharLookup[hashedName] = packedChars.length -1;
             }
@@ -486,6 +491,7 @@ class TextRenderer {
 
     interface TextLayouter {
         public @property float lineAscent ();
+        public @property void  lineAscent (float v);
         public @property mat4  transform ();
 
         void writeChar (size_t charIndex, FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas);
@@ -494,8 +500,12 @@ class TextRenderer {
 
     static class BasicLayouter : TextLayouter {
         vec2 position;
-        public float lineAscent = 10.0;
-        public mat4  transform  = mat4.identity;
+        float _lineAscent = 10.0;
+        mat4  _transform  = mat4.identity;
+
+        public @property float lineAscent () { return _lineAscent; }
+        public @property void  lineAscent (float v) { _lineAscent = v; }
+        public @property mat4  transform  () { return _transform; }
 
         override void writeChar (size_t charIndex, FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas) {
             stbtt_aligned_quad q;
@@ -507,7 +517,7 @@ class TextRenderer {
         }
         override void writeEndl () {
             position.x = 0;
-            position.y += lineAscent;
+            position.y += _lineAscent;
         }
     }
 
@@ -622,11 +632,15 @@ class TextRenderer {
         BasicLayouter layouter   = new BasicLayouter();
         GraphicsBackend graphicsBackend;
         vec2 screenScaleFactor;
+        FontSpec font;
+
+
 
         this (string fontName, float textSize) {
             screenScaleFactor = g_mainWindow.screenScalingFactor;
             graphicsBackend = new GraphicsBackend(); // note to self: this needs to be initialized last since it uses
                                    // outer class properties (apparently the initialization order is buggy otherwise)
+            font = new FontSpec(fontName, textSize);
         }
         ~this () {
             graphicsBackend.deactivate();
