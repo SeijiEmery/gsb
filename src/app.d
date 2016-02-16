@@ -136,17 +136,21 @@ void mainThread (Tid graphicsThreadId) {
 	auto loadFontTime = benchmark!loadFonts(1);
 	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
-	auto text = TextRenderer.instance.createTextElement()
-		.style("console")
-		.fontSize(22)
-		.position(TextRenderer.RelPos.TOP_LEFT, 10, 10)
-		.bounds(800, 400)
-		.color("#ffaadd")
-		.scroll(true);
+	auto text = TextRenderer.instance.createTextElement("console", 25);
+	text.append("Hello world!");
 
-	text.append("Hello World!");
-	auto curLine = g_mainLog.lines.length;
-	text.append(join(g_mainLog.lines[0..curLine], "\n"));
+
+	//auto text = TextRenderer.instance.createTextElement()
+	//	.style("console")
+	//	.fontSize(22)
+	//	.position(TextRenderer.RelPos.TOP_LEFT, 10, 10)
+	//	.bounds(800, 400)
+	//	.color("#ffaadd")
+	//	.scroll(true);
+
+	//text.append("Hello World!");
+	//auto curLine = g_mainLog.lines.length;
+	//text.append(join(g_mainLog.lines[0..curLine], "\n"));
 
 	//taskPool.put(task!loadFonts());
 	//log.write("parallelism -- cpus = %u", totalCPUs);
