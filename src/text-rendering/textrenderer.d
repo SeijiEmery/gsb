@@ -24,9 +24,9 @@ import dglsl;
 
 // http://wiki.dlang.org/Low-Lock_Singleton_Pattern
 mixin template LowLockSingleton () {
-    private this () { writefln("Creating %s instance", fullyQualifiedName!(typeof(this))); }
+    private this () { log.write("Creating %s instance", fullyQualifiedName!(typeof(this))); }
     private static bool instantiated_ = false;
-    private __gshared typeof(this) instance_ = null;
+    private static __gshared typeof(this) instance_ = null;
 
     static final auto @property instance () {
         if (!instantiated_) {
@@ -316,16 +316,104 @@ final:
         }
     }
 
+    // Lives on main / worker thread
+    class FrontendTextBuffer {
+        float[] positionData;
+
+
+    }
+
+    // Lives on gpu thread
+    class BackendTextBuffer {
+        FrontendTextBuffer target = null;
+        GLuint vao = 0;
+        GLuint buffers[3];
+        int    num_triangles = -1;
+
+        void update () {
+            if (target && target.needsUpdate) {
+                lazyInitResources();
+
+                if (auto ref quads = target.positionBuffer) {
+                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+                    checked_glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_DYNAMIC_DRAW);
+                    num_triangles = cast(int)(quads.length / 3);
+                }
+                if (auto ref uvs = target.uvBuffer) {
+                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
+                    checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
+                }
+            }
+        }
+        void render () {
+            if (vao) {
+                checked_glBindVertexArray(vao);
+                checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles);
+            }
+        }
+
+        private void lazyInitResources () {
+            if (!vao) {
+                checked_glGenVertexArrays(1, &vao);
+                checked_glGenBuffers(3, buffers.ptr);
+
+                checked_glBindVertexArray(vao);
+
+                checked_glEnableVertexAttribArray(0);
+                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+                checked_glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null);
+
+                checked_glEnableVertexAttribArray(1);
+                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
+                checked_glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
+
+                checked_glEnableVertexAttribArray(2);
+                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[2]);
+                checked_glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null);
+            }
+        }
+
+        public void deleteResources () {
+            if (vao) {
+                checked_glDeleteVertexArrays(1, &vao);
+                checked_glDeleteBuffers(3, buffers.ptr);
+                vao = 0;
+            }
+        }
+        ~this () {
+            deleteResources();
+        }
+    }
+
+
+
+    class TextElement {
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     enum RelPos {
         TOP_LEFT
     }
 
     auto createTextElement () {
         log.write("Created text element");
-        return new TextElement();
+        return new TextElementHandle();
     }
 
-    class TextElement {
+    static class TextElementHandle {
         auto style (string name) {
             log.write("Set style '%s'", name);
             return this;
@@ -354,6 +442,9 @@ final:
             log.write("Appending text ");
             return this;
         }
+    }
+
+    class TextElement {
 
     }
 
