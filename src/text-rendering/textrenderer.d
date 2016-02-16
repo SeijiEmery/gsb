@@ -6,6 +6,9 @@ import gsb.core.log;
 import std.stdio;
 import std.file;
 import std.format;
+import std.utf;
+import std.conv;
+import std.container.rbtree;
 import std.algorithm.setops;
 import std.algorithm.mutation : move;
 import std.algorithm.iteration : map;
@@ -14,6 +17,7 @@ import std.parallelism;
 import std.traits;
 import std.typecons;
 import std.math: approxEqual;
+import core.sync.rwmutex;
 
 import core.sync.rwmutex;
 
@@ -48,11 +52,42 @@ mixin template LowLockSingleton () {
 class TextRenderer {
     mixin LowLockSingleton;
 
-final:
-    private struct PerFrameGraphicsState {
+    FontAtlas atlas = new FontAtlas();
+    GraphicsComponentList componentList = new GraphicsComponentList();
 
+    //private struct PerFrameGraphicsState {}
+    //PerFrameGraphicsState[2] graphicsState;
+
+    interface IGraphicsComponent {
+        void render ();
+        bool active ();
     }
-    PerFrameGraphicsState[2] graphicsState;
+    class GraphicsComponentList {
+        IGraphicsComponent[] components;
+        ReadWriteMutex       rwMutex;
+        public auto @property read () { return rwMutex.reader(); }
+        public auto @property write () { return rwMutex.writer(); }
+
+        void processFrame () {
+            synchronized (write) {
+                for (auto i = components.length - 1; i >= 0; --i) {
+                    if (!components[i].active()) {
+                        if (i != components.length - 1)
+                            swap(components[i], components[$-1]);
+                        components.length -= 1;
+                    } else {
+                        components[i].render();
+                    }
+                }
+            }
+        }
+    }
+
+    void registerComponent (IGraphicsComponent component) {
+        synchronized (componentList.write) {
+            componentList.components ~= component;
+        }
+    }
 
     // Graphics-thread handle used to render + buffer data for the TextRenderer instance
     // – The only instance of this should be owned by the graphics thread
@@ -61,15 +96,12 @@ final:
     final:
         public int curFrame = 0;
         void render () {
-            // exec graphicsState[curFrame]
+            componentList.processFrame();
         }
     }
     auto getGraphicsThreadHandle () {
         return new GThreadHandle();
     }
-
-    
-    auto atlas = new FontAtlas();
 
     public void registerFont (string name, string path, int index, bool loadImmediate=false) {
         atlas.registerFont(name, path, index, loadImmediate);
@@ -315,37 +347,226 @@ final:
             //}
         }
     }
+    struct FontSpec {
+        FontAtlas atlas;
+        string name;     // font name
+        float  size;     // font size
+    }
+
+    static void writeText (
+        string text,
+        FontSpec font,
+        FrontendTextBuffer buffer,
+        FrontendPackedFontAtlas atlas,
+        TextLayouter layouter,
+        float screenScale = 1.0
+    ) {
+        auto scale = font.atlas.getFontScale(font.name, font.size, screenScale);
+        auto fontinfo = font.atlas.getFontData(font.name);
+
+        auto rbcharset = new RedBlackTree!dchar();
+        foreach (chr; byDchar(text))
+            if (chr >= 0x20)
+                rbcharset.insert(chr);
+
+        int[dchar] chrLookup;
+        synchronized (atlas.write) {
+            foreach (chr; rbcharset) {
+                chrLookup[chr] = atlas.insertAndGetIndex(chr, font.name, scale, fontinfo);
+            }
+        }
+
+        layouter.lineHeight = font.lineHeight;
+
+        synchronized (atlas.read) {
+            synchronized (buffer.write) {
+                stbtt_aligned_quad q;
+                foreach (chr; byDchar(text)) {
+                    if (chr >= 0x20) {
+                        layouter.writeChar(chrLookup[chr], buffer, atlas);
+                    } else if (chr == '\n') {
+                        layouter.writeEndl();
+                    } else {
+                        log.write("character %d not supported (%s)", fullyQualifiedName!(writeText));
+                    }
+                }
+            }
+        }
+    }
+
+    static uint BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024, BITMAP_CHANNELS = 1;
+
+    // Lives on main / worker thread
+    class FrontendPackedFontAtlas {
+        ubyte[] bitmapData;
+        stbtt_pack_context pack;
+        stbtt_packedchar[] packedChars;
+        size_t[string] packedCharLookup;
+
+        bool needsUpdate = false;
+
+        ReadWriteMutex rwMutex;
+        public auto @property read () { return rwMutex.reader(); }
+        public auto @property write () { return rwMutex.writer(); }
+
+        private void lazyInit () {
+            if (!bitmapData) {
+                bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
+                if (!stbtt_PackBegin(&pack, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
+                    throw new ResourceError("stbtt_PackBegin failed");
+                }
+            }
+        }
+        public void deleteResources () {
+            if (bitmapData) {
+                stbtt_PackEnd(&pack);
+                bitmapData = null;
+            }
+        }
+        ~this () {
+            deleteResources();
+        }
+
+        auto insertAndGetIndex (dchar chr, string fontname, float scale, ref FontSpec font) {
+            lazyInit();
+            needsUpdate = true;
+
+            auto hashedName = format("%s.%d:%c", fontname, to!int(scale), chr);
+            if (hashedName !in packedCharLookup) {
+                log.write("Adding %s", hashedName);
+
+                packedChars.length += 1;
+                stbtt_PackFontRange(&pack, fontData, font.fontData, font.fontIndex, font.scale, 
+                    chr, 1, &packedChars[$-1]);
+                return packedCharLookup[hashedName] = packedChars.length -1;
+            }
+            return packedCharLookup[hashedName];
+        }
+        void getQuad (int index, stbtt_aligned_quad* q, float* x, float* y, bool align_to_integer) {
+            stbtt_GetPackedQuad(packedChars.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, index, x, y, q, align_to_integer);
+        }
+    }
+
+    // Lives on graphics thread
+    class BackendPackedFontAtlas {
+        FrontendPackedFontAtlas target = null;
+        GLuint texture = 0;
+
+        void bindTexture () {
+            if (target && target.needsUpdate) {
+                lazyInitResources();
+                synchronized (target.read()) {
+                    checked_glActiveTexture(GL_TEXTURE0);
+                    checked_glBindTexture(GL_TEXTURE_2D, texture);
+                    checked_glTexImage2D(GL_TEXTURE, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, target.bitmapData.ptr);
+                    checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    checked_glBindTexture(GL_TEXTURE_2D, 0);
+                }
+                synchronized (target.write()) {
+                    target.needsUpdate = false;
+                }
+            }
+            if (texture != 0) {
+                checked_glActiveTexture(GL_TEXTURE0);
+                checked_glBindTexture(GL_TEXTURE_2D, texture);
+            }
+        }
+        private void lazyInitResources () {
+            if (!texture) {
+                checked_glGenTextures(1, &texture);
+            }
+        }
+        void deleteResources () {
+            checked_glDeleteTextures(1, &texture);
+        }
+    }
+
+    interface TextLayouter {
+        void writeChar (dchar chr, size_t index);
+    }
+
+    class BasicLayouter : TextLayouter {
+        vec2 position;
+        public float lineAscent = 10.0;
+
+        void writeChar (FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas, size_t charIndex) {
+            stbtt_aligned_quad q;
+            atlas.getQuad(charIndex, &q, &position.x, &position.y, true);
+            buffer.appendQuad(q);
+        }
+        void writeEndl (FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas) {
+            position.x = 0;
+            position.y += lineAscent;
+        }
+    }
 
     // Lives on main / worker thread
     class FrontendTextBuffer {
         float[] positionData;
+        float[] uvData;
+        float[] colorData;
+        protected bool needsUpdate = false;
 
+        ReadWriteMutex rwMutex;
 
+        protected auto @property read () {
+            return rwMutex.reader();
+        }
+        protected auto @property write () {
+            return rwMutex.writer();
+        }
+        protected auto @property positionBuffer () { return positionData; }
+        protected auto @property uvBuffer       () { return uvData; }
+
+        void appendQuad (stbtt_aligned_quad q) {
+            quads ~= [
+                q.x0, -q.y1, 0.0,   // flip y-axis
+                q.x1, -q.y0, 0.0,
+                q.x1, -q.y1, 0.0,
+
+                q.x0, -q.y1, 0.0,
+                q.x0, -q.y0, 0.0,
+                q.x1, -q.y0, 0.0,
+            ];
+            uvs ~= [
+                q.s0, q.t1,
+                q.s1, q.t0,
+                q.s1, q.t1,
+
+                q.s0, q.t1,
+                q.s0, q.t0,
+                q.s1, q.t0
+            ];
+            needsUpdate = true;
+        }
     }
 
     // Lives on gpu thread
     class BackendTextBuffer {
         FrontendTextBuffer target = null;
         GLuint vao = 0;
-        GLuint buffers[3];
+        GLuint[3] buffers;
         int    num_triangles = -1;
 
         void update () {
             if (target && target.needsUpdate) {
                 lazyInitResources();
-
-                if (auto ref quads = target.positionBuffer) {
-                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-                    checked_glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_DYNAMIC_DRAW);
-                    num_triangles = cast(int)(quads.length / 3);
-                }
-                if (auto ref uvs = target.uvBuffer) {
-                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
-                    checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
+                synchronized (target.write()) {
+                    target.needsUpdate = false;
+                    if (const auto quads = target.positionBuffer) {
+                        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+                        checked_glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_DYNAMIC_DRAW);
+                        num_triangles = cast(int)(quads.length / 3);
+                    }
+                    if (const auto uvs = target.uvBuffer) {
+                        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
+                        checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
+                    }
                 }
             }
         }
-        void render () {
+        void draw () {
             if (vao) {
                 checked_glBindVertexArray(vao);
                 checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles);
@@ -385,23 +606,52 @@ final:
         }
     }
 
-
-
     class TextElement {
+        FrontendTextBuffer textBuffer = new FrontendTextBuffer();
+        FrontendPackedFontAtlas packedAtlas = new FrontendPackedFontAtlas();
+        BasicLayouter layouter   = new BasicLayouter();
+        GraphicsBackend graphicsBackend = new GraphicsBackend();
+        vec2 screenScaleFactor;
 
+        this (string fontName, float textSize) {
+            screenScaleFactor = g_mainWindow.screenScalingFactor;
+        }
+        ~this () {
+            graphicsBackend.deactivate();
+        }
+
+        void append (string text) {
+            writeText(text, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
+        }
+
+        class GraphicsBackend : IGraphicsComponent {
+            BackendTextBuffer textBufferBackend = new BackendTextBuffer();
+            BackendPackedFontAtlas packedAtlasBackend = new BackendPackedFontAtlas();
+            bool isActive = true;
+
+            this () {
+                textBufferBackend.target = textBuffer;
+                packedAtlasBackend.target = packedAtlas;
+
+                registerComponent(this);
+            }
+            void deactivate () {
+                isActive = false;
+                textBufferBackend.deleteResources();
+                packedAtlasBackend.deleteResources();
+            }
+            bool active () { return isActive; }
+
+            void render () {
+                textBuffer.update();
+                packedAtlas.update();
+
+                textShader.bind();
+                packedAtlas.bindTexture();
+                textBuffer.draw();
+            }
+        }
     }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     enum RelPos {
@@ -444,9 +694,6 @@ final:
         }
     }
 
-    class TextElement {
-
-    }
 
 
 

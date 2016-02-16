@@ -195,11 +195,16 @@ alias checked_glBindBufferBase  = checked!("glBindBufferBase", GLenum, GLuint, G
 alias checked_glBufferData = checked!("glBufferData", GLenum, GLsizeiptr, const(void)*, GLenum);
 alias checked_glBufferSubData = checked!("glBufferSubData", GLenum, GLintptr, GLsizeiptr, const(void)*);
 
+alias checked_glDrawArrays = checked!("glDrawArrays", GLenum, GLint, GLint);
+
 
 alias checked_glActiveTexture = checked!("glActiveTexture", GLenum);
 alias checked_glBindTexture   = checked!("glBindTexture", GLenum, GLuint);
 alias checked_glDeleteTextures = checked!("glDeleteTextures", GLsizei, const(GLuint)*);
 alias checked_glGenTextures = checked!("glGenTextures", GLsizei, GLuint*);
+alias checked_glTexImage2D  = checked!("glTexImage2D", GLuint, GLint, GLint, GLint, GLint, GLint, GLuint, GLuint, const(void)*);
+alias checked_glTexParameteri = checked!("glTexParameteri", GLuint, GLuint, GLint);
+
 
 alias checked_glGenSamplers = checked!("glGenSamplers", GLsizei, GLuint*);
 alias checked_glBindSampler = checked!("glBindSampler", GLuint, GLuint);
