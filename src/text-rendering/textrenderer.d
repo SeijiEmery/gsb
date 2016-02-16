@@ -47,9 +47,7 @@ mixin template LowLockSingleton () {
 
 
 
-
-// Shared data; owned by main thread / app startup
-// There should only be one instance of this in the entire program
+// Shared singleton class accessed by lazy .instance
 class TextRenderer {
     mixin LowLockSingleton;
 
@@ -551,13 +549,14 @@ class TextRenderer {
 
     static class BasicLayouter : TextLayouter {
         float x = 0, y = 0;
-        float _lineAscent = 10.0;
+        float _lineAscent = 0.0;
         mat4  _transform  = mat4.identity;
-        bool init = false;
-
 
         public @property float lineAscent () { return _lineAscent; }
-        public @property void  lineAscent (float v) { _lineAscent = v; log.write("Set lineAscent %f", v); }
+        public @property void  lineAscent (float v) { 
+            y = y - _lineAscent + v; // hack...
+            _lineAscent = v; log.write("Set lineAscent %f", v);
+        }
         public @property mat4  transform  () { return _transform; }
 
         this () {
@@ -789,8 +788,18 @@ class TextRenderer {
 
                 auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
                 auto inv_scale_y = 1.0 / g_mainWindow.pixelDimensions.y;
-                textShader.transform = mat4.identity().translate(-0.5, -0.5, 0.0)
-                                                        .scale(inv_scale_x, inv_scale_y, 1.0);
+                auto transform = mat4.identity()
+                    .scale(inv_scale_x, inv_scale_y, 1.0)
+                    .translate(-1.0, 1.0, 0.0);
+                transform.transpose();
+
+
+                textShader.transform = transform;
+
+
+                //textShader.transform = mat4.identity()
+                    //.scale(inv_scale_x, inv_scale_y, 1.0);
+                    //.translate(-inv_scale_x, 0.0, 0.0);
 
                 textShader.backgroundColor = vec3(0, 0, 0);// vec3(0.8, 0.5, 0.4);
                 textBufferBackend.draw();

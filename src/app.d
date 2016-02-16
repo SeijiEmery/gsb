@@ -136,7 +136,7 @@ void mainThread (Tid graphicsThreadId) {
 	auto loadFontTime = benchmark!loadFonts(1);
 	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
-	auto text = TextRenderer.instance.createTextElement("menlo", 50);
+	auto text = TextRenderer.instance.createTextElement("arial", 50);
 	text.append("Hello world!\nü@asdlfj;\n");
 
 
