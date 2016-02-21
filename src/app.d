@@ -12,7 +12,7 @@ import gl3n.linalg;
 
 import gsb.core.log;
 import gsb.core.window;
-
+import gsb.core.events;
 
 import gsb.glutils;
 import gsb.text.textrenderer;
@@ -95,7 +95,7 @@ void graphicsThread (Tid mainThreadId) {
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
-				log.write("on frame %d", frame++);
+				//log.write("on frame %d", frame++);
 
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -131,7 +131,16 @@ void loadFonts () {
 
 
 void mainThread (Tid graphicsThreadId) {
-	log = g_mainLog = new Log("main-thread");
+	// Setup event logging
+	WindowEvents.instance.onScreenScaleChanged.connect(delegate(float x, float y) {
+		log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y);	
+	});
+	WindowEvents.instance.onFramebufferSizeChanged.connect(delegate(float x, float y) {
+		log.write("WindowEvent: Framebuffer size set to %0.2f, %0.2f", x, y);
+	});
+	WindowEvents.instance.onScreenSizeChanged.connect(delegate(float x, float y) {
+		log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
+	});
 
 	auto loadFontTime = benchmark!loadFonts(1);
 	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
@@ -162,14 +171,16 @@ void mainThread (Tid graphicsThreadId) {
 	//}
 
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
+
 		glfwPollEvents();
+		WindowEvents.instance.updateFromMainThread();
 
 		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
-
 		while (1) {
 			auto evt = receiveOnly!(ThreadSyncEvent)();
 			switch (evt) {
-				case ThreadSyncEvent.READY_FOR_NEXT_FRAME: goto nextFrame;
+				case ThreadSyncEvent.READY_FOR_NEXT_FRAME: 
+					goto nextFrame;
 				case ThreadSyncEvent.NOTIFY_THREAD_DIED: {
 					log.write("Graphics thread terminated (unexpected!)");
 					goto gthreadDied;
@@ -215,6 +226,7 @@ void enterMainThread (Tid graphicsThreadId) {
 void main()
 {
 	defaultPoolThreads(16);
+	log = g_mainLog = new Log("main-thread");
 
 	// Preload gl + glfw
 	DerelictGLFW3.load();
@@ -238,6 +250,8 @@ void main()
 		return;
 	}
 
+	WindowEvents.instance.init(g_mainWindow);
+
 	// And then hand our gl context off to the graphics thread (via the __gshared window handle)
 	auto gthreadHandle = spawn(&enterGraphicsThread, thisTid);
 
@@ -260,6 +274,7 @@ void main()
 	// for confirmation before returning
 	//
 	log.write("Shutting down");
+	WindowEvents.instance.deinit();
 	glfwDestroyWindow(g_mainWindow.handle);
 	glfwTerminate();
 }

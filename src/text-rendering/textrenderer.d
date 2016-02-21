@@ -142,28 +142,28 @@ class TextRenderer {
         private auto @property doWrite () { return rwMutex.writer(); }
 
         void processFrame () {
-            log.write("TextRenderer -- preparing to draw frame");
+            //log.write("TextRenderer -- preparing to draw frame");
             synchronized {
                 for (auto i = cast(int)components.length - 1; i >= 0; --i) {
                     //log.write("-- checking component %d", i);
                     if (!components[i].active()) {
-                        log.write("-- removing component %d", i);
+                        //log.write("-- removing component %d", i);
                         if (i != components.length - 1)
                             swap(components[i], components[$-1]);
                         components.length -= 1;
                     } else {
-                        log.write("-- rendering component %d", i);
+                        //log.write("-- rendering component %d", i);
                         components[i].render();
                     }
                 }
             }
-            log.write("TextRenderer: Finished drawing frame");
+            //log.write("TextRenderer: Finished drawing frame");
         }
         void registerComponent (IGraphicsComponent component) {
             synchronized {
                 components ~= component;
             }
-            log.write("registered component");
+            //log.write("registered component");
         }
     }
 
@@ -178,7 +178,6 @@ class TextRenderer {
     final:
         public int curFrame = 0;
         void render () {
-            log.write("TextRenderer.render()");
             componentList.processFrame();
         }
     }
@@ -586,7 +585,7 @@ class TextRenderer {
                 //}
             }
             if (texture != 0) {
-                log.write("binding texture");
+                //log.write("binding texture");
                 checked_glActiveTexture(GL_TEXTURE0);
                 checked_glBindTexture(GL_TEXTURE_2D, texture);
             } else {
@@ -666,8 +665,8 @@ class TextRenderer {
         protected auto @property uvBuffer       () { return uvData; }
 
         void appendQuad (stbtt_aligned_quad q) {
-            log.write("appending quad: (%0.2f,%0.2f),(%0.2f,%0.2f), (%0.2f,%0.2f),(%0.2f,%0.2f)",
-                q.x0,q.y0,q.x1,q.y1, q.s0,q.t0,q.s1,q.t1);
+            //log.write("appending quad: (%0.2f,%0.2f),(%0.2f,%0.2f), (%0.2f,%0.2f),(%0.2f,%0.2f)",
+                //q.x0,q.y0,q.x1,q.y1, q.s0,q.t0,q.s1,q.t1);
 
 
             positionData ~= [
@@ -704,7 +703,7 @@ class TextRenderer {
                 log.write("no target!");
 
             if (target && target.needsUpdate) {
-                log.write("Updating text buffer contents");
+                //log.write("Updating text buffer contents");
 
                 lazyInitResources();
                 //synchronized (target.write()) {
@@ -720,12 +719,12 @@ class TextRenderer {
                     }
                 //}
             } else {
-                log.write("no updates");
+                //log.write("no updates");
             }
         }
         void draw () {
             if (vao) {
-                log.write("drawing %d triangles", num_triangles / 3);
+                //log.write("drawing %d triangles", num_triangles / 3);
                 checked_glBindVertexArray(vao);
                 checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles);
             } else {
@@ -788,7 +787,7 @@ class TextRenderer {
         this (string fontName, float textSize) {
             log.write("Creating new TextElement");
 
-            screenScaleFactor = g_mainWindow.screenScalingFactor;
+            screenScaleFactor = g_mainWindow.screenScale;
 
             textBuffer = new FrontendTextBuffer();
             packedAtlas = new FrontendPackedFontAtlas();
@@ -797,14 +796,9 @@ class TextRenderer {
             testQuad = new FrontendTextBuffer();
 
             graphicsBackend = new GraphicsBackend(); // note to self: this needs to be initialized last since it uses
-                                   // outer class properties (apparently the initialization order is buggy otherwise)
+                                   // outer class properties (the initialization order is buggy otherwise)
 
-
-            log.write("Creating font spec");
             font = new FontSpec(fontName, textSize);
-            log.write("done");
-
-
             
             stbtt_aligned_quad q;
             q.x0 = 0.1; q.y0 = 0.1; q.x1 = 0.9; q.y1 = 0.9;
@@ -852,7 +846,7 @@ class TextRenderer {
             bool active () { return isActive; }
 
             void render () {
-                log.write("Rendering TextElement");
+                //log.write("Rendering TextElement");
                 textBufferBackend.update();
                 testQuadBackend.update();
 
@@ -1041,3 +1035,4 @@ class TextRenderer {
     }
 
 +/
+}

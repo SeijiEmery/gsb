@@ -97,10 +97,8 @@ class StbTextRenderTest {
         }
 
         lastText = text;
-        currentScalingFactor.x = g_mainWindow.screenScalingFactor.x;
-        currentScalingFactor.y = g_mainWindow.screenScalingFactor.y;
+        currentScalingFactor = g_mainWindow.screenScale;
         auto scaleFactor = currentScalingFactor.y;
-
         log.write("Starting StbTextRenderTest");
 
         // Load font
@@ -344,12 +342,12 @@ class StbTextRenderTest {
             glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
 
             float epsilon = 0.1;
-            if (abs(currentScalingFactor.x - g_mainWindow.screenScalingFactor.x) > epsilon ||
-                abs(currentScalingFactor.y - g_mainWindow.screenScalingFactor.y) > epsilon)
+            if (abs(currentScalingFactor.x - g_mainWindow.screenScale.x) > epsilon ||
+                abs(currentScalingFactor.y - g_mainWindow.screenScale.y) > epsilon)
             {
                 log.write("Rescaling text: %0.2f -> %0.2f, %0.2f -> %0.2f",
-                    currentScalingFactor.x, g_mainWindow.screenScalingFactor.x,
-                    currentScalingFactor.y, g_mainWindow.screenScalingFactor.y);
+                    currentScalingFactor.x, g_mainWindow.screenScale.x,
+                    currentScalingFactor.y, g_mainWindow.screenScale.y);
                 setText(lastText);
             }
         }
