@@ -46,7 +46,14 @@ enum ThreadSyncEvent {
 	READY_FOR_NEXT_FRAME,        // sent from graphics thread => main thread
 	NOTIFY_NEXT_FRAME,           // sent from main thread => graphics thread
 	NOTIFY_SHOULD_DIE,           // sent from main thread => worker thread(s)
-	NOTIFY_THREAD_DIED           // sent from worker thread to main thread
+	NOTIFY_THREAD_DIED ,          // sent from worker thread to main thread
+
+	// sent when gl state is potentially invalid (framebuffer/monitor changed?), 
+	// and should be regenerated.
+	// This is basically a hook so the main thread can make the graphics thread emit a 
+	// GraphicsEvent.glStateInvalidated() signal before the next frame
+	//NOTIFY_GL_STATE_INVALIDATED, 
+
 }
 
 void graphicsThread (Tid mainThreadId) {
@@ -84,6 +91,10 @@ void graphicsThread (Tid mainThreadId) {
 
 	//auto utfTest = StbTextRenderTest.defaultTest();
 
+	//GraphicsEvents.glStateInvalidated.connect(() {
+	//	log.write("Recieved glStateInvalidated");
+	//});
+
 	int frame = 0;
 	while (running) {
 		auto evt = receiveOnly!(ThreadSyncEvent)();
@@ -92,10 +103,14 @@ void graphicsThread (Tid mainThreadId) {
 				log.write("Recieved kill event");
 				running = false;
 			} break;
+			//case ThreadSyncEvent.NOTIFY_GL_STATE_INVALIDATED: {
+			//	log.write("emitting GL_STATE_INVALIDATED");
+			//	GraphicsEvents.glStateInvalidated.emit();
+			//} break;
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
-				//log.write("on frame %d", frame++);
+				log.write("on frame %d", frame++);
 
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -170,12 +185,30 @@ void mainThread (Tid graphicsThreadId) {
 	//	createWorkerLog().write("foo %d", i);
 	//}
 
+	//bool glStateInvalidated = false;
+	//auto conn = WindowEvents.instance.onScreenScaleChanged.connect(delegate(float x, float y) {
+	//	log.write("gl state may be invalid!");
+	//	glStateInvalidated = true;
+	//});
+
+	int frameCount = 0;
+
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
+
+		log.write("Starting frame %d", frameCount);
 
 		glfwPollEvents();
 		WindowEvents.instance.updateFromMainThread();
 
+		//if (glStateInvalidated) {
+		//	log.write("Invalidating gl state!");
+		//	glStateInvalidated = false;
+		//	send(graphicsThreadId, ThreadSyncEvent.NOTIFY_GL_STATE_INVALIDATED);
+		//}
+
 		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
+		log.write("Sent frame %d", frameCount++);
+
 		while (1) {
 			auto evt = receiveOnly!(ThreadSyncEvent)();
 			switch (evt) {

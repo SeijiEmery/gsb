@@ -71,5 +71,9 @@ public:
     }
 }
 
+struct GraphicsEvents {
+    static Signal!() glStateInvalidated;
+}
+
 
 

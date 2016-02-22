@@ -3,6 +3,7 @@ module gsb.text.textrenderer;
 
 import gsb.core.log;
 import gsb.core.window;
+import gsb.core.events;
 
 import std.stdio;
 import std.file;
@@ -86,6 +87,8 @@ class TextFragmentShader: Shader!Fragment {
 }
 
 class TextShader {
+    static TextShader instance;    // threadlocal
+
     TextFragmentShader fs = null;
     TextVertexShader vs = null;
     Program!(TextVertexShader, TextFragmentShader) prog = null;
@@ -330,8 +333,6 @@ class TextRenderer {
             fontScales[name].setScalingFactor(&getFontData(name).fontInfo);
         }
 
-
-
         ReadWriteMutex mutex;
     
         void registerFont (string name, string path, int index = 0, bool loadImmediate=false) {
@@ -534,7 +535,7 @@ class TextRenderer {
 
             auto hashedName = format("%s.%d:%c", fontname, to!int(font.getSize(screenScale)), chr);
             if (hashedName !in packedCharLookup) {
-                log.write("PackedFontAtlas frontend: Adding %s", hashedName);
+                //log.write("PackedFontAtlas frontend: Adding %s", hashedName);
 
                 //if (!stbtt_PackBegin(&pack, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
                 //    throw new ResourceError("stbtt_PackBegin failed");
@@ -617,6 +618,7 @@ class TextRenderer {
 
         void writeChar (size_t charIndex, FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas);
         void writeEndl ();
+        void reset ();
     }
 
     static class BasicLayouter : TextLayouter {
@@ -643,6 +645,10 @@ class TextRenderer {
         override void writeEndl () {
             x = 0;
             y += _lineAscent;
+        }
+        override void reset () {
+            x = y = 0;
+            _lineAscent = 0;
         }
     }
 
@@ -689,6 +695,12 @@ class TextRenderer {
             ];
             needsUpdate = true;
         }
+        void clear () {
+            log.write("Clearing textbuffer contents");
+            positionData.length = 0;
+            uvData.length = 0;
+            needsUpdate = true;
+        }
     }
 
     // Lives on gpu thread
@@ -703,38 +715,58 @@ class TextRenderer {
                 log.write("no target!");
 
             if (target && target.needsUpdate) {
-                //log.write("Updating text buffer contents");
+                log.write("Updating text buffer contents");
 
                 lazyInitResources();
                 //synchronized (target.write()) {
-                    target.needsUpdate = false;
-                    if (const auto quads = target.positionBuffer) {
-                        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-                        checked_glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_DYNAMIC_DRAW);
-                        num_triangles = cast(int)(quads.length / 3);
-                    }
-                    if (const auto uvs = target.uvBuffer) {
-                        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
-                        checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
-                    }
+                target.needsUpdate = false;
+                if (const auto quads = target.positionBuffer) {
+                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+                    checked_glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_DYNAMIC_DRAW);
+                    //num_triangles = cast(int)(quads.length / 3);
+                }
+                if (const auto uvs = target.uvBuffer) {
+                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
+                    checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
+                }
+
+                auto num_quad_triangles = cast(int)(target.positionBuffer.length / 9);
+                auto num_uv_triangles   = cast(int)(target.uvBuffer.length / 6);
+
+                log.write("quad triangles = %d, uv triangles = %d", num_quad_triangles, num_uv_triangles);
+                num_triangles = num_quad_triangles;
+
+
                 //}
             } else {
                 //log.write("no updates");
             }
         }
         void draw () {
-            if (vao) {
-                //log.write("drawing %d triangles", num_triangles / 3);
+            if (vao && num_triangles > 0) {
+                log.write("drawing %d triangles", num_triangles);
                 checked_glBindVertexArray(vao);
-                checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles);
+                checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles * 3);
             } else {
-                log.write("no vao!");
+                log.write("Not drawing");
+                //log.write("no vao!");
             }
         }
 
+        //GraphicsEvents.glStateInvalidated.Connection glStateInvalidatedListener;
+
         this () {
             //if (!__ctfe)
-                log.write("Creating TextBuffer backend");
+            log.write("Creating TextBuffer backend");
+
+            //glStateInvalidatedListener = GraphicsEvents.glStateInvalidated.connect(() {
+            //    log.write("FOOOOO: Invalidating buffer");
+            //    //deleteResources();
+            //});
+        }
+        ~this () {
+            deleteResources();
+            //glStateInvalidatedListener.disconnect();
         }
 
         private void lazyInitResources () {
@@ -754,9 +786,9 @@ class TextRenderer {
                 checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
                 checked_glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
 
-                checked_glEnableVertexAttribArray(2);
-                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[2]);
-                checked_glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null);
+                //checked_glEnableVertexAttribArray(2);
+                //checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[2]);
+                //checked_glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null);
             }
         }
 
@@ -769,9 +801,7 @@ class TextRenderer {
                 vao = 0;
             }
         }
-        ~this () {
-            deleteResources();
-        }
+        
     }
 
     class TextElement {
@@ -782,12 +812,26 @@ class TextRenderer {
         vec2 screenScaleFactor;
         FontSpec font;
 
+        string cachedText;
+
         FrontendTextBuffer testQuad;
+
+        WindowEvents.instance.onScreenScaleChanged.Connection scaleChangedSlot;
 
         this (string fontName, float textSize) {
             log.write("Creating new TextElement");
 
             screenScaleFactor = g_mainWindow.screenScale;
+            
+            scaleChangedSlot = 
+            WindowEvents.instance.onScreenScaleChanged.connect((float x, float y) {
+                log.write("recalculating buffers for new screen scale %0.2f", y);
+                log.write("num chars = %d (expected tris = %d)", cachedText.length, cachedText.length * 2);
+                screenScaleFactor.x = x; screenScaleFactor.y = y;
+                layouter.reset();
+                textBuffer.clear();
+                writeText(cachedText, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
+            });
 
             textBuffer = new FrontendTextBuffer();
             packedAtlas = new FrontendPackedFontAtlas();
@@ -812,7 +856,8 @@ class TextRenderer {
         }
 
         void append (string text) {
-            log.write("Writing text '%s'", text);
+            //log.write("Writing text '%s'", text);
+            cachedText ~= text;
             writeText(text, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
         }
 
@@ -859,10 +904,7 @@ class TextRenderer {
                     .scale(inv_scale_x, inv_scale_y, 1.0)
                     .translate(-1.0, 1.0, 0.0);
                 transform.transpose();
-
-
                 textShader.transform = transform;
-
 
                 //textShader.transform = mat4.identity()
                     //.scale(inv_scale_x, inv_scale_y, 1.0);

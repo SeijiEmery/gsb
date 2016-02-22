@@ -5,6 +5,7 @@ import std.stdio;
 import std.format;
 import std.traits;
 import std.conv;
+import std.array: join;
 
 import derelict.opengl3.gl3;
 import dglsl;
@@ -58,20 +59,16 @@ void CHECK_CALL (F,Args...) (F f, Args args) {
 }
 
 private void checkForGlErrors (string fname, Args...)(Args args) {
-    auto fmtMessage () {
-        string msg = fname ~ "(";
-        bool sep = false;
-        foreach (arg; args) {
-            if (sep) msg ~= ", ";
-            msg ~= to!string(arg);
-            sep = true;
-        }
-        return msg;
+    auto fmtMessage (GLenum err) {
+        string[] sargs;
+        foreach (arg; args)
+            sargs ~= to!string(arg);
+        return format("%s(%s): %s", fname, sargs.join(", "), glErrors[err]);
     }
     if (!__ctfe) {
         auto err = glGetError();
         if (err != GL_NO_ERROR) {
-            throw new Exception(fmtMessage());
+            throw new Exception(fmtMessage(err));
         }
     }
 }

@@ -35,6 +35,7 @@ import gsb.core.log;
 //
 struct Signal(T...) {
     private Slot!T[] connectedSlots;
+    public alias Connection = Slot!(T);
 
     auto connect (void delegate(T) cb) {
         auto slot = new Slot!T(cb);
