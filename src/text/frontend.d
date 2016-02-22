@@ -58,7 +58,7 @@ class TextStyle {
     Color    color;
 
     this (string[] fontFamily, float fontSize, string color) {
-        this.fontFamily = fontFamily.map!(font => FontCache.get(font)).array();
+        this.fontFamily = fontFamily.map!(name => new Font(name)).array();
         this.fontSize   = fontSize;
         this.color      = to!Color(color);
     }

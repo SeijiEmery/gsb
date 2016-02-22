@@ -17,9 +17,24 @@ class Font {
     string   name;
     FontData data;
 
+    this (string name) {
+        this.name = name;
+        this.data = FontCache.getFontData(name);
+    }
+
     @property int pixelSize () { return 0; }
     bool contains (dchar chr) {
         return true;
+    }
+}
+
+struct FontCache {
+    static FontData getFontData (string fontName) {
+        auto font = FontRegistry.getFontPath(fontName);
+        return FontLoader.getFont(font.path, font.index);
+    }
+    static FontData[] getFontFamily (string name) {
+        return FontRegistry.getFontFamily(name).map!getFontData().array();
     }
 }
 
@@ -127,37 +142,4 @@ struct FontRegistry {
         synchronized /*(mutex)*/ { return instance.getFontFamily(fontFamilyName); }
     }
 }
-
-struct FontCache {
-    static FontData getFont (string fontName) {
-        auto font = FontRegistry.getFontPath(fontName);
-        return FontLoader.getFont(font.path, font.index);
-    }
-    static FontData[] getFontFamily (string name) {
-        return FontRegistry.getFontFamily(name).map!getFont().array();
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
