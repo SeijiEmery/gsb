@@ -67,8 +67,7 @@ struct FontCache {
         if (fontName in cache) return cache[fontName];
 
         auto font = FontRegistry.getFontPath(fontName);
-        auto fontData = FontLoader.getFontData(font.path, font.index);
-        return cache[fontName] = fontData;
+        return cache[fontName] = FontLoader.getFontData(font.path, font.index);
     }
     static FontData[] getFontFamily (string name) {
         return FontRegistry.getFontFamily(name).map!getFontData().array();
