@@ -58,16 +58,17 @@ class Font {
             stbtt_GetFontVMetrics(&data.fontInfo, &_stbAscent, &_stbDescent, &_stbLineGap);
         return (_stbAscent - _stbDescent + _stbLineGap) * screenScale;
     }
-
-
-
-
 }
 
 struct FontCache {
+    private static FontData[string] cache; // threadlocal
+
     static FontData getFontData (string fontName) {
+        if (fontName in cache) return cache[fontName];
+
         auto font = FontRegistry.getFontPath(fontName);
-        return FontLoader.getFont(font.path, font.index);
+        auto fontData = FontLoader.getFontData(font.path, font.index);
+        return cache[fontName] = fontData;
     }
     static FontData[] getFontFamily (string name) {
         return FontRegistry.getFontFamily(name).map!getFontData().array();
@@ -97,7 +98,7 @@ struct FontLoader {
         Signal!(string)          onFontFileLoaded;
         Signal!(string,FontData) onFontLoaded;
 
-        FontData getFont (string fontPath, int fontIndex) {
+        FontData getFontData (string fontPath, int fontIndex) {
             auto index = format("%s:%d", fontPath, fontIndex);
             if (index in loadedFonts) {
                 return loadedFonts[index];
@@ -125,8 +126,8 @@ struct FontLoader {
             return font;
         }
     }
-    static auto getFont (string fontPath, int fontIndex) {
-        synchronized /*(mutex)*/ { return instance.getFont(fontPath, fontIndex); }
+    static auto getFontData (string fontPath, int fontIndex) {
+        synchronized /*(mutex)*/ { return instance.getFontData(fontPath, fontIndex); }
     }
 }
 
