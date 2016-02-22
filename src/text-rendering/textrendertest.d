@@ -10,6 +10,7 @@ import std.algorithm.mutation;
 
 import gsb.core.window;
 import gsb.core.log;
+import gsb.core.errors;
 import gsb.glutils;
 
 import stb.truetype;

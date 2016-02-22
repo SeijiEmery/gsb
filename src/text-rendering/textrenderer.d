@@ -4,6 +4,9 @@ module gsb.text.textrenderer;
 import gsb.core.log;
 import gsb.core.window;
 import gsb.core.events;
+import gsb.core.errors;
+import gsb.core.singleton;
+import gsb.text.textshader;
 
 import std.stdio;
 import std.file;
@@ -27,100 +30,6 @@ import stb.truetype;
 import gsb.glutils;
 import derelict.opengl3.gl3;
 import dglsl;
-
-// http://wiki.dlang.org/Low-Lock_Singleton_Pattern
-mixin template LowLockSingleton () {
-    private this () { log.write("Creating %s instance", fullyQualifiedName!(typeof(this))); }
-    private static bool instantiated_ = false;
-    private static __gshared typeof(this) instance_ = null;
-
-    static final auto @property instance () {
-        if (!instantiated_) {
-            synchronized (typeof(this).classinfo) {
-                if (!instance_)
-                    instance_ = new typeof(this)();
-                instantiated_ = true;
-            }
-        }
-        return instance_;
-    }
-}
-
-
-class ResourceError : Error {
-    this (T...) (string fmt, T args) {
-        super(format(fmt, args));
-    }
-}
-
-class TextVertexShader: Shader!Vertex {
-    @layout(location=0)
-    @input vec3 textPosition;
-
-    @layout(location=1)
-    @input vec2 bitmapCoords;
-
-    @output vec2 texCoord;
-
-    @uniform mat4 transform;
-    @uniform vec3 backgroundColor;
-
-    void main () {
-        gl_Position = transform * vec4(textPosition, 1.0);
-        texCoord = bitmapCoords;
-    }
-}
-class TextFragmentShader: Shader!Fragment {
-    @input vec2 texCoord;
-    @output vec4 fragColor;
-
-    @uniform sampler2D textureSampler;
-    @uniform vec3 backgroundColor;
-
-    void main () {
-        vec4 color = texture(textureSampler, texCoord);
-        fragColor = vec4(color.r);
-        //fragColor = color.r > 0.02 ?
-        //    vec4(color.r) :
-        //    vec4(backgroundColor + vec3(texCoord, 0.0), 1.0) * 0.5;
-    }
-}
-
-class TextShader {
-    static TextShader instance;    // threadlocal
-
-    TextFragmentShader fs = null;
-    TextVertexShader vs = null;
-    Program!(TextVertexShader, TextFragmentShader) prog = null;
-
-    void lazyInit ()
-    in { assert(prog is null); }
-    body {
-        fs = new TextFragmentShader(); fs.compile(); CHECK_CALL("compiling text fragment shader");
-        vs = new TextVertexShader();   vs.compile(); CHECK_CALL("compiling text vertex shader");
-        prog = makeProgram(vs, fs); CHECK_CALL("compiling/linking text shader program");
-
-        checked_glUseProgram(prog.id);
-        prog.textureSampler = 0; CHECK_CALL("set textShader texture sampler");
-        checked_glUseProgram(0);
-    }
-
-    void bind () {
-        if (prog is null)
-            lazyInit();
-        checked_glUseProgram(prog.id);
-    }
-
-    @property void transform (mat4 transformMatrix) {
-        checked_glUseProgram(prog.id);
-        prog.transform = transformMatrix; CHECK_CALL("set textShader transform");
-    }
-    @property void backgroundColor (vec3 backgroundColor) {
-        checked_glUseProgram(prog.id);
-        prog.backgroundColor = backgroundColor; CHECK_CALL("set backgroundColor");
-    }
-}
-
 
 
 // Shared singleton class accessed by lazy .instance
