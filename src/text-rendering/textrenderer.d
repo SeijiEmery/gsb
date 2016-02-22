@@ -9,8 +9,6 @@ import gsb.core.singleton;
 import gsb.text.textshader;
 import gsb.text.font;
 
-import std.stdio;
-import std.file;
 import std.format;
 import std.utf;
 import std.conv;
@@ -19,12 +17,9 @@ import std.algorithm.setops;
 import std.algorithm.mutation : move, swap;
 import std.algorithm.iteration : map;
 import std.array : join;
-import std.parallelism;
 import std.traits;
 import std.typecons;
 import std.math: approxEqual;
-import core.sync.rwmutex;
-
 import core.sync.rwmutex;
 
 import stb.truetype;
@@ -37,7 +32,6 @@ import dglsl;
 class TextRenderer {
     mixin LowLockSingleton;
 
-    auto atlas = new FontAtlas();
     auto textShader = new TextShader();
     auto componentList = new GraphicsComponentList();
 
@@ -98,10 +92,6 @@ class TextRenderer {
         log.write("Creating new TextRenderer graphics thread handle");
         return new GThreadHandle();
     }
-
-    public void registerFont (string name, string path, int index, bool loadImmediate=false) {
-        atlas.registerFont(name, path, index, loadImmediate);
-    }
     public void loadDefaultFonts () {
         version(OSX) {
             //atlas.registerFonts("helvetica", "/System/Library/Fonts/Helvetica")
@@ -143,210 +133,6 @@ class TextRenderer {
 
     enum FontScaling {
         RELATIVE_TO_BASELINE
-    }
-
-    static class FontAtlas {
-    final:
-        struct FontPath {
-            string path;
-            int index;
-        }
-        struct FontData {
-            stbtt_fontinfo fontInfo;
-            ubyte[]        contents;
-            int            index;
-        }
-        FontPath[string]      registeredFonts;
-        FontData[string]      loadedFonts;
-
-        struct FontClass {
-            string[][string] typefaces;
-            double defaultSize = 32.0;
-        }
-        FontClass[string] fontClasses;
-
-        struct FontScalingFactors {
-            double defaultScalingFactor = -1.0;
-            double function(double, double) userDefinedFontScaling;
-            auto fontScalingType = FontScaling.RELATIVE_TO_BASELINE;
-            Tuple!(double, double function(double))[] userDefinedScreenScaling;
-
-            this (const(stbtt_fontinfo)* info) {
-                setScalingFactor(info);
-            }
-
-            void setScalingFactor (const(stbtt_fontinfo) * fontInfo) {
-                final switch (fontScalingType) {
-                    case FontScaling.RELATIVE_TO_BASELINE: {
-                        int ascent;
-                        stbtt_GetFontVMetrics(fontInfo, &ascent, null, null);
-                        defaultScalingFactor = 1.0 / cast(double)ascent;
-                    } break;
-                }
-            }
-            double getFontScale (double size, double screenScale = 1.0) {
-                size = userDefinedFontScaling ? 
-                    userDefinedFontScaling(size, defaultScalingFactor) :
-                    size * defaultScalingFactor;
-
-                foreach (v; userDefinedScreenScaling)
-                    if (approxEqual(v[0], screenScale))
-                        return v[1](size);
-                return size * screenScale;
-            }
-        }
-        FontScalingFactors[string] fontScales;
-
-        double getFontScale (string name, double size, double screenScale = 1.0)
-        in { assert(name in loadedFonts); }
-        body {
-            if (!(name in fontScales)) {
-                fontScales[name] = FontScalingFactors(&getFontData(name).fontInfo);
-            }
-            return fontScales[name].getFontScale(size, screenScale);
-        }
-
-        // Declarative interface
-        struct FontClassSetter {
-            private FontClass* fc;
-
-            auto ref defaultSize (double size) {
-                return fc.defaultSize = size, this;
-            }
-            auto ref FontClassSetter typeface (string name, string[] fonts) {
-                return fc.typefaces[name] = fonts, this;
-            }
-        }
-        FontClassSetter defineFontClass (string name) {
-            auto fc = &(fontClasses[name] = FontClass());
-            return FontClassSetter(fc);
-        }
-        void defineScreenScaling (string name, double scale, double function(double) cb) {
-            if (!(name in fontScales))
-                fontScales[name] = FontScalingFactors(&getFontData(name).fontInfo);
-            fontScales[name].userDefinedScreenScaling ~= tuple(scale, cb);
-        }
-        void defineFontScaling (string name, FontScaling scalingType, double function(double,double) cb) {
-            if (!(name in fontScales))
-                fontScales[name] = FontScalingFactors();
-            fontScales[name].fontScalingType = scalingType;
-            fontScales[name].userDefinedFontScaling = cb;
-            fontScales[name].setScalingFactor(&getFontData(name).fontInfo);
-        }
-
-        ReadWriteMutex mutex;
-    
-        void registerFont (string name, string path, int index = 0, bool loadImmediate=false) {
-            if (!exists(path) || (!attrIsFile(getAttributes(path))))
-                throw new ResourceError("Font '%s' does not exist", path);
-
-            //synchronized (mutex.writer) {
-                if (name in registeredFonts) {
-                    auto prevPath = registeredFonts[name].path;
-                    auto prevIndex = registeredFonts[name].index;
-
-                    if (path != prevPath || index != prevIndex)
-                        throw new ResourceError(format("Conflicting entries for font '%s': '%s'(%d), '%s'(%d)",
-                            path, prevPath, prevIndex, path, index));
-                } else {
-                    registeredFonts[name] = FontPath(path, index);
-                }
-                if (name in loadedFonts)
-                    loadImmediate = false;
-            //}
-
-            if (loadImmediate) {
-                loadFonts();
-            }
-        }
-
-        void loadFonts () {
-            auto toLoad = setDifference(registeredFonts.keys, loadedFonts.keys);
-
-            // Order fonts by filepath
-            struct FontPair { string name; int index; }
-            FontPair[][string] fontsByFilepath;
-
-            //synchronized (mutex.writer) {
-                foreach (name; toLoad) {
-                    auto path = registeredFonts[name].path;
-                    auto index = registeredFonts[name].index;
-
-                    if (path in fontsByFilepath)
-                        fontsByFilepath[path] ~= FontPair(name, index);
-                    else
-                        fontsByFilepath[path] = [ FontPair(name, index) ];
-                }
-
-                log.write("Loading paths: %s", join(fontsByFilepath.keys, ", "));
-
-                //foreach (i, elem; taskPool.parallel(fontsByFilepath.byKeyValue(), 1)) {
-                foreach (elem; fontsByFilepath.byKeyValue()) {
-                    auto path = elem.key;
-                    assert(exists(path) && attrIsFile(getAttributes(path)));
-
-                    auto contents = cast(ubyte[])read(path);
-                    if (contents.length == 0)
-                        throw new ResourceError(format("Failed to load font data '%s'", path));
-
-                    foreach (pair; elem.value) {
-                        if (pair.name in loadedFonts) {
-                            log.write("WARNING: huh, guess '%s' was already loaded? Oh well, reloading it anyway...", pair.name);
-                        }
-
-                        int offs = stbtt_GetFontOffsetForIndex(contents.ptr, pair.index);
-                        if (offs == -1)
-                            throw new ResourceError(format("Invalid font index: '%d' in '%s' (%s)", pair.index, path, pair.name));
-
-                        stbtt_fontinfo info;
-                        if (!stbtt_InitFont(&info, contents.ptr, offs))
-                            throw new ResourceError(format("stb_truetype: Failed to load font '%s'[%d] (%s)", path, pair.index, pair.name));
-                        loadedFonts[pair.name] = FontData(info, contents, pair.index);
-                    }
-                    log.write("Loaded %d font(s) from '%s': %s", elem.value.length, path, join(map!(x => x.name)(elem.value), ", "));
-                }
-
-            log.write("Loaded fonts: %s", join(loadedFonts.keys, ", "));
-
-            //}
-        }
-
-        FontData getFontData (string name) {
-            if (name in loadedFonts)
-                return loadedFonts[name];
-            if (name in registeredFonts) {
-                loadFonts();
-                if (name in loadedFonts)
-                    return loadedFonts[name];
-            }
-            throw new ResourceError(format("No registered font named '%s'", name));
-        }
-    }
-    class FontSpec {
-        string name;
-        FontAtlas.FontData fontData = void;
-        float  rawFontSize;
-        float  rawFontScale;
-        int    rawAscent;
-        int    rawDescent;
-        int    rawLineGap;
-
-        this (string fontName, float fontSize) {
-            name     = fontName;
-            fontData = atlas.getFontData(fontName);
-            rawFontSize  = fontSize;
-            rawFontScale = stbtt_ScaleForPixelHeight(&fontData.fontInfo, fontSize);
-            stbtt_GetFontVMetrics(&fontData.fontInfo, &rawAscent, &rawDescent, &rawLineGap);
-        }
-        auto getScale (float screenScale) {
-            return rawFontScale * screenScale;
-        }
-        auto getSize (float screenScale) {
-            return rawFontSize * screenScale;
-        }
-        auto getLineHeight (float screenScale) {
-            return (rawAscent - rawDescent + rawLineGap) * screenScale;
-        }
     }
 
     static void writeText (

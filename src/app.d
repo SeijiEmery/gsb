@@ -140,11 +140,6 @@ void enterGraphicsThread (Tid mainThreadId) {
 	}
 }
 
-void loadFonts () {
-	TextRenderer.instance.loadDefaultFonts();
-}
-
-
 void mainThread (Tid graphicsThreadId) {
 	// Setup event logging
 	WindowEvents.instance.onScreenScaleChanged.connect(delegate(float x, float y) {
@@ -157,8 +152,9 @@ void mainThread (Tid graphicsThreadId) {
 		log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
 	});
 
-	auto loadFontTime = benchmark!loadFonts(1);
-	log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
+	TextRenderer.instance.loadDefaultFonts();
+	//auto loadFontTime = benchmark!loadFonts(1);
+	//log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
 	auto text = TextRenderer.instance.createTextElement("arial", 50);
 	text.append("Hello world!\nü@asdlfj;\n");
