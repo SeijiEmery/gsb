@@ -6,9 +6,12 @@ import gsb.core.singleton;
 import gsb.core.errors;
 import gsb.core.pseudosignals;
 import stb.truetype;
+import core.sync.mutex;
 
 import std.file;
 import std.format;
+import std.algorithm.iteration: map;
+import std.array;
 
 class Font {
     string   name;
@@ -28,6 +31,9 @@ private class FontData {
 }
 
 private struct FontLoader {
+    private static __gshared FontLoader instance;
+    //private static __gshared auto mutex = new Mutex();
+
     struct RawFontData {
         ubyte[] contents;
     }
@@ -39,7 +45,7 @@ private struct FontLoader {
     Signal!(string)          onFontFileLoaded;
     Signal!(string,FontData) onFontLoaded;
 
-    FontData loadFont (string fontPath, int fontIndex) {
+    FontData getFont (string fontPath, int fontIndex) {
         auto index = format("%s:%d", fontPath, fontIndex);
         if (index in loadedFonts) {
             return loadedFonts[index];
@@ -66,17 +72,65 @@ private struct FontLoader {
         onFontLoaded.emit(fontPath, font);
         return font;
     }
+    static auto getFont (string fontPath, int fontIndex) {
+        synchronized /*(mutex)*/ { return instance.getFont(fontPath, fontIndex); }
+    }
 }
 
-class FontCache {
-private:
-    FontLoader loader;
+struct FontRegistry {
+    private static __gshared FontRegistry instance;
+    //private static __gshared auto mutex = new Mutex();
 
-public:
-    static Font get (string fontname) { return new Font(); }
+    private struct FontId {
+        string path;
+        int index;
+    }
 
-    static void registerFont (string fontname, string fontpath, int fontindex = 0) {
+    private FontId[string]   fontPaths;
+    private string[][string] fontFamilies;
 
+    public void registerFont (string fontName, string fontPath, int fontIndex) {
+        if (fontName in fontPaths && fontPaths[fontName] != fontPath)
+            throw new ResourceError("FontRegistry: overriding font lookup for '%s': '%s' with '%s'", 
+                fontName, fontPaths[fontName], fontPath);
+        fontPaths[fontName] = FontId(fontPath, fontIndex);
+    }
+    public void registerFontFamily (string fontFamilyName, string[] listOfFontNames) {
+        fontFamilies[fontFamilyName] = listOfFontNames;
+    }
+    public auto getFontPath (string name) { 
+        if (name !in fontPaths)
+            throw new ResourceError("No registered font '%s'", name);
+        return fontPaths[name];
+    }
+    public auto getFontFamily (string name) {
+        if (name !in fontFamilies)
+            throw new ResourceError("No registered font family '%s'", name);
+        return fontFamilies[fontName];
+    }
+
+    // Global versions
+    static void registerFont (string fontName, string fontPath) {
+        synchronized /*(mutex)*/ { instance.registerFont(fontName, fontPath); }
+    }
+    static void registerFontFamily (string fontFamilyName, string[] listOfFontNames) {
+        synchronized /*(mutex)*/ { instance.registerFontFamily(fontFamilyName, listOfFontNames); }
+    }
+    static auto getFontPath (string fontName) {
+        synchronized /*(mutex)*/ { return instance.getFont(fontName); }
+    }
+    static auto getFontFamily (string fontFamilyName) {
+        synchronized /*(mutex)*/ { return instance.getFontFamily(fontFamilyName); }
+    }
+}
+
+struct FontCache {
+    static FontData getFont (string fontName) {
+        auto font = FontRegistry.getFontPath(fontName);
+        return FontLoader.getFont(font.path, font.index);
+    }
+    static FontData[] getFontFamily (string name) {
+        return FontRegistry.getFontFamily(name).map!getFont().array();
     }
 }
 
