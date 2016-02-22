@@ -7,6 +7,7 @@ import gsb.core.events;
 import gsb.core.errors;
 import gsb.core.singleton;
 import gsb.text.textshader;
+import gsb.text.font;
 
 import std.stdio;
 import std.file;
@@ -104,48 +105,39 @@ class TextRenderer {
     public void loadDefaultFonts () {
         version(OSX) {
             //atlas.registerFonts("helvetica", "/System/Library/Fonts/Helvetica")
-            atlas.registerFont("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
-            atlas.registerFont("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
+            FontRegistry.registerFont("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
+            FontRegistry.registerFont("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
 
-            atlas.registerFont("menlo-italic", "/System/Library/Fonts/Menlo.ttc", 1);
-            atlas.registerFont("menlo-bold", "/System/Library/Fonts/Menlo.ttc", 2);
-            atlas.registerFont("menlo-bold-italic", "/System/Library/Fonts/Menlo.ttc", 3);
+            FontRegistry.registerFont("menlo-italic", "/System/Library/Fonts/Menlo.ttc", 1);
+            FontRegistry.registerFont("menlo-bold", "/System/Library/Fonts/Menlo.ttc", 2);
+            FontRegistry.registerFont("menlo-bold-italic", "/System/Library/Fonts/Menlo.ttc", 3);
 
-            atlas.registerFont("georgia", "/Library/Fonts/Georgia.ttf");
-            atlas.registerFont("georgia-bold", "/Library/Fonts/Georgia Bold.ttf");
-            atlas.registerFont("georgia-italic", "/Library/Fonts/Georgia Italic.ttf");
-            atlas.registerFont("georgia-bold-italic", "/Library/Fonts/Georgia Bold Italic.ttf");
+            FontRegistry.registerFont("georgia", "/Library/Fonts/Georgia.ttf");
+            FontRegistry.registerFont("georgia-bold", "/Library/Fonts/Georgia Bold.ttf");
+            FontRegistry.registerFont("georgia-italic", "/Library/Fonts/Georgia Italic.ttf");
+            FontRegistry.registerFont("georgia-bold-italic", "/Library/Fonts/Georgia Bold Italic.ttf");
 
-            atlas.defineFontClass("logging")
-                .defaultSize(50)
-                .typeface("default", [ "menlo", "arial" ])
-                .typeface("italic",  [ "menlo-italic", "arial-italic", "arial" ])
-                .typeface("bold",    [ "menlo-bold", "arial-bold", "arial" ])
-                .typeface("bold-italic", [ "menlo-bold-italic", "arial-bold-italic", "arial" ]);
+            FontLoader.instance.onFontFileLoaded.connect((string filename) {
+                log.write("Loaded font file '%s'", filename);
+            });
+            FontLoader.instance.onFontLoaded.connect((string name, FontData fontData) {
+                log.write("Loaded font '%s', %d (filesize = %d)", 
+                    name, fontData.fontIndex, fontData.contents.length);
+            });
 
-            atlas.defineScreenScaling("arial", 1.0, sz => sz * 1.0);
-            atlas.defineScreenScaling("arial", 2.0, sz => sz * 1.5);
+            //FontRegistry.registerFont("logging")
+            //    .defaultSize(50)
+            //    .typeface("default", [ "menlo", "arial" ])
+            //    .typeface("italic",  [ "menlo-italic", "arial-italic", "arial" ])
+            //    .typeface("bold",    [ "menlo-bold", "arial-bold", "arial" ])
+            //    .typeface("bold-italic", [ "menlo-bold-italic", "arial-bold-italic", "arial" ]);
 
-            atlas.defineFontScaling("arial", FontScaling.RELATIVE_TO_BASELINE, (sz, default_scale) => sz * default_scale);
+            //atlas.defineScreenScaling("arial", 1.0, sz => sz * 1.0);
+            //atlas.defineScreenScaling("arial", 2.0, sz => sz * 1.5);
 
-            atlas.loadFonts();
+            //atlas.defineFontScaling("arial", FontScaling.RELATIVE_TO_BASELINE, (sz, default_scale) => sz * default_scale);
 
-            //atlas.setFontScale("menlo", 1.0, sz => sz * 1.0);
-            //atlas.setFontScale("menlo", 2.0, sz => sz * 1.5);
-
-            //atlas.setFontScale("arial", 1.0, sz => sz * 1.0);
-            //atlas.setFontScale("arial", 2.0, sz => sz * 1.5);
-
-            //atlas.addFontClass("default", {
-            //    .size = 50,
-            //    .color = "#114015",
-            //    .fonts = [ "menlo", "arial" ]
-            //});
-            //atlas.extendClass("default", "console", {
-            //    .size = 30,
-            //    .color = "#12092F",
-            //    .fonts = [ "menlo", "arial" ]
-            //});
+            //atlas.loadFonts();
         }
     }
 
@@ -359,7 +351,7 @@ class TextRenderer {
 
     static void writeText (
         string text,
-        FontSpec font,
+        Font font,
         FrontendTextBuffer buffer,
         FrontendPackedFontAtlas atlas,
         TextLayouter layouter,
@@ -438,7 +430,7 @@ class TextRenderer {
             deleteResources();
         }
 
-        auto insertAndGetIndex (dchar chr, string fontname, float screenScale, ref FontSpec font) {
+        auto insertAndGetIndex (dchar chr, string fontname, float screenScale, Font font) {
             lazyInit();
             needsUpdate = true;
 
@@ -459,7 +451,7 @@ class TextRenderer {
                 r.array_of_unicode_codepoints = cast(int*)&chr;
                 r.num_chars = 1;
                 r.chardata_for_range = &packedChars[$-1];
-                stbtt_PackFontRanges(&pack, font.fontData.contents.ptr, 0, &r, 1);
+                stbtt_PackFontRanges(&pack, font.data.contents.ptr, 0, &r, 1);
 
                 //stbtt_PackFontRange(&pack, font.fontData.contents.ptr, font.fontData.index, fontScale, 
                     //chr, 1, &packedChars[$-1]);
@@ -714,12 +706,12 @@ class TextRenderer {
     }
 
     class TextElement {
+        Font font;
         FrontendTextBuffer textBuffer;// = new FrontendTextBuffer();
         FrontendPackedFontAtlas packedAtlas;// = new FrontendPackedFontAtlas();
         BasicLayouter layouter;//   = new BasicLayouter();
         GraphicsBackend graphicsBackend;
         vec2 screenScaleFactor;
-        FontSpec font;
 
         string cachedText;
 
@@ -727,8 +719,9 @@ class TextRenderer {
 
         WindowEvents.instance.onScreenScaleChanged.Connection scaleChangedSlot;
 
-        this (string fontName, float textSize) {
+        this (string fontName, float size) {
             log.write("Creating new TextElement");
+            this.font = new Font(fontName, size);
 
             screenScaleFactor = g_mainWindow.screenScale;
             
@@ -750,8 +743,6 @@ class TextRenderer {
 
             graphicsBackend = new GraphicsBackend(); // note to self: this needs to be initialized last since it uses
                                    // outer class properties (the initialization order is buggy otherwise)
-
-            font = new FontSpec(fontName, textSize);
             
             stbtt_aligned_quad q;
             q.x0 = 0.1; q.y0 = 0.1; q.x1 = 0.9; q.y1 = 0.9;

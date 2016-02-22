@@ -12,20 +12,56 @@ import std.file;
 import std.format;
 import std.algorithm.iteration: map;
 import std.array;
+import std.math;
 
 class Font {
-    string   name;
-    FontData data;
+    string   _name;
+    float    _size;
+    FontData _data;
 
-    this (string name) {
-        this.name = name;
-        this.data = FontCache.getFontData(name);
+    this (string name, float fontSize = 0) {
+        this._name = name;
+        this._size = fontSize;
+        this._data = FontCache.getFontData(name);
     }
 
-    @property int pixelSize () { return 0; }
+    @property float size () { return _size; }
+    @property void size (float size) {
+        _size = size;
+        _stbFontScale = _stbFontSize = float.nan;
+        _stbAscent = 0;
+    }
+    @property auto data () { return _data; }
+    @property auto name () { return _name; }
+
+
+    @property int pixelSize () { return cast(int)_size; }
     bool contains (dchar chr) {
         return true;
     }
+
+    // temp stuff for integrating w/ old textrenderer
+    private float _stbFontScale;
+    private float _stbFontSize;
+    private int _stbAscent, _stbDescent, _stbLineGap;
+
+    float getScale (float screenScale) {
+        if (isNaN(_stbFontScale))
+            _stbFontScale = stbtt_ScaleForPixelHeight(&data.fontInfo, _size);
+        return _stbFontScale * screenScale;
+    }
+    float getSize (float screenScale) {
+        return size * screenScale;
+    }
+    float getLineHeight (float screenScale) {
+        if (!_stbAscent)
+            stbtt_GetFontVMetrics(&data.fontInfo, &_stbAscent, &_stbDescent, &_stbLineGap);
+        return (_stbAscent - _stbDescent + _stbLineGap) * screenScale;
+    }
+
+
+
+
 }
 
 struct FontCache {
@@ -38,15 +74,15 @@ struct FontCache {
     }
 }
 
-private class FontData {
+class FontData {
     stbtt_fontinfo fontInfo;
     ubyte[]        contents;
     string         fontPath;
     int            fontIndex;
 }
 
-private struct FontLoader {
-    private static __gshared FontLoader.Instance instance;
+struct FontLoader {
+    static __gshared FontLoader.Instance instance;
     //private static __gshared auto mutex = new Mutex();
 
     static struct Instance {
@@ -107,7 +143,7 @@ struct FontRegistry {
         private FontId[string]   fontPaths;
         private string[][string] fontFamilies;
 
-        public void registerFont (string fontName, string fontPath, int fontIndex) {
+        public void registerFont (string fontName, string fontPath, int fontIndex = 0) {
             if (fontName in fontPaths && (fontPaths[fontName].path != fontPath || fontPaths[fontName].index != fontIndex))
                 throw new ResourceError("FontRegistry: overriding font lookup for '%s': '%s:%d' with '%s:%d'", 
                     fontName, fontPaths[fontName].path, fontPaths[fontName].index, fontPath, fontIndex);
@@ -129,7 +165,7 @@ struct FontRegistry {
     }
 
     // Global versions
-    static void registerFont (string fontName, string fontPath, int fontIndex) {
+    static void registerFont (string fontName, string fontPath, int fontIndex = 0) {
         synchronized /*(mutex)*/ { instance.registerFont(fontName, fontPath, fontIndex); }
     }
     static void registerFontFamily (string fontFamilyName, string[] listOfFontNames) {
