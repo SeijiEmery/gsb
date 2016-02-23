@@ -7,12 +7,38 @@ import gsb.core.errors;
 import gsb.core.pseudosignals;
 import stb.truetype;
 import core.sync.mutex;
+import gl3n.linalg;
 
 import std.file;
 import std.format;
 import std.algorithm.iteration: map;
 import std.array;
 import std.math;
+import std.utf;
+
+public void registerDefaultFonts () {
+    version(OSX) {
+        FontRegistry.registerFont("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
+        FontRegistry.registerFont("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
+
+        FontRegistry.registerFont("menlo-italic", "/System/Library/Fonts/Menlo.ttc", 1);
+        FontRegistry.registerFont("menlo-bold", "/System/Library/Fonts/Menlo.ttc", 2);
+        FontRegistry.registerFont("menlo-bold-italic", "/System/Library/Fonts/Menlo.ttc", 3);
+
+        FontRegistry.registerFont("georgia", "/Library/Fonts/Georgia.ttf");
+        FontRegistry.registerFont("georgia-bold", "/Library/Fonts/Georgia Bold.ttf");
+        FontRegistry.registerFont("georgia-italic", "/Library/Fonts/Georgia Italic.ttf");
+        FontRegistry.registerFont("georgia-bold-italic", "/Library/Fonts/Georgia Bold Italic.ttf");
+
+        FontLoader.instance.onFontFileLoaded.connect((string filename) {
+            log.write("Loaded font file '%s'", filename);
+        });
+        FontLoader.instance.onFontLoaded.connect((string name, FontData fontData) {
+            log.write("Loaded font '%s', %d (filesize = %d)", 
+                name, fontData.fontIndex, fontData.contents.length);
+        });
+    }
+}
 
 class Font {
     string   _name;
@@ -38,6 +64,16 @@ class Font {
     @property int pixelSize () { return cast(int)_size; }
     bool contains (dchar chr) {
         return true;
+    }
+
+    vec2 calcPixelBounds (string text) {
+        return vec2(calcUnscaledPixelWidth(text), _data.lineHeight) * getScale(1.0);
+    }
+    float calcUnscaledPixelWidth (string text) {
+        float width = 0;
+        foreach (chr; text.byDchar)
+            width += _data.getAdvanceWidth(chr);
+        return width;
     }
 
     // temp stuff for integrating w/ old textrenderer
@@ -79,6 +115,25 @@ class FontData {
     ubyte[]        contents;
     string         fontPath;
     int            fontIndex;
+
+    private float cachedLineHeight;
+    @property float lineHeight () {
+        if (isNaN(cachedLineHeight)) {
+            int ascent, descent, linegap;
+            stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &linegap);
+            cachedLineHeight = ascent - descent + linegap;
+        }
+        return cachedLineHeight;
+    }
+    private float[dchar] cachedAdvMetrics;
+    float getAdvanceWidth (dchar chr) {
+        if (chr !in cachedAdvMetrics) {
+            int adv, discard;
+            stbtt_GetCodepointHMetrics(&fontInfo, chr, &adv, &discard);
+            return cachedAdvMetrics[chr] = adv;
+        }
+        return cachedAdvMetrics[chr];
+    }
 }
 
 struct FontLoader {

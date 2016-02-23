@@ -8,6 +8,7 @@ import gsb.core.errors;
 import gsb.core.singleton;
 import gsb.text.textshader;
 import gsb.text.font;
+import gsb.text.geometrybuffer;
 
 import std.format;
 import std.utf;
@@ -92,53 +93,12 @@ class TextRenderer {
         log.write("Creating new TextRenderer graphics thread handle");
         return new GThreadHandle();
     }
-    public void loadDefaultFonts () {
-        version(OSX) {
-            //atlas.registerFonts("helvetica", "/System/Library/Fonts/Helvetica")
-            FontRegistry.registerFont("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
-            FontRegistry.registerFont("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
 
-            FontRegistry.registerFont("menlo-italic", "/System/Library/Fonts/Menlo.ttc", 1);
-            FontRegistry.registerFont("menlo-bold", "/System/Library/Fonts/Menlo.ttc", 2);
-            FontRegistry.registerFont("menlo-bold-italic", "/System/Library/Fonts/Menlo.ttc", 3);
-
-            FontRegistry.registerFont("georgia", "/Library/Fonts/Georgia.ttf");
-            FontRegistry.registerFont("georgia-bold", "/Library/Fonts/Georgia Bold.ttf");
-            FontRegistry.registerFont("georgia-italic", "/Library/Fonts/Georgia Italic.ttf");
-            FontRegistry.registerFont("georgia-bold-italic", "/Library/Fonts/Georgia Bold Italic.ttf");
-
-            FontLoader.instance.onFontFileLoaded.connect((string filename) {
-                log.write("Loaded font file '%s'", filename);
-            });
-            FontLoader.instance.onFontLoaded.connect((string name, FontData fontData) {
-                log.write("Loaded font '%s', %d (filesize = %d)", 
-                    name, fontData.fontIndex, fontData.contents.length);
-            });
-
-            //FontRegistry.registerFont("logging")
-            //    .defaultSize(50)
-            //    .typeface("default", [ "menlo", "arial" ])
-            //    .typeface("italic",  [ "menlo-italic", "arial-italic", "arial" ])
-            //    .typeface("bold",    [ "menlo-bold", "arial-bold", "arial" ])
-            //    .typeface("bold-italic", [ "menlo-bold-italic", "arial-bold-italic", "arial" ]);
-
-            //atlas.defineScreenScaling("arial", 1.0, sz => sz * 1.0);
-            //atlas.defineScreenScaling("arial", 2.0, sz => sz * 1.5);
-
-            //atlas.defineFontScaling("arial", FontScaling.RELATIVE_TO_BASELINE, (sz, default_scale) => sz * default_scale);
-
-            //atlas.loadFonts();
-        }
-    }
-
-    enum FontScaling {
-        RELATIVE_TO_BASELINE
-    }
 
     static void writeText (
         string text,
         Font font,
-        FrontendTextBuffer buffer,
+        TextGeometryBuffer buffer,
         FrontendPackedFontAtlas atlas,
         TextLayouter layouter,
         float screenScale = 1.0
@@ -303,7 +263,7 @@ class TextRenderer {
         public @property void  lineAscent (float v);
         public @property mat4  transform ();
 
-        void writeChar (size_t charIndex, FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas);
+        void writeChar (size_t charIndex, TextGeometryBuffer buffer, FrontendPackedFontAtlas atlas);
         void writeEndl ();
         void reset ();
     }
@@ -324,10 +284,10 @@ class TextRenderer {
             log.write("creating Textlayouter");
         }
 
-        override void writeChar (size_t charIndex, FrontendTextBuffer buffer, FrontendPackedFontAtlas atlas) {
+        override void writeChar (size_t charIndex, TextGeometryBuffer buffer, FrontendPackedFontAtlas atlas) {
             stbtt_aligned_quad q;
             atlas.getQuad(charIndex, &q, &x, &y, true);
-            buffer.appendQuad(q);
+            buffer.pushQuad(q);
         }
         override void writeEndl () {
             x = 0;
@@ -339,169 +299,15 @@ class TextRenderer {
         }
     }
 
-    // Lives on main / worker thread
-    static class FrontendTextBuffer {
-        float[] positionData;
-        float[] uvData;
-        float[] colorData;
-        protected bool needsUpdate = false;
-
-        ReadWriteMutex rwMutex;
-
-        protected auto @property read () {
-            return rwMutex.reader();
-        }
-        protected auto @property write () {
-            return rwMutex.writer();
-        }
-        protected auto @property positionBuffer () { return positionData; }
-        protected auto @property uvBuffer       () { return uvData; }
-
-        void appendQuad (stbtt_aligned_quad q) {
-            //log.write("appending quad: (%0.2f,%0.2f),(%0.2f,%0.2f), (%0.2f,%0.2f),(%0.2f,%0.2f)",
-                //q.x0,q.y0,q.x1,q.y1, q.s0,q.t0,q.s1,q.t1);
-
-
-            positionData ~= [
-                q.x0, -q.y1, 0.0,   // flip y-axis
-                q.x1, -q.y0, 0.0,
-                q.x1, -q.y1, 0.0,
-
-                q.x0, -q.y1, 0.0,
-                q.x0, -q.y0, 0.0,
-                q.x1, -q.y0, 0.0,
-            ];
-            uvData ~= [
-                q.s0, q.t1,
-                q.s1, q.t0,
-                q.s1, q.t1,
-
-                q.s0, q.t1,
-                q.s0, q.t0,
-                q.s1, q.t0
-            ];
-            needsUpdate = true;
-        }
-        void clear () {
-            log.write("Clearing textbuffer contents");
-            positionData.length = 0;
-            uvData.length = 0;
-            needsUpdate = true;
-        }
-    }
-
-    // Lives on gpu thread
-    static class BackendTextBuffer {
-        FrontendTextBuffer target = null;
-        GLuint vao = 0;
-        GLuint[3] buffers;
-        int    num_triangles = -1;
-
-        void update () {
-            if (!target)
-                log.write("no target!");
-
-            if (target && target.needsUpdate) {
-                log.write("Updating text buffer contents");
-
-                lazyInitResources();
-                //synchronized (target.write()) {
-                target.needsUpdate = false;
-                if (const auto quads = target.positionBuffer) {
-                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-                    checked_glBufferData(GL_ARRAY_BUFFER, quads.length * 4, quads.ptr, GL_DYNAMIC_DRAW);
-                    //num_triangles = cast(int)(quads.length / 3);
-                }
-                if (const auto uvs = target.uvBuffer) {
-                    checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
-                    checked_glBufferData(GL_ARRAY_BUFFER, uvs.length * 4, uvs.ptr, GL_DYNAMIC_DRAW);
-                }
-
-                auto num_quad_triangles = cast(int)(target.positionBuffer.length / 9);
-                auto num_uv_triangles   = cast(int)(target.uvBuffer.length / 6);
-
-                log.write("quad triangles = %d, uv triangles = %d", num_quad_triangles, num_uv_triangles);
-                num_triangles = num_quad_triangles;
-
-
-                //}
-            } else {
-                //log.write("no updates");
-            }
-        }
-        void draw () {
-            if (vao && num_triangles > 0) {
-                log.write("drawing %d triangles", num_triangles);
-                checked_glBindVertexArray(vao);
-                checked_glDrawArrays(GL_TRIANGLES, 0, num_triangles * 3);
-            } else {
-                log.write("Not drawing");
-                //log.write("no vao!");
-            }
-        }
-
-        //GraphicsEvents.glStateInvalidated.Connection glStateInvalidatedListener;
-
-        this () {
-            //if (!__ctfe)
-            log.write("Creating TextBuffer backend");
-
-            //glStateInvalidatedListener = GraphicsEvents.glStateInvalidated.connect(() {
-            //    log.write("FOOOOO: Invalidating buffer");
-            //    //deleteResources();
-            //});
-        }
-        ~this () {
-            deleteResources();
-            //glStateInvalidatedListener.disconnect();
-        }
-
-        private void lazyInitResources () {
-            if (!vao) {
-                log.write("Creating TextBuffer graphics resources");
-
-                checked_glGenVertexArrays(1, &vao);
-                checked_glGenBuffers(3, buffers.ptr);
-
-                checked_glBindVertexArray(vao);
-
-                checked_glEnableVertexAttribArray(0);
-                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-                checked_glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, null);
-
-                checked_glEnableVertexAttribArray(1);
-                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
-                checked_glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, null);
-
-                //checked_glEnableVertexAttribArray(2);
-                //checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[2]);
-                //checked_glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 0, null);
-            }
-        }
-
-        public void deleteResources () {
-            if (vao) {
-                log.write("Deleting TextBuffer graphics resources");
-
-                checked_glDeleteVertexArrays(1, &vao);
-                checked_glDeleteBuffers(3, buffers.ptr);
-                vao = 0;
-            }
-        }
-        
-    }
-
     class TextElement {
         Font font;
-        FrontendTextBuffer textBuffer;// = new FrontendTextBuffer();
+        TextGeometryBuffer textBuffer, testQuad;
         FrontendPackedFontAtlas packedAtlas;// = new FrontendPackedFontAtlas();
         BasicLayouter layouter;//   = new BasicLayouter();
         GraphicsBackend graphicsBackend;
         vec2 screenScaleFactor;
 
         string cachedText;
-
-        FrontendTextBuffer testQuad;
 
         WindowEvents.instance.onScreenScaleChanged.Connection scaleChangedSlot;
 
@@ -510,7 +316,6 @@ class TextRenderer {
             this.font = new Font(fontName, size);
 
             screenScaleFactor = g_mainWindow.screenScale;
-            
             scaleChangedSlot = 
             WindowEvents.instance.onScreenScaleChanged.connect((float x, float y) {
                 log.write("recalculating buffers for new screen scale %0.2f", y);
@@ -521,19 +326,17 @@ class TextRenderer {
                 writeText(cachedText, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
             });
 
-            textBuffer = new FrontendTextBuffer();
+            textBuffer  = new TextGeometryBuffer();
             packedAtlas = new FrontendPackedFontAtlas();
             layouter    = new BasicLayouter();
+            testQuad    = new TextGeometryBuffer();
 
-            testQuad = new FrontendTextBuffer();
-
-            graphicsBackend = new GraphicsBackend(); // note to self: this needs to be initialized last since it uses
-                                   // outer class properties (the initialization order is buggy otherwise)
-            
             stbtt_aligned_quad q;
             q.x0 = 0.1; q.y0 = 0.1; q.x1 = 0.9; q.y1 = 0.9;
             q.s0 = 0; q.t0 = 0; q.s1 = 1; q.t1 = 1;
-            testQuad.appendQuad(q);
+            testQuad.pushQuad(q);
+
+            graphicsBackend = new GraphicsBackend();
         }
         ~this () {
             log.write("Deleting TextElement");
@@ -548,38 +351,31 @@ class TextRenderer {
         }
 
         class GraphicsBackend : IGraphicsComponent {
-            BackendTextBuffer textBufferBackend;// = new BackendTextBuffer();
+            TextGeometryBuffer.GraphicsBackend textBufferBackend, testQuadBackend;
             BackendPackedFontAtlas packedAtlasBackend;// = new BackendPackedFontAtlas();
             bool isActive = true;
-
-            BackendTextBuffer testQuadBackend;
 
             this () {
                 log.write("Creating new TextElement.GraphicsBackend");
 
-                textBufferBackend = new BackendTextBuffer();
+                textBufferBackend = textBuffer.new GraphicsBackend();
+                testQuadBackend   = textBuffer.new GraphicsBackend();
+                testQuadBackend.update();
+
                 packedAtlasBackend = new BackendPackedFontAtlas();
-
-                testQuadBackend = new BackendTextBuffer();
-                testQuadBackend.target = testQuad;
-
-                textBufferBackend.target = textBuffer;
                 packedAtlasBackend.target = packedAtlas;
-
-                log.write("Registering component");
                 registerComponent(this);
             }
             void deactivate () {
                 isActive = false;
-                textBufferBackend.deleteResources();
+                textBufferBackend.releaseResources();
+                testQuadBackend.releaseResources();
                 packedAtlasBackend.deleteResources();
             }
             bool active () { return isActive; }
 
             void render () {
-                //log.write("Rendering TextElement");
                 textBufferBackend.update();
-                testQuadBackend.update();
 
                 textShader.bind();
                 packedAtlasBackend.bindTexture();
@@ -592,18 +388,11 @@ class TextRenderer {
                 transform.transpose();
                 textShader.transform = transform;
 
-                //textShader.transform = mat4.identity()
-                    //.scale(inv_scale_x, inv_scale_y, 1.0);
-                    //.translate(-inv_scale_x, 0.0, 0.0);
-
-                textShader.backgroundColor = vec3(0, 0, 0);// vec3(0.8, 0.5, 0.4);
+                textShader.backgroundColor = vec3(0, 0, 0);
                 textBufferBackend.draw();
 
-                //textShader.transform = mat4.identity();
                 textShader.backgroundColor = vec3(0.2, 0.7, 0.45);
-                //testQuadBackend.draw();
-
-                
+                testQuadBackend.draw();
             }
         }
     }

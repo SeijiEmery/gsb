@@ -15,6 +15,7 @@ import gsb.core.window;
 import gsb.core.events;
 
 import gsb.glutils;
+import gsb.text.font;
 import gsb.text.textrenderer;
 import gsb.triangles_test;
 import gsb.text.textrendertest;
@@ -110,7 +111,7 @@ void graphicsThread (Tid mainThreadId) {
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
-				log.write("on frame %d", frame++);
+				//log.write("on frame %d", frame++);
 
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -152,13 +153,17 @@ void mainThread (Tid graphicsThreadId) {
 		log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
 	});
 
-	TextRenderer.instance.loadDefaultFonts();
+	registerDefaultFonts();  // from gsb.text.font
+
+
 	//auto loadFontTime = benchmark!loadFonts(1);
 	//log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
 
-	auto text = TextRenderer.instance.createTextElement("arial", 50);
-	text.append("Hello world!\nü@asdlfj;\n");
+	//auto font = new Font("arial", 40);
+	//auto elem = new TextFragment("Hello World!", font, Color("#ffbf9d"), vec2(200, 200));
 
+	auto text = TextRenderer.instance.createTextElement("menlo", 30);
+	text.append("Hello world!\nü@asdlfj;\n");
 
 	//auto text = TextRenderer.instance.createTextElement()
 	//	.style("console")
@@ -191,7 +196,7 @@ void mainThread (Tid graphicsThreadId) {
 
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
 
-		log.write("Starting frame %d", frameCount);
+		//log.write("Starting frame %d", frameCount);
 
 		glfwPollEvents();
 		WindowEvents.instance.updateFromMainThread();
@@ -203,7 +208,7 @@ void mainThread (Tid graphicsThreadId) {
 		//}
 
 		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
-		log.write("Sent frame %d", frameCount++);
+		//log.write("Sent frame %d", frameCount++);
 
 		while (1) {
 			auto evt = receiveOnly!(ThreadSyncEvent)();
