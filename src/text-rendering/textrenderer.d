@@ -9,6 +9,7 @@ import gsb.core.singleton;
 import gsb.text.textshader;
 import gsb.text.font;
 import gsb.text.geometrybuffer;
+import gsb.text.fontatlas;
 
 import std.format;
 import std.utf;
@@ -16,8 +17,8 @@ import std.conv;
 import std.container.rbtree;
 import std.algorithm.setops;
 import std.algorithm.mutation : move, swap;
-import std.algorithm.iteration : map;
-import std.array : join;
+import std.algorithm.iteration;
+import std.array;
 import std.traits;
 import std.typecons;
 import std.math: approxEqual;
@@ -99,45 +100,43 @@ class TextRenderer {
         string text,
         Font font,
         TextGeometryBuffer buffer,
-        FrontendPackedFontAtlas atlas,
+        PackedFontAtlas atlas,
         TextLayouter layouter,
         float screenScale = 1.0
     ) {
-        log.write("Determining charset");
         auto rbcharset = new RedBlackTree!dchar();
         foreach (chr; byDchar(text))
             if (chr >= 0x20)
                 rbcharset.insert(chr);
 
-        log.write("charset contains %u characters", rbcharset.length);
-
         auto scale = font.getScale(screenScale);
         log.write("font scale = %f", scale);
 
-        size_t[dchar] chrLookup;
-        //synchronized (atlas.write) {
-            foreach (chr; rbcharset) {
-                chrLookup[chr] = atlas.insertAndGetIndex(chr, font.name, screenScale, font);
-            }
-        //}
-        log.write("generated lookup table");
+        atlas.insertCharset(font, rbcharset);
 
         layouter.lineAscent = font.getLineHeight(scale);
 
-        //synchronized (atlas.read) {
-            //synchronized (buffer.write) {
-                stbtt_aligned_quad q;
-                foreach (chr; byDchar(text)) {
-                    if (chr >= 0x20) {
-                        layouter.writeChar(chrLookup[chr], buffer, atlas);
-                    } else if (chr == '\n') {
-                        layouter.writeEndl();
-                    } else {
-                        log.write("character %d not supported (%s)", fullyQualifiedName!(writeText));
+        synchronized (atlas.read) {
+            synchronized (buffer.write) {
+                foreach (line; text.splitter('\n')) {
+                    layouter.x = 0; layouter.y += font.getLineHeight(scale);
+                    foreach (quad; atlas.getQuads(font, line.byDchar, layouter.x, layouter.y, false)) {
+                        buffer.pushQuad(quad);
                     }
+                    log.write("wrote line; cursor = %0.2f, %0.2f", layouter.x, layouter.y);
                 }
-            //}
-        //}
+                //stbtt_aligned_quad q;
+                //foreach (chr; byDchar(text)) {
+                //    if (chr >= 0x20) {
+                //        layouter.writeChar(chrLookup[chr], buffer, atlas);
+                //    } else if (chr == '\n') {
+                //        layouter.writeEndl();
+                //    } else {
+                //        log.write("character %d not supported (%s)", fullyQualifiedName!(writeText));
+                //    }
+                //}
+            }
+        }
     }
 
     static uint BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024, BITMAP_CHANNELS = 1;
@@ -226,7 +225,6 @@ class TextRenderer {
                     checked_glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, target.bitmapData.ptr);
                     checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
                     checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    checked_glBindTexture(GL_TEXTURE_2D, 0);
                 //}
                 //synchronized (target.write()) {
                     target.needsUpdate = false;
@@ -258,17 +256,7 @@ class TextRenderer {
         }
     }
 
-    interface TextLayouter {
-        public @property float lineAscent ();
-        public @property void  lineAscent (float v);
-        public @property mat4  transform ();
-
-        void writeChar (size_t charIndex, TextGeometryBuffer buffer, FrontendPackedFontAtlas atlas);
-        void writeEndl ();
-        void reset ();
-    }
-
-    static class BasicLayouter : TextLayouter {
+    static class TextLayouter {
         float x = 0, y = 0;
         float _lineAscent = 0.0;
         mat4  _transform  = mat4.identity;
@@ -284,16 +272,16 @@ class TextRenderer {
             log.write("creating Textlayouter");
         }
 
-        override void writeChar (size_t charIndex, TextGeometryBuffer buffer, FrontendPackedFontAtlas atlas) {
-            stbtt_aligned_quad q;
-            atlas.getQuad(charIndex, &q, &x, &y, true);
-            buffer.pushQuad(q);
-        }
-        override void writeEndl () {
-            x = 0;
-            y += _lineAscent;
-        }
-        override void reset () {
+        //void writeChar (size_t charIndex, TextGeometryBuffer buffer, FrontendPackedFontAtlas atlas) {
+        //    stbtt_aligned_quad q;
+        //    atlas.getQuad(charIndex, &q, &x, &y, true);
+        //    buffer.pushQuad(q);
+        //}
+        //void writeEndl () {
+        //    x = 0;
+        //    y += _lineAscent;
+        //}
+        void reset () {
             x = y = 0;
             _lineAscent = 0;
         }
@@ -302,8 +290,8 @@ class TextRenderer {
     class TextElement {
         Font font;
         TextGeometryBuffer textBuffer, testQuad;
-        FrontendPackedFontAtlas packedAtlas;// = new FrontendPackedFontAtlas();
-        BasicLayouter layouter;//   = new BasicLayouter();
+        PackedFontAtlas packedAtlas;// = new FrontendPackedFontAtlas();
+        TextLayouter layouter;//   = new BasicLayouter();
         GraphicsBackend graphicsBackend;
         vec2 screenScaleFactor;
 
@@ -324,11 +312,12 @@ class TextRenderer {
                 layouter.reset();
                 textBuffer.clear();
                 writeText(cachedText, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
+                    //screenScaleFactor.y == 1.0 ? screenScaleFactor.y : screenScaleFactor.y * 0.75);
             });
 
             textBuffer  = new TextGeometryBuffer();
-            packedAtlas = new FrontendPackedFontAtlas();
-            layouter    = new BasicLayouter();
+            packedAtlas = new PackedFontAtlas();
+            layouter    = new TextLayouter();
             testQuad    = new TextGeometryBuffer();
 
             stbtt_aligned_quad q;
@@ -341,7 +330,7 @@ class TextRenderer {
         ~this () {
             log.write("Deleting TextElement");
             graphicsBackend.deactivate();
-            packedAtlas.deleteResources();
+            packedAtlas.releaseResources();
         }
 
         void append (string text) {
@@ -352,7 +341,7 @@ class TextRenderer {
 
         class GraphicsBackend : IGraphicsComponent {
             TextGeometryBuffer.GraphicsBackend textBufferBackend, testQuadBackend;
-            BackendPackedFontAtlas packedAtlasBackend;// = new BackendPackedFontAtlas();
+            PackedFontAtlas.GraphicsBackend packedAtlasBackend;// = new BackendPackedFontAtlas();
             bool isActive = true;
 
             this () {
@@ -362,20 +351,20 @@ class TextRenderer {
                 testQuadBackend   = textBuffer.new GraphicsBackend();
                 testQuadBackend.update();
 
-                packedAtlasBackend = new BackendPackedFontAtlas();
-                packedAtlasBackend.target = packedAtlas;
+                packedAtlasBackend = packedAtlas.new GraphicsBackend();
                 registerComponent(this);
             }
             void deactivate () {
                 isActive = false;
                 textBufferBackend.releaseResources();
                 testQuadBackend.releaseResources();
-                packedAtlasBackend.deleteResources();
+                packedAtlasBackend.releaseResources();
             }
             bool active () { return isActive; }
 
             void render () {
                 textBufferBackend.update();
+                packedAtlasBackend.update();
 
                 textShader.bind();
                 packedAtlasBackend.bindTexture();

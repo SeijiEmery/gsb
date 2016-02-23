@@ -162,7 +162,7 @@ void mainThread (Tid graphicsThreadId) {
 	//auto font = new Font("arial", 40);
 	//auto elem = new TextFragment("Hello World!", font, Color("#ffbf9d"), vec2(200, 200));
 
-	auto text = TextRenderer.instance.createTextElement("menlo", 30);
+	auto text = TextRenderer.instance.createTextElement("menlo", 32);
 	text.append("Hello world!\nü@asdlfj;\n");
 
 	//auto text = TextRenderer.instance.createTextElement()

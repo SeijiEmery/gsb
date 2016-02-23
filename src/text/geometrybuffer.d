@@ -23,8 +23,8 @@ class TextGeometryBuffer {
     this () {
         mutex = new ReadWriteMutex();
     }
-    protected auto @property read  () { return mutex.reader(); }
-    protected auto @property write () { return mutex.writer(); }
+    auto @property read  () { return mutex.reader(); }
+    auto @property write () { return mutex.writer(); }
 
     void pushQuad (ref stbtt_aligned_quad q) {
         positionData ~= [
