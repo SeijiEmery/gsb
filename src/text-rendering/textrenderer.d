@@ -10,6 +10,7 @@ import gsb.text.textshader;
 import gsb.text.font;
 import gsb.text.geometrybuffer;
 import gsb.text.fontatlas;
+import gsb.core.color;
 
 import std.format;
 import std.utf;
@@ -30,15 +31,88 @@ import derelict.opengl3.gl3;
 import dglsl;
 
 
+// Generalized text frontend
+class TextFragment {
+    // Double buffered so we can operate on (frontend ui code) and render
+    // (backend text renderer) simultaneously
+    struct State {
+        string text;
+        Font   font;
+        Color  color;
+        vec2   position;
+    }
+    private   State fstate; // frontend state
+    protected State bstate; // backend / renderer state
+    protected bool  dirtyState = true;
+    private bool dirtyBounds = true;
+    vec2   cachedBounds;
+
+    ulong id;
+    static private __gshared ulong _nextId = 0;
+
+    this (string text, Font font, Color color, vec2 position) {
+        fstate.text = text;
+        fstate.font = font;
+        fstate.color = color;
+        fstate.position = position;
+        id = _nextId++;
+        attach();
+    }
+    void attach  () { TextRenderer.instance.attachFragment(this); }
+    void detatch () { TextRenderer.instance.removeFragment(this); }
+    ~this () { detatch(); }
+
+    //int opCmp (TextFragment f) {
+    //    return uid == f.uid ? 0 :
+    //           uid < f.uid  ? -1 : 1;
+    //}
+
+    protected bool updateBackendState () {
+        if (dirtyState) {
+            synchronized { bstate = fstate; dirtyState = false; }
+            return true;
+        }
+        return false;
+    }
+    public void forceUpdate () {
+        synchronized { dirtyState = true; }
+    }
+
+    @property auto text () { return fstate.text; }
+    @property void text (string v) { 
+        synchronized { fstate.text = v; dirtyState = true; dirtyBounds = true; }
+    }
+    @property auto font () { return fstate.font; }
+    @property void font (Font v) {
+        synchronized { fstate.font = v; dirtyState = true; dirtyBounds = true; }
+    }
+    @property auto color () { return fstate.color; }
+    @property void color (Color v) {
+        synchronized { fstate.color = v; dirtyState = true; }
+    }
+    @property auto position () { return fstate.position; }
+    @property void position (vec2 v) {
+        synchronized { fstate.position = v; dirtyState = true; }
+    }
+    @property auto bounds () {
+        synchronized { return dirtyBounds ? cachedBounds : calcBounds(); }
+    }
+    private auto calcBounds () {
+        dirtyBounds = false;
+        return cachedBounds = fstate.font.calcPixelBounds(fstate.text);
+    }
+
+    protected int currentAtlas = -1;
+    protected int currentTextBuffer = -1;
+}
+
+
 // Shared singleton class accessed by lazy .instance
 class TextRenderer {
     mixin LowLockSingleton;
 
     auto textShader = new TextShader();
     auto componentList = new GraphicsComponentList();
-
-    //private struct PerFrameGraphicsState {}
-    //PerFrameGraphicsState[2] graphicsState;
 
     interface IGraphicsComponent {
         void render ();
@@ -95,6 +169,200 @@ class TextRenderer {
         return new GThreadHandle();
     }
 
+
+    //
+    // New API / rendering subsystem:
+    //
+
+    alias TextFragmentSet = RedBlackTree!(TextFragment, "a.id < b.id");
+
+    private TextFragmentSet fragments;
+    private TextFragment[]  deletedFragments;
+
+    void attachFragment (TextFragment fragment) {
+        fragments.insert(fragment);
+    }
+    void removeFragment (TextFragment fragment) {
+        if (fragment in fragments) {
+            fragments.remove(fragments.equalRange(fragment));
+            deletedFragments ~= fragment;
+        }
+    }
+    struct SharedAtlas {
+        PackedFontAtlas atlas;// = new PackedFontAtlas();
+        int refcount = 0;
+
+        static SharedAtlas create () {
+            SharedAtlas s;
+            s.atlas = new PackedFontAtlas();
+            return s;
+        }
+    }
+    private SharedAtlas[] atlases;
+    private size_t[string] atlasLookup;
+
+    struct SharedTGB {
+        TextGeometryBuffer buffer;// = new TextGeometryBuffer();
+        PackedFontAtlas    atlas = null;
+        bool dflag = false;
+        bool shouldRender = false;
+
+        static SharedTGB create () {
+            SharedTGB s;
+            s.buffer = new TextGeometryBuffer();
+            return s;
+        }
+    }
+    private SharedTGB[] buffers;
+    private size_t   [] freeBuffers;
+
+    private auto tmp_charset = new RedBlackTree!dchar();
+
+    // call from main thread
+    void updateFragments () {
+        TextFragment[] addList;
+        bool anyBufferChanges = false;
+
+        bool isVisible (TextFragment fragment) {
+            return true;
+        }
+
+        // process deletions, additions, etc
+        foreach (fragment; deletedFragments) {
+            atlases[fragment.currentAtlas].refcount--;
+            buffers[fragment.currentTextBuffer].dflag = true;
+            anyBufferChanges = true;
+        }
+        foreach (fragment; fragments) {
+            if (fragment.dirtyFontAttrib) {
+                if (fragment.currentAtlas > 0)
+                    atlases[fragment.currentAtlas].refcount--;
+                fragment.currentAtlas = -1;
+                assert(fragment.dirtyState);
+            }
+            if (fragment.dirtyState) {
+                if (fragment.currentTextBuffer >= 0)
+                    buffers[fragment.currentTextBuffer].dflag = true;
+                else
+                    addList ~= fragment;
+                anyBufferChanges = true;
+            }
+        }
+        if (anyBufferChanges) {
+            foreach (fragment; fragments) {
+                if (fragment.currentTextBuffer >= 0 && buffers[fragment.currentTextBuffer].dflag) {
+                    fragment.currentTextBuffer = -1;
+                    if (isVisible(fragment)) {
+                        addList ~= fragment;
+                    }
+                }
+            }
+            synchronized {
+                foreach (i; 0..buffers.length) {
+                    if (buffers[i].dflag) {
+                        buffers[i].dflag = false;
+                        buffers[i].shouldRender = false;
+                        freeBuffers ~= i;
+                        buffers[i].clear();
+                    }
+                }
+            }
+            assert(addList.length > 0 && freeBuffers.length > 0);
+
+            // update atlas + swap state
+            foreach (fragment; addList) {
+                // charset might have changed if text content changed, and it _definitely_ needs to be
+                // re-added if the font atlas changed
+                auto dirtyCharset = fragment.dirtyContent || fragment.currentAtlas == -1;
+
+                if (fragment.currentAtlas == -1) {
+                    auto fontid = format("%s:%d|%d|%d", fragment.font.name, 
+                        to!int(fragment.font.size), fragment.font.samples.x, fragment.font.samples.y);
+                    if (fontid !in atlasLookup) {
+                        fragment.currentAtlas = atlasLookup[fontid] = atlases.length;
+                        atlases ~= SharedAtlas.create();
+                        atlases[$-1].refcount++;
+                    } else {
+                        fragment.currentAtlas = atlasLookup[fontid];
+                        atlases[fragment.currentAtlas].refcount++;
+                    }
+                }
+                assert(fragment.currentAtlas >= 0 && fragment.currentAtlas < atlases.length);
+                auto atlas = atlases[fragment.currentAtlas];
+
+                // Resets dirty flags + updates bstate to fstate
+                fragment.swapState();
+
+                if (dirtyCharset) {
+                    tmp_charset.clear();
+                    foreach (chr; fragment.bstate.text.byDchar)
+                        tmp_charset.insert(chr);
+                    atlas.insertCharset(font, tmp_charset);
+                }
+            }
+
+            // write buffers
+            addList.sort!"a.currentAtlas";
+            int curAtlas = -1, curBuffer = -1;
+            foreach (fragment; addList) {
+                if (fragment.currentAtlas != curAtlas) {
+                    curAtlas = fragment.currentAtlas;
+                    if (freeBuffers.length > 0) {
+                        curBuffer = freeBuffers[$-1]; freeBuffers.length--;
+                    } else {
+                        buffers ~= SharedTGB.create();
+                        curBuffer = buffers.length-1;
+                    }
+                    fragment.currentTextBuffer = curBuffer;
+                    buffers[curBuffer].atlas = atlases[curAtlas];
+                }
+
+                vec2 layout = fragment.bstate.position;
+                auto lineHeight = font.lineHeight;
+                auto buffer = buffers[curBuffer].buffer;
+                foreach (line; fragment.bstate.text.splitter('\n')) {
+                    layout.x = 0; layout.y += lineHeight;
+                    foreach (quad; atlas.getQuads(font, line.byDchar, layout.x, layout.y, false)) {
+                        buffer.pushQuad(quad);
+                    }
+                    log.write("wrote line; cursor = %0.2f, %0.2f", layout.x, layout.y);
+                }
+                buffer.shouldRender = true;
+            }
+        }
+    }
+
+    private SharedTGB[] tmp_renderBuffers;
+
+    // call from graphics thread
+    void renderFragments () {
+        tmp_renderBuffers.length = 0;
+        synchronized {
+            foreach (buffer; buffers) {
+                if (buffer.shouldRender)
+                    tmp_renderBuffers ~= buffer;
+            }
+            if (tmp_renderBuffers.length > 0) {
+                tmp_renderBuffers.sort!"cast(size_t)&a.atlas";
+                textShader.bind();
+                PackedFontAtlas curAtlas = null;
+                foreach (rb; tmp_renderBuffers) {
+                    if (rb.atlas != curAtlas) {
+                        rb.atlas.update();
+                        rb.atlas.bind();
+                    }
+                    rb.buffer.update();
+                    rb.buffer.draw();
+                }
+            }
+        }
+    }
+
+
+    //
+    //  Old API / rendering subsystem:
+    //
+
     static void writeText (
         string text,
         Font font,
@@ -103,15 +371,15 @@ class TextRenderer {
         TextLayout layout,
         float screenScale = 1.0
     ) {
-        auto rbcharset = new RedBlackTree!dchar();
+        auto charset = new RedBlackTree!dchar();
         foreach (chr; byDchar(text))
             if (chr >= 0x20)
-                rbcharset.insert(chr);
+                charset.insert(chr);
 
         auto scale = font.getScale(screenScale);
         log.write("font scale = %f", scale);
 
-        atlas.insertCharset(font, rbcharset);
+        atlas.insertCharset(font, charset);
 
         synchronized (atlas.read) {
             synchronized (buffer.write) {
