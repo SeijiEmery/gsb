@@ -95,13 +95,12 @@ class TextRenderer {
         return new GThreadHandle();
     }
 
-
     static void writeText (
         string text,
         Font font,
         TextGeometryBuffer buffer,
         PackedFontAtlas atlas,
-        TextLayouter layouter,
+        TextLayout layout,
         float screenScale = 1.0
     ) {
         auto rbcharset = new RedBlackTree!dchar();
@@ -114,59 +113,23 @@ class TextRenderer {
 
         atlas.insertCharset(font, rbcharset);
 
-        layouter.lineAscent = font.getLineHeight(scale);
-
         synchronized (atlas.read) {
             synchronized (buffer.write) {
                 foreach (line; text.splitter('\n')) {
-                    layouter.x = 0; layouter.y += font.getLineHeight(scale);
-                    foreach (quad; atlas.getQuads(font, line.byDchar, layouter.x, layouter.y, false)) {
+                    layout.x = 0; layout.y += font.getLineHeight(scale);
+                    foreach (quad; atlas.getQuads(font, line.byDchar, layout.x, layout.y, false)) {
                         buffer.pushQuad(quad);
                     }
-                    log.write("wrote line; cursor = %0.2f, %0.2f", layouter.x, layouter.y);
+                    log.write("wrote line; cursor = %0.2f, %0.2f", layout.x, layout.y);
                 }
-                //stbtt_aligned_quad q;
-                //foreach (chr; byDchar(text)) {
-                //    if (chr >= 0x20) {
-                //        layouter.writeChar(chrLookup[chr], buffer, atlas);
-                //    } else if (chr == '\n') {
-                //        layouter.writeEndl();
-                //    } else {
-                //        log.write("character %d not supported (%s)", fullyQualifiedName!(writeText));
-                //    }
-                //}
             }
         }
     }
 
-    static class TextLayouter {
+    static class TextLayout {
         float x = 0, y = 0;
-        float _lineAscent = 0.0;
-        mat4  _transform  = mat4.identity;
-
-        public @property float lineAscent () { return _lineAscent; }
-        public @property void  lineAscent (float v) { 
-            y = y - _lineAscent + v; // hack...
-            _lineAscent = v; log.write("Set lineAscent %f", v);
-        }
-        public @property mat4  transform  () { return _transform; }
-
-        this () {
-            log.write("creating Textlayouter");
-        }
-
-        //void writeChar (size_t charIndex, TextGeometryBuffer buffer, FrontendPackedFontAtlas atlas) {
-        //    stbtt_aligned_quad q;
-        //    atlas.getQuad(charIndex, &q, &x, &y, true);
-        //    buffer.pushQuad(q);
-        //}
-        //void writeEndl () {
-        //    x = 0;
-        //    y += _lineAscent;
-        //}
         void reset () {
             x = y = 0;
-            _lineAscent = 0;
         }
     }
 
@@ -174,7 +137,7 @@ class TextRenderer {
         Font font;
         TextGeometryBuffer textBuffer, testQuad;
         PackedFontAtlas packedAtlas;// = new FrontendPackedFontAtlas();
-        TextLayouter layouter;//   = new BasicLayouter();
+        TextLayout layouter;//   = new BasicLayouter();
         GraphicsBackend graphicsBackend;
         vec2 screenScaleFactor;
 
@@ -200,7 +163,7 @@ class TextRenderer {
 
             textBuffer  = new TextGeometryBuffer();
             packedAtlas = new PackedFontAtlas();
-            layouter    = new TextLayouter();
+            layouter    = new TextLayout();
             testQuad    = new TextGeometryBuffer();
 
             stbtt_aligned_quad q;

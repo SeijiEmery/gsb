@@ -9,6 +9,7 @@ import stb.truetype;
 import std.format;
 import std.container.rbtree;
 import std.range.primitives;
+import std.array;
 import core.sync.rwmutex;
 import Derelict.opengl3.gl3;
 import gsb.glutils;
@@ -72,6 +73,37 @@ class PackedFontAtlas {
 
             log.write("Packed %d characters into font atlas; font = '%s', charset = '%s'", toInsert.length, index, toInsert);
         }
+    }
+    void repack () {
+        synchronized (write) {
+            log.write("Repacking FontAtlas");
+            foreach (kv; charLookup.byKeyValue()) {
+                auto parts = kv.key.split(":");
+                auto font = new Font(parts[0], to!int(parts[1]));
+                log.write("Recreating font: '%s' = '%s', %d", kv.key, font.name, to!int(font.size));
+                // Note: creating a 'new' font is cheap since FontCache caches everything in the backend;
+                // new Font("foo", 16), new Font("foo", 16), and new Font("foo", 32) all point to the same
+                // shared FontData, and the backing truetype files are loaded lazily + cached
+
+                // hmm... we can now rebuild the font atlas easily enough (we have the font data + size,
+                // and the charset + indices are in kv.value.keys() / kv.value.values(), respectively),
+                // but we'll _also_ need to rebuild all the dependent geometry buffers so the uvs are 
+                // correct... I'll have to get back to this later.
+
+                throw new Exception("PackedFontAtlas dynamic repacking is not yet implemented!");
+            }
+        }
+    }
+    void setOversampling (vec2i value) {
+        if (!bitmapData)
+            bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
+        else
+            stbtt_PackEnd(&packContext);
+        if (!stbtt_PackBegin(&packContext, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
+            throw new ResourceError("stbtt_PackBegin failed");
+        }
+        stbtt_PackSetOversampling(&packContext, value.x, value.y);
+        repack();
     }
 
     auto getQuads (Range)(Font font, Range text, ref float layoutX, ref float layoutY, bool alignToInteger = false) if (is(ElementType!Range == dchar)) 
