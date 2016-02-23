@@ -139,123 +139,6 @@ class TextRenderer {
         }
     }
 
-    static uint BITMAP_WIDTH = 1024, BITMAP_HEIGHT = 1024, BITMAP_CHANNELS = 1;
-
-    // Lives on main / worker thread
-    static class FrontendPackedFontAtlas {
-        ubyte[] bitmapData;
-        stbtt_pack_context pack;
-        stbtt_packedchar[] packedChars;
-        size_t[string] packedCharLookup;
-
-        bool needsUpdate = false;
-
-        ReadWriteMutex rwMutex;
-        public auto @property read () { return rwMutex.reader(); }
-        public auto @property write () { return rwMutex.writer(); }
-
-        private void lazyInit () {
-            if (!bitmapData) {
-                log.write("Initializing PackedFontAtlas frontend data");
-                bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
-                if (!stbtt_PackBegin(&pack, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
-                    throw new ResourceError("stbtt_PackBegin failed");
-                }
-                stbtt_PackSetOversampling(&pack, 1, 1);
-            }
-        }
-        public void deleteResources () {
-            if (bitmapData) {
-                log.write("Cleaning up PackedFontAtlas frontend data");
-                stbtt_PackEnd(&pack);
-                bitmapData = null;
-            }
-        }
-        ~this () {
-            deleteResources();
-        }
-
-        auto insertAndGetIndex (dchar chr, string fontname, float screenScale, Font font) {
-            lazyInit();
-            needsUpdate = true;
-
-            auto hashedName = format("%s.%d:%c", fontname, to!int(font.getSize(screenScale)), chr);
-            if (hashedName !in packedCharLookup) {
-                //log.write("PackedFontAtlas frontend: Adding %s", hashedName);
-
-                //if (!stbtt_PackBegin(&pack, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
-                //    throw new ResourceError("stbtt_PackBegin failed");
-                //}
-                //stbtt_PackSetOversampling(&pack, 1, 1);
-
-                packedChars.length += 1;
-
-                stbtt_pack_range r;
-                r.font_size = font.getSize(screenScale);
-                r.first_unicode_codepoint_in_range = 0;
-                r.array_of_unicode_codepoints = cast(int*)&chr;
-                r.num_chars = 1;
-                r.chardata_for_range = &packedChars[$-1];
-                stbtt_PackFontRanges(&pack, font.data.contents.ptr, 0, &r, 1);
-
-                //stbtt_PackFontRange(&pack, font.fontData.contents.ptr, font.fontData.index, fontScale, 
-                    //chr, 1, &packedChars[$-1]);
-
-                //stbtt_PackEnd(&pack);
-                return packedCharLookup[hashedName] = packedChars.length -1;
-            }
-            return packedCharLookup[hashedName];
-        }
-        void getQuad (size_t index, stbtt_aligned_quad* q, float* x, float* y, bool align_to_integer) {
-            stbtt_GetPackedQuad(packedChars.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, cast(int)index, x, y, q, align_to_integer);
-        }
-    }
-
-    // Lives on graphics thread
-    static class BackendPackedFontAtlas {
-        FrontendPackedFontAtlas target = null;
-        GLuint texture = 0;
-
-        void bindTexture () {
-            if (target && target.needsUpdate) {
-                lazyInitResources();
-                //synchronized (target.read()) {
-                    checked_glActiveTexture(GL_TEXTURE0);
-                    checked_glBindTexture(GL_TEXTURE_2D, texture);
-                    checked_glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, target.bitmapData.ptr);
-                    checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                //}
-                //synchronized (target.write()) {
-                    target.needsUpdate = false;
-                //}
-            }
-            if (texture != 0) {
-                //log.write("binding texture");
-                checked_glActiveTexture(GL_TEXTURE0);
-                checked_glBindTexture(GL_TEXTURE_2D, texture);
-            } else {
-                log.write("null texture!");
-            }
-        }
-        this () {
-            log.write("Creating PackedFontAtlas graphics backend");
-        }
-        private void lazyInitResources () {
-            if (!texture) {
-                log.write("Initializing PackedFontAtlas graphics resources");
-                checked_glGenTextures(1, &texture);
-            }
-        }
-        void deleteResources () {
-            if (texture) {
-                log.write("Cleaning up PackedFontAtlas graphics resources");
-                checked_glDeleteTextures(1, &texture);
-                texture = 0;
-            }
-        }
-    }
-
     static class TextLayouter {
         float x = 0, y = 0;
         float _lineAscent = 0.0;
@@ -303,17 +186,17 @@ class TextRenderer {
             log.write("Creating new TextElement");
             this.font = new Font(fontName, size);
 
-            screenScaleFactor = g_mainWindow.screenScale;
-            scaleChangedSlot = 
-            WindowEvents.instance.onScreenScaleChanged.connect((float x, float y) {
-                log.write("recalculating buffers for new screen scale %0.2f", y);
-                log.write("num chars = %d (expected tris = %d)", cachedText.length, cachedText.length * 2);
-                screenScaleFactor.x = x; screenScaleFactor.y = y;
-                layouter.reset();
-                textBuffer.clear();
-                writeText(cachedText, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
-                    //screenScaleFactor.y == 1.0 ? screenScaleFactor.y : screenScaleFactor.y * 0.75);
-            });
+            screenScaleFactor = 1.0;// g_mainWindow.screenScale;
+            //scaleChangedSlot = 
+            //WindowEvents.instance.onScreenScaleChanged.connect((float x, float y) {
+            //    log.write("recalculating buffers for new screen scale %0.2f", y);
+            //    log.write("num chars = %d (expected tris = %d)", cachedText.length, cachedText.length * 2);
+            //    screenScaleFactor.x = x; screenScaleFactor.y = y;
+            //    layouter.reset();
+            //    textBuffer.clear();
+            //    writeText(cachedText, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
+            //        //screenScaleFactor.y == 1.0 ? screenScaleFactor.y : screenScaleFactor.y * 0.75);
+            //});
 
             textBuffer  = new TextGeometryBuffer();
             packedAtlas = new PackedFontAtlas();
@@ -369,8 +252,8 @@ class TextRenderer {
                 textShader.bind();
                 packedAtlasBackend.bindTexture();
 
-                auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
-                auto inv_scale_y = 1.0 / g_mainWindow.pixelDimensions.y;
+                auto inv_scale_x = 1.0 / g_mainWindow.screenDimensions.x;
+                auto inv_scale_y = 1.0 / g_mainWindow.screenDimensions.y;
                 auto transform = mat4.identity()
                     .scale(inv_scale_x, inv_scale_y, 1.0)
                     .translate(-1.0, 1.0, 0.0);
@@ -389,51 +272,6 @@ class TextRenderer {
     auto createTextElement (string fontName, float fontSize) {
         return new TextElement(fontName, fontSize);
     }
-
-
-    //enum RelPos {
-    //    TOP_LEFT
-    //}
-
-    //auto createTextElement () {
-    //    log.write("Created text element");
-    //    return new TextElementHandle();
-    //}
-
-    //static class TextElementHandle {
-    //    auto style (string name) {
-    //        log.write("Set style '%s'", name);
-    //        return this;
-    //    }
-    //    auto fontSize (double size) {
-    //        log.write("Set font size '%0.2f'", size);
-    //        return this;
-    //    }
-    //    auto position (RelPos rel, float x, float y) {
-    //        log.write("Set position to %0.2f, %0.2f", x, y);
-    //        return this;
-    //    }
-    //    auto bounds (float x, float y) {
-    //        log.write("Set bounds %0.2f, %0.2f", x, y);
-    //        return this;
-    //    }
-    //    auto color (string colorHash) {
-    //        log.write("Set color %s", colorHash);
-    //        return this;
-    //    }
-    //    auto scroll (bool scrollEnabled) {
-    //        log.write("Set scrolling = %s", scrollEnabled ? "true" : "false");
-    //        return this;
-    //    }
-    //    auto append (string text) {
-    //        log.write("Appending text ");
-    //        return this;
-    //    }
-    //}
-
-
-
-
 
 
 
