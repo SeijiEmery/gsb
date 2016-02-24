@@ -19,6 +19,7 @@ import std.container.rbtree;
 import std.algorithm.setops;
 import std.algorithm.mutation : move, swap;
 import std.algorithm.iteration;
+import std.algorithm.sorting;
 import std.array;
 import std.traits;
 import std.typecons;
@@ -44,6 +45,8 @@ class TextFragment {
     private   State fstate; // frontend state
     protected State bstate; // backend / renderer state
     protected bool  dirtyState = true;
+    protected bool  dirtyFontAttrib = true;
+    protected bool  dirtyContent    = true;
     private bool dirtyBounds = true;
     vec2   cachedBounds;
 
@@ -62,17 +65,19 @@ class TextFragment {
     void detatch () { TextRenderer.instance.removeFragment(this); }
     ~this () { detatch(); }
 
+    void toString (scope void delegate (const(char)[]) sink) const {
+        sink(format("TextFragment %d", id));
+    }
+
     //int opCmp (TextFragment f) {
     //    return uid == f.uid ? 0 :
     //           uid < f.uid  ? -1 : 1;
     //}
 
-    protected bool updateBackendState () {
+    protected void swapState () {
         if (dirtyState) {
-            synchronized { bstate = fstate; dirtyState = false; }
-            return true;
+            synchronized { bstate = fstate; dirtyState = dirtyContent = dirtyFontAttrib = false; }
         }
-        return false;
     }
     public void forceUpdate () {
         synchronized { dirtyState = true; }
@@ -80,11 +85,11 @@ class TextFragment {
 
     @property auto text () { return fstate.text; }
     @property void text (string v) { 
-        synchronized { fstate.text = v; dirtyState = true; dirtyBounds = true; }
+        synchronized { fstate.text = v; dirtyState = true; dirtyBounds = true; dirtyContent = true; }
     }
     @property auto font () { return fstate.font; }
     @property void font (Font v) {
-        synchronized { fstate.font = v; dirtyState = true; dirtyBounds = true; }
+        synchronized { fstate.font = v; dirtyState = true; dirtyBounds = true; dirtyFontAttrib = true; }
     }
     @property auto color () { return fstate.color; }
     @property void color (Color v) {
@@ -178,18 +183,27 @@ class TextRenderer {
 
     private TextFragmentSet fragments;
     private TextFragment[]  deletedFragments;
+    this () {
+        fragments = new TextFragmentSet();
+    }
 
     void attachFragment (TextFragment fragment) {
+        log.write("Attaching %s", fragment);
         fragments.insert(fragment);
     }
     void removeFragment (TextFragment fragment) {
         if (fragment in fragments) {
+            log.write("Removing %s", fragment);
             fragments.remove(fragments.equalRange(fragment));
             deletedFragments ~= fragment;
+        } else {
+            log.write("Already removed: %s!", fragment);
         }
     }
     struct SharedAtlas {
         PackedFontAtlas atlas;// = new PackedFontAtlas();
+        PackedFontAtlas.GraphicsBackend gbackend;
+
         int refcount = 0;
 
         static SharedAtlas create () {
@@ -232,15 +246,19 @@ class TextRenderer {
             atlases[fragment.currentAtlas].refcount--;
             buffers[fragment.currentTextBuffer].dflag = true;
             anyBufferChanges = true;
+            log.write("Removed fragment %d (buffer %d, atlas %d)",
+                fragment.id, fragment.currentTextBuffer, fragment.currentAtlas);
         }
         foreach (fragment; fragments) {
             if (fragment.dirtyFontAttrib) {
+                log.write("Fragment %d needs new atlas (was %d)", fragment.id, fragment.currentAtlas);
                 if (fragment.currentAtlas > 0)
                     atlases[fragment.currentAtlas].refcount--;
                 fragment.currentAtlas = -1;
                 assert(fragment.dirtyState);
             }
             if (fragment.dirtyState) {
+                log.write("Fragment %d needs new buffer (was %d)", fragment.id, fragment.currentTextBuffer);
                 if (fragment.currentTextBuffer >= 0)
                     buffers[fragment.currentTextBuffer].dflag = true;
                 else
@@ -251,23 +269,27 @@ class TextRenderer {
         if (anyBufferChanges) {
             foreach (fragment; fragments) {
                 if (fragment.currentTextBuffer >= 0 && buffers[fragment.currentTextBuffer].dflag) {
+                    log.write("Fragment %d changing buffer because buffer contents changed (%d)",
+                        fragment.id, fragment.currentTextBuffer);
                     fragment.currentTextBuffer = -1;
                     if (isVisible(fragment)) {
                         addList ~= fragment;
                     }
                 }
             }
+
+            log.write("-- Rebuilding %d fragments --", addList.length);
             synchronized {
                 foreach (i; 0..buffers.length) {
                     if (buffers[i].dflag) {
+                        log.write("Releasing buffer %d", i);
                         buffers[i].dflag = false;
                         buffers[i].shouldRender = false;
                         freeBuffers ~= i;
-                        buffers[i].clear();
+                        buffers[i].buffer.clear();
                     }
                 }
             }
-            assert(addList.length > 0 && freeBuffers.length > 0);
 
             // update atlas + swap state
             foreach (fragment; addList) {
@@ -276,63 +298,76 @@ class TextRenderer {
                 auto dirtyCharset = fragment.dirtyContent || fragment.currentAtlas == -1;
 
                 if (fragment.currentAtlas == -1) {
-                    auto fontid = format("%s:%d|%d|%d", fragment.font.name, 
-                        to!int(fragment.font.size), fragment.font.samples.x, fragment.font.samples.y);
+                    auto fontid = fragment.font.stringId;
                     if (fontid !in atlasLookup) {
-                        fragment.currentAtlas = atlasLookup[fontid] = atlases.length;
+                        log.write("Creating new atlas %d", atlases.length);
+                        atlasLookup[fontid] = atlases.length;
+                        fragment.currentAtlas = cast(int)atlases.length;
                         atlases ~= SharedAtlas.create();
                         atlases[$-1].refcount++;
                     } else {
-                        fragment.currentAtlas = atlasLookup[fontid];
+                        fragment.currentAtlas = cast(int)atlasLookup[fontid];
                         atlases[fragment.currentAtlas].refcount++;
                     }
+                    log.write("Fragment %d set atlas %d", fragment.id, fragment.currentAtlas);
                 }
                 assert(fragment.currentAtlas >= 0 && fragment.currentAtlas < atlases.length);
-                auto atlas = atlases[fragment.currentAtlas];
+                auto sharedAtlas = atlases[fragment.currentAtlas];
 
                 // Resets dirty flags + updates bstate to fstate
                 fragment.swapState();
 
                 if (dirtyCharset) {
+                    log.write("Fragment %d re-inserting charset into atlas %d", fragment.id, fragment.currentAtlas);
                     tmp_charset.clear();
                     foreach (chr; fragment.bstate.text.byDchar)
-                        tmp_charset.insert(chr);
-                    atlas.insertCharset(font, tmp_charset);
+                        if (chr >= 0x20)
+                            tmp_charset.insert(chr);
+                    sharedAtlas.atlas.insertCharset(fragment.font, tmp_charset);
                 }
             }
 
             // write buffers
-            addList.sort!"a.currentAtlas";
+            addList.sort!((a,b) => a.currentAtlas < b.currentAtlas);
             int curAtlas = -1, curBuffer = -1;
             foreach (fragment; addList) {
+                log.write("Fragment %d writing to buffer (atlas %d)", fragment.id, fragment.currentAtlas);
                 if (fragment.currentAtlas != curAtlas) {
+                    log.write("atlas changed to %d; fetching new buffer", fragment.currentAtlas);
                     curAtlas = fragment.currentAtlas;
                     if (freeBuffers.length > 0) {
-                        curBuffer = freeBuffers[$-1]; freeBuffers.length--;
+                        log.write("Recycling buffer %d", freeBuffers[$-1]);
+                        curBuffer = cast(int)freeBuffers[$-1]; freeBuffers.length--;
                     } else {
+                        log.write("Creating new buffer %d", buffers.length);
                         buffers ~= SharedTGB.create();
-                        curBuffer = buffers.length-1;
+                        curBuffer = cast(int)buffers.length-1;
                     }
                     fragment.currentTextBuffer = curBuffer;
-                    buffers[curBuffer].atlas = atlases[curAtlas];
+                    buffers[curBuffer].atlas = atlases[curAtlas].atlas;
                 }
 
                 vec2 layout = fragment.bstate.position;
-                auto lineHeight = font.lineHeight;
+                auto lineHeight = fragment.font.lineHeight, x0 = fragment.bstate.position.x;
                 auto buffer = buffers[curBuffer].buffer;
+                auto atlas  = atlases[curAtlas].atlas;
                 foreach (line; fragment.bstate.text.splitter('\n')) {
-                    layout.x = 0; layout.y += lineHeight;
-                    foreach (quad; atlas.getQuads(font, line.byDchar, layout.x, layout.y, false)) {
+                    layout.x = x0; layout.y += lineHeight;
+                    foreach (quad; atlas.getQuads(fragment.font, line.byDchar, layout.x, layout.y, false)) {
                         buffer.pushQuad(quad);
                     }
-                    log.write("wrote line; cursor = %0.2f, %0.2f", layout.x, layout.y);
+                    log.write("wrote line; cursor = %0.2f, %0.2f (atlas %d, buffer %d)", 
+                        layout.x, layout.y, curAtlas, curBuffer);
                 }
-                buffer.shouldRender = true;
+                buffers[curBuffer].shouldRender = true;
             }
+            log.write("-- Finished rebuilding fragments --");
         }
     }
 
     private SharedTGB[] tmp_renderBuffers;
+    private uint frameCount = 0;
+    private immutable uint logMessageAtFrameCount = 10; // log every N frames
 
     // call from graphics thread
     void renderFragments () {
@@ -342,17 +377,36 @@ class TextRenderer {
                 if (buffer.shouldRender)
                     tmp_renderBuffers ~= buffer;
             }
+            void everyNFrame (lazy void expr) {
+                if (frameCount++ % logMessageAtFrameCount == 0)
+                    expr();
+            }
+
             if (tmp_renderBuffers.length > 0) {
-                tmp_renderBuffers.sort!"cast(size_t)&a.atlas";
+                everyNFrame(log.write("Rendering %d text buffers", tmp_renderBuffers.length));
+                tmp_renderBuffers.sort!((SharedTGB a, SharedTGB b) => 
+                    cast(size_t)cast(void*)a.atlas < cast(size_t)cast(void*)b.atlas);
+
                 textShader.bind();
-                PackedFontAtlas curAtlas = null;
+
+                auto inv_scale_x = 1.0 / g_mainWindow.screenDimensions.x;
+                auto inv_scale_y = 1.0 / g_mainWindow.screenDimensions.y;
+                auto transform = mat4.identity()
+                    .scale(inv_scale_x, inv_scale_y, 1.0)
+                    .translate(-1.0, 1.0, 0.0);
+                transform.transpose();
+                textShader.transform = transform;
+
+                PackedFontAtlas curAtlas = null; int i = 0;
                 foreach (rb; tmp_renderBuffers) {
+                    everyNFrame(log.write("Rendering buffer %d", i++));
                     if (rb.atlas != curAtlas) {
-                        rb.atlas.update();
-                        rb.atlas.bind();
+                        everyNFrame(log.write("Switching atlas"));
+                        rb.atlas.backend.update();
+                        rb.atlas.backend.bindTexture();
                     }
-                    rb.buffer.update();
-                    rb.buffer.draw();
+                    rb.buffer.backend.update();
+                    rb.buffer.backend.draw();
                 }
             }
         }

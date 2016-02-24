@@ -15,6 +15,7 @@ import std.algorithm.iteration: map;
 import std.array;
 import std.math;
 import std.utf;
+import std.regex;
 
 public void registerDefaultFonts () {
     version(OSX) {
@@ -33,9 +34,9 @@ public void registerDefaultFonts () {
         FontLoader.instance.onFontFileLoaded.connect((string filename) {
             log.write("Loaded font file '%s'", filename);
         });
-        FontLoader.instance.onFontLoaded.connect((string name, FontData fontData) {
+        FontLoader.instance.onFontLoaded.connect((string filename, FontData fontData) {
             log.write("Loaded font '%s', %d (filesize = %d)", 
-                name, fontData.fontIndex, fontData.contents.length);
+                filename, fontData.fontIndex, fontData.contents.length);
         });
     }
 }
@@ -44,12 +45,34 @@ class Font {
     string   _name;
     float    _size;
     FontData _data;
+    vec2i    oversampling;
 
-    this (string name, float fontSize = 0) {
+    this (string name, float fontSize = 0, vec2i oversampling = vec2i(2, 2)) {
         this._name = name;
         this._size = fontSize;
         this._data = FontCache.getFontData(name);
+        this.oversampling = oversampling;
     }
+
+    @property auto stringId () {
+        return format("%s:%d|%d,%d", _name, to!int(_size), oversampling.x, oversampling.y);
+    }
+    static auto fromStringId (string fontid) {
+        static auto ctr = ctRegex!"(\\w+):(-?\\d+)(?:|(-?\\d+),(-?\\d+))?";
+        auto c = matchFirst(fontid, ctr);
+        if (!c.empty && c.length == 4)
+            return new Font(c[1], to!float(c[2]), vec2i(to!int(c[3]), to!int(c[4])));
+        if (!c.empty && c.length == 2)
+            return new Font(c[1], to!float(c[2]));
+        throw new Exception(format("Invalid font string: '%s'", fontid));
+    }
+
+    unittest {
+        assert(new Font("arial", 30, vec2i(4, 4)).stringId == "arial:30|4,4");
+        assert(Font.fromStringId("arial:30|4,4").stringId == "arial:30|4,4");
+        assert(Font.fromStringId("arial:30").stringId == new Font("arial", 30).stringId);
+    }
+
 
     @property float size () { return _size; }
     @property void size (float size) {
@@ -59,6 +82,9 @@ class Font {
     }
     @property auto data () { return _data; }
     @property auto name () { return _name; }
+    @property auto lineHeight () {
+        return _data.lineHeight;
+    }
 
 
     @property int pixelSize () { return cast(int)_size; }
@@ -116,6 +142,8 @@ class FontData {
     string         fontPath;
     int            fontIndex;
 
+    protected this () {}
+
     private float cachedLineHeight;
     @property float lineHeight () {
         if (isNaN(cachedLineHeight)) {
@@ -141,9 +169,6 @@ struct FontLoader {
     //private static __gshared auto mutex = new Mutex();
 
     static struct Instance {
-        struct RawFontData {
-            ubyte[] contents;
-        }
         alias FileData = ubyte[];
 
         private FileData[string] loadedFiles;
@@ -153,7 +178,7 @@ struct FontLoader {
         Signal!(string,FontData) onFontLoaded;
 
         FontData getFontData (string fontPath, int fontIndex) {
-            auto index = format("%s:%d", fontPath, fontIndex);
+            auto index = format("%s,%d", fontPath, fontIndex);
             if (index in loadedFonts) {
                 return loadedFonts[index];
             }
@@ -200,7 +225,7 @@ struct FontRegistry {
 
         public void registerFont (string fontName, string fontPath, int fontIndex = 0) {
             if (fontName in fontPaths && (fontPaths[fontName].path != fontPath || fontPaths[fontName].index != fontIndex))
-                throw new ResourceError("FontRegistry: overriding font lookup for '%s': '%s:%d' with '%s:%d'", 
+                throw new ResourceError("FontRegistry: overriding font lookup for '%s': '%s,%d' with '%s,%d'", 
                     fontName, fontPaths[fontName].path, fontPaths[fontName].index, fontPath, fontIndex);
             fontPaths[fontName] = FontId(fontPath, fontIndex);
         }

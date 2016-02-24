@@ -19,6 +19,7 @@ import gsb.text.font;
 import gsb.text.textrenderer;
 import gsb.triangles_test;
 import gsb.text.textrendertest;
+import gsb.core.color;
 
 import std.datetime;
 
@@ -117,7 +118,8 @@ void graphicsThread (Tid mainThreadId) {
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 				//utfTest.render();
-				textRenderer.render();
+				//textRenderer.render();
+				TextRenderer.instance.renderFragments();
 
 				glfwSwapBuffers(g_mainWindow.handle);
 				checkGlErrors();
@@ -162,8 +164,14 @@ void mainThread (Tid graphicsThreadId) {
 	//auto font = new Font("arial", 40);
 	//auto elem = new TextFragment("Hello World!", font, Color("#ffbf9d"), vec2(200, 200));
 
-	auto text = TextRenderer.instance.createTextElement("menlo", 32);
-	text.append("Hello world!\nü@asdlfj;\n");
+	//auto text = TextRenderer.instance.createTextElement("menlo", 32);
+	//text.append("Hello world!\nü@asdlfj;\n");
+
+	auto text2 = new TextFragment(
+		"Hello world!\nü@asdlfj;\n",
+		new Font("menlo", 32),
+		Color("#ffaaff"),
+		vec2(0,0));
 
 	//auto text = TextRenderer.instance.createTextElement()
 	//	.style("console")
@@ -174,8 +182,8 @@ void mainThread (Tid graphicsThreadId) {
 	//	.scroll(true);
 
 	//text.append("Hello World!");
-	auto curLine = g_mainLog.lines.length;
-	text.append(join(g_mainLog.lines[0..curLine], "\n"));
+	//auto curLine = g_mainLog.lines.length;
+	//text.append(join(g_mainLog.lines[0..curLine], "\n"));
 
 	//taskPool.put(task!loadFonts());
 	//log.write("parallelism -- cpus = %u", totalCPUs);
@@ -200,6 +208,7 @@ void mainThread (Tid graphicsThreadId) {
 
 		glfwPollEvents();
 		WindowEvents.instance.updateFromMainThread();
+		TextRenderer.instance.updateFragments();
 
 		//if (glStateInvalidated) {
 		//	log.write("Invalidating gl state!");

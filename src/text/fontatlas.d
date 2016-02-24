@@ -27,6 +27,7 @@ class PackedFontAtlas {
 
     private ubyte[] bitmapData = null;
     private bool dirtyTexture = false;
+    private bool shouldRelease = false;
     private ReadWriteMutex mutex;
 
     this () {
@@ -35,8 +36,15 @@ class PackedFontAtlas {
     @property auto read () { return mutex.reader(); }
     @property auto write () { return mutex.writer(); }
 
+    private GraphicsBackend _backend = null;
+    @property auto backend () {
+        if (!_backend)
+            _backend = new GraphicsBackend();
+        return _backend;
+    }
+
     void insertCharset (Range)(Font font, Range charset) if (is(ElementType!Range == dchar)) {
-        auto index = format("%s:%d", font.name, to!int(font.size));
+        auto index = font.stringId;
 
         dchar[] toInsert;
         if (index !in charLookup) {
@@ -51,6 +59,7 @@ class PackedFontAtlas {
             }
         }
         if (toInsert.length) {
+            stbtt_PackSetOversampling(&packContext, font.oversampling.x, font.oversampling.y);
             synchronized (write) {
                 lazyInit();
 
@@ -94,21 +103,21 @@ class PackedFontAtlas {
             }
         }
     }
-    void setOversampling (vec2i value) {
-        if (!bitmapData)
-            bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
-        else
-            stbtt_PackEnd(&packContext);
-        if (!stbtt_PackBegin(&packContext, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
-            throw new ResourceError("stbtt_PackBegin failed");
-        }
-        stbtt_PackSetOversampling(&packContext, value.x, value.y);
-        repack();
-    }
+    //void setOversampling (vec2i value) {
+    //    if (!bitmapData)
+    //        bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
+    //    else
+    //        stbtt_PackEnd(&packContext);
+    //    if (!stbtt_PackBegin(&packContext, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
+    //        throw new ResourceError("stbtt_PackBegin failed");
+    //    }
+    //    stbtt_PackSetOversampling(&packContext, value.x, value.y);
+    //    repack();
+    //}
 
     auto getQuads (Range)(Font font, Range text, ref float layoutX, ref float layoutY, bool alignToInteger = false) if (is(ElementType!Range == dchar)) 
     {
-        auto index = format("%s:%d", font.name, to!int(font.size));
+        auto index = font.stringId;
         if (index !in charLookup)
             throw new ResourceError("PackedFontAtlas font '%s' has not been packed! (does contain %s)",
                 index, charLookup.byKey.map!((a) => format("'%s'", a)).join(", "));
@@ -137,6 +146,7 @@ class PackedFontAtlas {
         }
     }
     void releaseResources () {
+        shouldRelease = true;
         if (bitmapData) {
             log.write("PackedFontAtlas: releasing resources!");
             stbtt_PackEnd(&packContext);
@@ -152,13 +162,16 @@ class PackedFontAtlas {
 
         void update () {
             synchronized (read) {
-                if (dirtyTexture) {
+                if (shouldRelease) {
+                    releaseResources();
+                    dirtyTexture = false;
+                } else if (dirtyTexture) {
                     dirtyTexture = false;
                     if (!texture) {
-                        log.write("Creating texture");
+                        log.write("PackedFontAtlas.GraphicsBackend: creating texture");
                         checked_glGenTextures(1, &texture);
                     }
-                    log.write("Uploading PackedFontAtlas bitmap");
+                    log.write("PackedFontAtlas.GraphicsBackend: uploading bitmap data");
                     checked_glActiveTexture(GL_TEXTURE0);
                     checked_glBindTexture(GL_TEXTURE_2D, texture);
                     checked_glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, bitmapData.ptr);
@@ -178,12 +191,11 @@ class PackedFontAtlas {
         }
         void releaseResources () {
             if (texture) {
+                log.write("PackedFontAtlas.GraphicsBackend: releasing texture");
                 checked_glDeleteTextures(1, &texture);
                 texture = 0;
             }
         }
-
-
         ~this () {
             releaseResources();
         }

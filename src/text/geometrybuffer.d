@@ -18,6 +18,7 @@ class TextGeometryBuffer {
     float[] colorData;
     private bool needsUpdate = false;
     private bool shouldRelease = false;
+
     ReadWriteMutex mutex;
 
     this () {
@@ -25,6 +26,13 @@ class TextGeometryBuffer {
     }
     auto @property read  () { return mutex.reader(); }
     auto @property write () { return mutex.writer(); }
+
+    private GraphicsBackend _backend = null;
+    @property auto backend () {
+        if (!_backend)
+            _backend = new GraphicsBackend();
+        return _backend;
+    }
 
     void pushQuad (ref stbtt_aligned_quad q) {
         positionData ~= [
@@ -75,6 +83,7 @@ class TextGeometryBuffer {
                     if (numQuadTriangles != numUvTriangles)
                         log.write("WARNING: TextGeometryBuffer has mismatching triangle count: %s, %s", numQuadTriangles, numUvTriangles);
                     numTriangles = numQuadTriangles;
+                    log.write("TextGeometryBuffer.GraphicsBackend: set triangles = %d", numTriangles);
                     if (numTriangles > 0) {
                         rebufferData();
                     }
@@ -83,6 +92,8 @@ class TextGeometryBuffer {
         }
         private void rebufferData () {
             if (!vao) {
+                log.write("TextGeometryBuffer.GraphicsBackend: creating buffers");
+                log.write("TextGeometryBuffer.GraphicsBackend: buffering data");
                 checked_glGenVertexArrays(1, &vao);
                 checked_glGenBuffers(3, buffers.ptr);
 
@@ -100,6 +111,7 @@ class TextGeometryBuffer {
 
                 checked_glBindVertexArray(0);
             } else {
+                log.write("TextGeometryBuffer.GraphicsBackend: rebuffering data");
                 checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
                 checked_glBufferData(GL_ARRAY_BUFFER, positionData.length * 4, positionData.ptr, GL_DYNAMIC_DRAW);
 
@@ -110,12 +122,14 @@ class TextGeometryBuffer {
 
         override void draw () {
             if (vao && numTriangles > 0) {
+                log.write("TextGeometryBuffer.GraphicsBackend: drawing %d triangles", numTriangles);
                 checked_glBindVertexArray(vao);
                 checked_glDrawArrays(GL_TRIANGLES, 0, numTriangles * 3);
             }
         }
         override void releaseResources () {
             if (vao) {
+                log.write("TextGeometryBuffer.GraphicsBackend: releasing resources (had %d triangles)", numTriangles);
                 checked_glDeleteVertexArrays(1, &vao);
                 checked_glDeleteBuffers(3, buffers.ptr);
                 vao = 0;
