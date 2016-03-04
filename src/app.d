@@ -21,6 +21,9 @@ import gsb.triangles_test;
 import gsb.text.textrendertest;
 import gsb.core.color;
 
+import gsb.ui.testui;
+import gsb.gl.debugrenderer;
+
 import std.datetime;
 
 
@@ -121,6 +124,8 @@ void graphicsThread (Tid mainThreadId) {
 				//textRenderer.render();
 				TextRenderer.instance.renderFragments();
 
+				DebugRenderer.renderFromGraphicsThread();
+
 				glfwSwapBuffers(g_mainWindow.handle);
 				checkGlErrors();
 			} break;
@@ -175,6 +180,8 @@ void mainThread (Tid graphicsThreadId) {
 		Color("#ffaaff"),
 		vec2(0,0));
 
+	auto uitest = new UITestModule();
+
 	//auto text = TextRenderer.instance.createTextElement()
 	//	.style("console")
 	//	.fontSize(22)
@@ -211,13 +218,12 @@ void mainThread (Tid graphicsThreadId) {
 		glfwPollEvents();
 		g_mainWindow.runEventUpdates();
 		WindowEvents.instance.updateFromMainThread();
-		TextRenderer.instance.updateFragments();
 
-		//if (glStateInvalidated) {
-		//	log.write("Invalidating gl state!");
-		//	glStateInvalidated = false;
-		//	send(graphicsThreadId, ThreadSyncEvent.NOTIFY_GL_STATE_INVALIDATED);
-		//}
+
+		uitest.update();
+
+
+		TextRenderer.instance.updateFragments();
 
 		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
 		//log.write("Sent frame %d", frameCount++);

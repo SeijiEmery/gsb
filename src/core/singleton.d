@@ -1,6 +1,7 @@
 
 module gsb.core.singleton;
 import gsb.core.log;
+import std.traits;
 
 
 // http://wiki.dlang.org/Low-Lock_Singleton_Pattern
