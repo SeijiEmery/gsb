@@ -190,15 +190,23 @@ public:
                 gamepad.profile, gamepad.name, gamepad.id, gamepad.naxes, gamepad.nbuttons);
         });
         onGamepadButtonPressed.connect((GamepadButton btn) {
-            log.write("Gamepad button %d pressed", btn);
+            log.write("Gamepad button %s pressed", to!string(btn));
         });
         onGamepadButtonReleased.connect((GamepadButton btn) {
-            log.write("Gamepad button %d released", btn);
+            log.write("Gamepad button %s released", to!string(btn));
         });
-        
-
-
-
+        onGamepadAxesUpdate.connect((float[] axes) {
+            string[NUM_GAMEPAD_AXES] results; uint n = 0;
+            foreach (m; __traits(allMembers, GamepadAxis)) {
+                auto v = axes[mixin("GamepadAxis."~m)];
+                if (v != 0) {
+                    results[n++] = format("%s %0.2f", m, v);
+                }
+            }
+            if (n > 0) {
+                log.write("Gamepad input: %s", results[0..n].join(", "));
+            }
+        });
     }
 
     // Basic ctor. In the future, would like to have this driven by a config file instead.

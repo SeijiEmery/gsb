@@ -5,7 +5,6 @@ import gsb.core.pseudosignals;
 import Derelict.glfw3.glfw3;
 
 // Directly ported from GLSandbox (c++ version)
-alias GamepadButton = ubyte;
 enum : ubyte {
     BUTTON_A = 0,
     BUTTON_B,
@@ -26,9 +25,7 @@ enum : ubyte {
     BUTTON_HOME
 };
 immutable size_t NUM_GAMEPAD_BUTTONS = 17;
-    
-
-alias GamepadAxis = ubyte;
+  
 enum : ubyte {
     AXIS_LX = 0,
     AXIS_LY,
@@ -40,6 +37,20 @@ enum : ubyte {
     AXIS_DPAD_Y
 };
 immutable size_t NUM_GAMEPAD_AXES = 8;
+
+// Okay, I'm duplicating this twice and the aliasing could cause bugs, but having to
+// write GamepadButton.BUTTON_DPAD_RIGHT everywhere is not cool, and I _also_ need enum
+// namespaces for the rest of the codebase...
+enum GamepadButton : ubyte {
+    BUTTON_A = 0, BUTTON_B, BUTTON_X, BUTTON_Y,
+    BUTTON_DPAD_UP, BUTTON_DPAD_DOWN, BUTTON_DPAD_LEFT, BUTTON_DPAD_RIGHT,
+    BUTTON_LTRIGGER, BUTTON_RTRIGGER, BUTTON_LBUMPER, BUTTON_RBUMPER,
+    BUTTON_LSTICK, BUTTON_RSTICK,
+    BUTTON_START, BUTTON_SELECT, BUTTON_HOME
+};
+enum GamepadAxis : ubyte {
+    AXIS_LX = 0, AXIS_LY, AXIS_RX, AXIS_RY, AXIS_LTRIGGER, AXIS_RTRIGGER, AXIS_DPAD_X, AXIS_DPAD_Y
+};
 
 enum GamepadProfile {
     NO_PROFILE = 0,
@@ -63,61 +74,61 @@ protected struct ProfileData {
 protected struct GamepadProfiles {
     static immutable auto Dualshock4 = ProfileData (
         [
-            BUTTON_X,  // square
-            BUTTON_A,  // x
-            BUTTON_B,  // circle
-            BUTTON_Y,  // triangle
-            BUTTON_LBUMPER,
-            BUTTON_RBUMPER,
-            BUTTON_LTRIGGER, // ds4 actually has triggers aliased as buttons, apparently
-            BUTTON_RTRIGGER,
-            BUTTON_START,
-            BUTTON_SELECT, // share button
-            BUTTON_LSTICK,
-            BUTTON_RSTICK,
-            BUTTON_HOME,
-            BUTTON_SELECT, // center button
-            BUTTON_DPAD_UP,
-            BUTTON_DPAD_RIGHT,
-            BUTTON_DPAD_DOWN,
-            BUTTON_DPAD_LEFT,
+            GamepadButton.BUTTON_X,  // square
+            GamepadButton.BUTTON_A,  // x
+            GamepadButton.BUTTON_B,  // circle
+            GamepadButton.BUTTON_Y,  // triangle
+            GamepadButton.BUTTON_LBUMPER,
+            GamepadButton.BUTTON_RBUMPER,
+            GamepadButton.BUTTON_LTRIGGER, // ds4 actually has triggers aliased as buttons, apparently
+            GamepadButton.BUTTON_RTRIGGER,
+            GamepadButton.BUTTON_START,
+            GamepadButton.BUTTON_SELECT, // share button
+            GamepadButton.BUTTON_LSTICK,
+            GamepadButton.BUTTON_RSTICK,
+            GamepadButton.BUTTON_HOME,
+            GamepadButton.BUTTON_SELECT, // center button
+            GamepadButton.BUTTON_DPAD_UP,
+            GamepadButton.BUTTON_DPAD_RIGHT,
+            GamepadButton.BUTTON_DPAD_DOWN,
+            GamepadButton.BUTTON_DPAD_LEFT,
         ],
         [
-            AXIS_LX,
-            AXIS_LY,
-            AXIS_RX,
-            AXIS_RY,
-            AXIS_LTRIGGER,
-            AXIS_RTRIGGER
+            GamepadAxis.AXIS_LX,
+            GamepadAxis.AXIS_LY,
+            GamepadAxis.AXIS_RX,
+            GamepadAxis.AXIS_RY,
+            GamepadAxis.AXIS_LTRIGGER,
+            GamepadAxis.AXIS_RTRIGGER
         ],
         0.06, 0.06, 0.0,    // deadzones (left, right, triggers)
         false, false, false // flip LY, flip RY, clamp triggers to [0,1] (ds4 uses [0,1])
     );
     static immutable auto XboxController = ProfileData (
         [
-            BUTTON_DPAD_UP,
-            BUTTON_DPAD_DOWN,
-            BUTTON_DPAD_LEFT,
-            BUTTON_DPAD_RIGHT,
-            BUTTON_START,
-            BUTTON_SELECT,
-            BUTTON_LSTICK,
-            BUTTON_RSTICK,
-            BUTTON_LBUMPER,
-            BUTTON_RBUMPER,
-            BUTTON_HOME,
-            BUTTON_A,
-            BUTTON_B,
-            BUTTON_X,
-            BUTTON_Y
+            GamepadButton.BUTTON_DPAD_UP,
+            GamepadButton.BUTTON_DPAD_DOWN,
+            GamepadButton.BUTTON_DPAD_LEFT,
+            GamepadButton.BUTTON_DPAD_RIGHT,
+            GamepadButton.BUTTON_START,
+            GamepadButton.BUTTON_SELECT,
+            GamepadButton.BUTTON_LSTICK,
+            GamepadButton.BUTTON_RSTICK,
+            GamepadButton.BUTTON_LBUMPER,
+            GamepadButton.BUTTON_RBUMPER,
+            GamepadButton.BUTTON_HOME,
+            GamepadButton.BUTTON_A,
+            GamepadButton.BUTTON_B,
+            GamepadButton.BUTTON_X,
+            GamepadButton.BUTTON_Y
         ],
         [
-            AXIS_LX,
-            AXIS_LY,
-            AXIS_RX,
-            AXIS_RY,
-            AXIS_LTRIGGER,
-            AXIS_RTRIGGER
+            GamepadAxis.AXIS_LX,
+            GamepadAxis.AXIS_LY,
+            GamepadAxis.AXIS_RX,
+            GamepadAxis.AXIS_RY,
+            GamepadAxis.AXIS_LTRIGGER,
+            GamepadAxis.AXIS_RTRIGGER
         ],
         0.19, 0.19, 0.1,   // deadzones (left, right, triggers)
         false, false, true // flip LY, flip RY, clamp triggers to [0,1] (xbox controllers use [-1,1])
@@ -160,8 +171,6 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
     void updateDeviceList () {
         import std.conv;
 
-        log.write("Polling for devices");
-
         foreach (int i; 0 .. states.length) {
             bool active = glfwJoystickPresent(i) != 0;
             if (active && states[i].profile == GamepadProfile.NO_PROFILE) {
@@ -191,7 +200,7 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
     void update () {
         import std.math: fabs;
 
-        float[NUM_GAMEPAD_AXES]    sharedAxes;
+        float[NUM_GAMEPAD_AXES]    sharedAxes = 0;
         ubyte[NUM_GAMEPAD_BUTTONS] sharedButtons;
 
         foreach (ref state; states) {
@@ -231,7 +240,7 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
             foreach (k; 0 .. naxes) {
                 state.axes[profile.axes[k]] = axes[k];
             }
-            void setAxis (GamepadAxis axis, float value, float deadzone) {
+            void setAxis (ubyte axis, float value, float deadzone) {
                 state.axes[axis] = 
                     fabs(value) > deadzone ? value : 0;
             }
