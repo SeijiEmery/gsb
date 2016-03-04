@@ -155,6 +155,8 @@ void mainThread (Tid graphicsThreadId) {
 		log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
 	});
 
+	g_mainWindow.setupDefaultEventLogging();
+
 	registerDefaultFonts();  // from gsb.text.font
 
 

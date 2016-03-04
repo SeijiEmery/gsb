@@ -122,7 +122,7 @@ class TextGeometryBuffer {
 
         override void draw () {
             if (vao && numTriangles > 0) {
-                log.write("TextGeometryBuffer.GraphicsBackend: drawing %d triangles", numTriangles);
+                //log.write("TextGeometryBuffer.GraphicsBackend: drawing %d triangles", numTriangles);
                 checked_glBindVertexArray(vao);
                 checked_glDrawArrays(GL_TRIANGLES, 0, numTriangles * 3);
             }

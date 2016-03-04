@@ -7,8 +7,72 @@ import std.exception;
 import std.math;
 
 import gsb.core.log;
+import gsb.core.pseudosignals;
 
 public __gshared Window g_mainWindow = null;
+
+string formatGlfwKey (int key) {
+    switch (key) {
+        case GLFW_KEY_UNKNOWN: return "<Unknown Key>";
+        case GLFW_KEY_ESCAPE:  return "<Esc>";
+        case GLFW_KEY_ENTER:   return "<Enter>";
+        case GLFW_KEY_TAB:     return "<Tab>";
+        case GLFW_KEY_BACKSPACE: return "<Backspace>";
+        case GLFW_KEY_INSERT:    return "<Insert>";
+        case GLFW_KEY_DELETE:    return "<Delete>";
+        case GLFW_KEY_LEFT: return "<Left Arrow>";
+        case GLFW_KEY_RIGHT: return "<Right Arrow>";
+        case GLFW_KEY_UP: return "<Up Arrow>";
+        case GLFW_KEY_DOWN: return "<Down Arrow>";
+        case GLFW_KEY_PAGE_UP: return "<PageUp>";
+        case GLFW_KEY_PAGE_DOWN: return "<PageDown>";
+        case GLFW_KEY_HOME: return "<Home>";
+        case GLFW_KEY_END: return "<End>";
+        case GLFW_KEY_LEFT_SHIFT: case GLFW_KEY_RIGHT_SHIFT:
+            return "<Shift>";
+        case GLFW_KEY_LEFT_CONTROL: case GLFW_KEY_RIGHT_CONTROL:
+            return "<Ctrl>";
+        case GLFW_KEY_LEFT_ALT: case GLFW_KEY_RIGHT_ALT:
+            return "<Alt>";
+        case GLFW_KEY_LEFT_SUPER: case GLFW_KEY_RIGHT_SUPER:
+            version(OSX) return "<Cmd>";
+            else         return "<Meta>";
+        case GLFW_KEY_KP_DECIMAL: key = '.'; break;
+        default: break;
+    }
+    if (key >= GLFW_KEY_F1 && key <= GLFW_KEY_F25)
+        return format("<F%d>", key - GLFW_KEY_F1 + 1);
+
+    return format("<Key %c>", cast(dchar)key);
+}
+
+string formatGlfwModifiers (int mod) {
+    string result = "";
+    if (mod & GLFW_MOD_SHIFT)
+        result = "SHIFT";
+    if (mod & GLFW_MOD_CONTROL)
+        result.length ? result ~= " | CTRL" : result = "CTRL";
+    if (mod & GLFW_MOD_ALT)
+        result.length ? result ~= " | ALT" : result = "ALT";
+    if (mod & GLFW_MOD_SUPER) {
+        version(OSX) result.length ? result ~= " | CMD" : result = "CMD";
+        else         result.length ? result ~= " | META" : result = "META";
+    }
+    return result;
+}
+
+string formatGlfwMouseButton (int button) {
+    switch (button) {
+        case GLFW_MOUSE_BUTTON_LEFT: return "MOUSE_LMB";
+        case GLFW_MOUSE_BUTTON_RIGHT: return "MOUSE_RMB";
+        case GLFW_MOUSE_BUTTON_MIDDLE: return "MOUSE_MMB";
+        default:
+            if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST)
+                return format("MOUSE_BTN_%d", (button+1));
+            return format("<INVALID MOUSE BUTTON (%d)>", button);
+    }
+}
+
 
 // Wraps GLFWwindow and monitor stuff.
 class Window {
@@ -20,22 +84,93 @@ private:
     vec2 m_scalingFactors;
 
 public:
-    void setTitle (string title) {
-        glfwSetWindowTitle(m_window, title.ptr);
-    }
-
-    @property auto handle () { return m_window; }
-    @property auto pixelDimensions () { return m_framebufferSize; }
-    @property auto screenDimensions () { return m_screenSize; }
-    @property auto screenScale () { 
+    // Public properties:
+    @property GLFWwindow* handle () { return m_window; }
+    @property vec2i pixelDimensions () { return m_framebufferSize; }
+    @property vec2i screenDimensions () { return m_screenSize; }
+    @property vec2 screenScale () { 
         assert(!(m_scalingFactors.x.isNaN() || m_scalingFactors.y.isNaN()));
         return m_scalingFactors; 
     }
 
+    // Event signals:
+    Signal!(float, float) onScreenSizeChanged;
+    Signal!(float, float) onFramebufferSizeChanged;
+    Signal!(float, float) onScreenScaleChanged;
+
+    struct KeyPress {
+        int key, mods;
+    }
+    struct MouseButton {
+        int button, mods;
+    }
+
+    // Keyboard input callbacks
+    Signal!(KeyPress) onKeyPressed;
+    Signal!(KeyPress) onKeyReleased;
+    Signal!(dchar[])   onTextInput;
+
+    // Mouse input callbacks
+    Signal!(vec2)  onMouseMoved;
+    Signal!(vec2)  onScrollInput;
+    Signal!(MouseButton) onMouseButtonPressed;
+    Signal!(MouseButton) onMouseButtonReleased;
+
+    // State changing methods
+    void setTitle (string title) {
+        glfwSetWindowTitle(m_window, title.ptr);
+    }
+
+    // helper fcn...
     auto recalcScreenScale () {
         m_scalingFactors.x = cast(double)m_framebufferSize.x / cast(double)m_screenSize.x;
         m_scalingFactors.y = cast(double)m_framebufferSize.y / cast(double)m_screenSize.y;
         return m_scalingFactors;
+    }
+
+    public void setupDefaultEventLogging () {
+        onScreenScaleChanged.connect((float x, float y) {
+            log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y);
+        });
+        onFramebufferSizeChanged.connect((float x, float y) {
+            log.write("WindowEvent: Framebuffer size set to %0.2f, %0.2f", x, y);
+        });
+        onScreenSizeChanged.connect((float x, float y) {
+            log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
+        });
+        onKeyPressed.connect((KeyPress evt) {
+            log.write(evt.mods ?
+                format("KeyEvent: %s pressed (modifiers %s)", formatGlfwKey(evt.key), formatGlfwModifiers(evt.mods)) :
+                format("KeyEvent: %s pressed", formatGlfwKey(evt.key)));
+        });      
+        onKeyReleased.connect((KeyPress evt) {
+            log.write(evt.mods ?
+                format("KeyEvent: %s released (modifiers %s)", formatGlfwKey(evt.key), formatGlfwModifiers(evt.mods)) :
+                format("KeyEvent: %s released", formatGlfwKey(evt.key)));
+        });
+        onTextInput.connect((dchar[] text) {
+            log.write("TextEvent: \"%s\"", text);
+        });
+        onMouseMoved.connect((vec2 pos) {
+            log.write("MouseEvent: pos %0.2f, %0.2f", pos.x, pos.y);
+        });
+        onScrollInput.connect((vec2 scroll) {
+            log.write("ScrollEvent: %0.2f, %0.2f", scroll.x, scroll.y);
+        });
+        onMouseButtonPressed.connect((MouseButton evt) {
+            try {
+            log.write(evt.mods ?
+                format("MouseEvent: %s pressed (modifiers %s)", formatGlfwMouseButton(evt.button), formatGlfwModifiers(evt.mods)) :
+                format("MosueEvent: %s pressed", formatGlfwMouseButton(evt.button)));
+            } catch (Throwable e) {
+                log.write("Error! %s", e);
+            }
+        });
+        onMouseButtonReleased.connect((MouseButton evt) {
+            log.write(evt.mods ?
+                format("MouseEvent: %s released (modifiers %s)", formatGlfwMouseButton(evt.button), formatGlfwModifiers(evt.mods)) :
+                format("MosueEvent: %s released", formatGlfwMouseButton(evt.button)));
+        });
     }
 
     // Basic ctor. In the future, would like to have this driven by a config file instead.
@@ -66,6 +201,12 @@ public:
         m_framebufferSize.x = w; m_framebufferSize.y = h;
 
         recalcScreenScale();
+
+        glfwSetKeyCallback(m_window, &keyCallback);
+        glfwSetCharCallback(m_window, &charCallback);
+        glfwSetCursorPosCallback(m_window, &mousePosCallback);
+        glfwSetMouseButtonCallback(m_window, &mouseButtonCallback);
+        glfwSetScrollCallback(m_window, &scrollCallback);
     }
     ~this () {
         if (m_hasOwnership && m_window)
@@ -75,29 +216,71 @@ public:
     }
 
 private:
-    extern (C) static void windowSizeCallback (GLFWwindow * window, int width, int height) nothrow {
-        auto ptr = cast(Window)glfwGetWindowUserPointer(window);
-        if (!ptr) {
-            assumeWontThrow(log.write("null user data pointer!"));
-        } else {
-            assumeWontThrow(ptr.notifyWindowSizeChanged(width, height));
-        }
+    private static Window getPtr (GLFWwindow* window) nothrow {
+        return cast(Window)glfwGetWindowUserPointer(window);
     }
-    extern (C) static void windowFramebufferSizeCallback (GLFWwindow * window, int width, int height) nothrow {
-        Window ptr = cast(Window)glfwGetWindowUserPointer(window);
-        if (!ptr) {
-            assumeWontThrow(log.write("null user data pointer!"));
-        } else {
-            assumeWontThrow(ptr.notifyFramebufferSizeChanged(width, height));
-        }
+    private void emit (string signal, Args...)(Args args) {
+        assumeWontThrow(mixin(signal).emit(args));
     }
 
-    private void notifyWindowSizeChanged (int width, int height) {
+    extern (C) static void windowSizeCallback (GLFWwindow * window, int width, int height) nothrow {
+        getPtr(window).notifyWindowSizeChanged(width, height);
+    }
+    extern (C) static void windowFramebufferSizeCallback (GLFWwindow * window, int width, int height) nothrow {
+        getPtr(window).notifyFramebufferSizeChanged(width, height);
+    }
+    private void notifyWindowSizeChanged (int width, int height) nothrow {
         //log.write("Window size changed to %d, %d", width, height);
         m_screenSize.x = width; m_screenSize.y = height;
     }
-    private void notifyFramebufferSizeChanged (int width, int height) {
+    private void notifyFramebufferSizeChanged (int width, int height) nothrow {
         //log.write("Framebuffer size changed to %d, %d", width, height);
         m_framebufferSize.x = width; m_framebufferSize.y = height;
     }
+
+    extern (C) static void keyCallback (GLFWwindow* window, int key, int scancode, int action, int mods) nothrow {
+        final switch (action) {
+            case GLFW_PRESS:   getPtr(window).emit!"onKeyPressed"(KeyPress(key, mods)); break;
+            case GLFW_RELEASE: getPtr(window).emit!"onKeyReleased"(KeyPress(key, mods)); break;
+            case GLFW_REPEAT: break;
+        }
+    }
+
+    private dchar[] m_accumulatedText;
+    extern (C) static void charCallback (GLFWwindow* window, uint codepoint) nothrow {
+        getPtr(window).m_accumulatedText ~= codepoint;
+    }
+    extern (C) static void mousePosCallback (GLFWwindow* window, double xpos, double ypos) nothrow {
+        getPtr(window).emit!"onMouseMoved"(vec2(xpos, ypos));
+    }
+    extern (C) static void mouseButtonCallback (GLFWwindow* window, int button, int action, int mods) nothrow {
+        final switch (action) {
+            case GLFW_PRESS:  getPtr(window).emit!"onMouseButtonPressed"(MouseButton(button, mods)); break;
+            case GLFW_RELEASE: getPtr(window).emit!"onMouseButtonReleased"(MouseButton(button, mods)); break;
+            case GLFW_REPEAT: break;
+        }
+    }
+    extern (C) static void scrollCallback (GLFWwindow* window, double xdelta, double ydelta) nothrow {
+        getPtr(window).emit!"onScrollInput"(vec2(xdelta, ydelta));
+    }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
