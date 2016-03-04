@@ -113,7 +113,6 @@ void graphicsThread (Tid mainThreadId) {
 			//	GraphicsEvents.glStateInvalidated.emit();
 			//} break;
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
-				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
 				//log.write("on frame %d", frame++);
 
@@ -125,6 +124,8 @@ void graphicsThread (Tid mainThreadId) {
 				TextRenderer.instance.renderFragments();
 
 				DebugRenderer.renderFromGraphicsThread();
+
+				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 
 				glfwSwapBuffers(g_mainWindow.handle);
 				checkGlErrors();

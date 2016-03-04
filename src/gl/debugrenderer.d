@@ -79,12 +79,12 @@ class DebugLineRenderer2D {
             checked_glBindVertexArray(vao);
             checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 2);
 
-            string s = "";
-            for (uint i = 0; i < vbuffer.length; i += 2) {
-                auto v = vec4(vbuffer[i],vbuffer[i+1],0.0,1.0) * transform;
-                s ~= format("(%0.2f, %0.2f, %0.2f), ", v.x, v.y, v.z);
-            }
-            log.write("Drawing stuff: %s", s);
+            //string s = "";
+            //for (uint i = 0; i < vbuffer.length; i += 2) {
+            //    auto v = vec4(vbuffer[i],vbuffer[i+1],0.0,1.0) * transform;
+            //    s ~= format("(%0.2f, %0.2f, %0.2f), ", v.x, v.y, v.z);
+            //}
+            //log.write("Drawing stuff: %s", s);
 
         }
         protected void releaseResources () {

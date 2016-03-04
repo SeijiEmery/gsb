@@ -171,6 +171,8 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
     void updateDeviceList () {
         import std.conv;
 
+        log.write("Scanning for devices...");
+
         foreach (int i; 0 .. states.length) {
             bool active = glfwJoystickPresent(i) != 0;
             if (active && states[i].profile == GamepadProfile.NO_PROFILE) {
