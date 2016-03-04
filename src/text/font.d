@@ -83,7 +83,7 @@ class Font {
     @property auto data () { return _data; }
     @property auto name () { return _name; }
     @property auto lineHeight () {
-        return _data.lineHeight;
+        return _data.lineHeight * getScale(1.0);
     }
 
 
