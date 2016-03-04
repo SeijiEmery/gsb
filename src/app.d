@@ -209,6 +209,7 @@ void mainThread (Tid graphicsThreadId) {
 		//log.write("Starting frame %d", frameCount);
 
 		glfwPollEvents();
+		g_mainWindow.runEventUpdates();
 		WindowEvents.instance.updateFromMainThread();
 		TextRenderer.instance.updateFragments();
 

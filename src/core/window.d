@@ -8,6 +8,7 @@ import std.math;
 
 import gsb.core.log;
 import gsb.core.pseudosignals;
+import gsb.core.gamepad;
 
 public __gshared Window g_mainWindow = null;
 
@@ -82,6 +83,7 @@ private:
     vec2i m_framebufferSize;
     vec2i m_screenSize;
     vec2 m_scalingFactors;
+    GamepadManager!(GLFW_JOYSTICK_LAST+1) gamepadMgr;
 
 public:
     // Public properties:
@@ -115,6 +117,13 @@ public:
     Signal!(vec2)  onScrollInput;
     Signal!(MouseButton) onMouseButtonPressed;
     Signal!(MouseButton) onMouseButtonReleased;
+
+    // Gamepad input callbacks (implemented in gamepad.d)
+    @property ref auto onGamepadDetected () { return gamepadMgr.onDeviceDetected; }
+    @property ref auto onGamepadRemoved  () { return gamepadMgr.onDeviceRemoved; }
+    @property ref auto onGamepadButtonPressed () { return gamepadMgr.onGamepadButtonPressed; }
+    @property ref auto onGamepadButtonReleased () { return gamepadMgr.onGamepadButtonReleased; }
+    @property ref auto onGamepadAxesUpdate () { return gamepadMgr.onGamepadAxesUpdate; }
 
     // State changing methods
     void setTitle (string title) {
@@ -171,6 +180,25 @@ public:
                 format("MouseEvent: %s released (modifiers %s)", formatGlfwMouseButton(evt.button), formatGlfwModifiers(evt.mods)) :
                 format("MosueEvent: %s released", formatGlfwMouseButton(evt.button)));
         });
+
+        onGamepadDetected.connect((const(GamepadState)* gamepad) {
+            log.write("Connected %s gamepad '%s' (slot %d, %d axes, %d buttons)",
+                gamepad.profile, gamepad.name, gamepad.id, gamepad.naxes, gamepad.nbuttons);
+        });
+        onGamepadRemoved.connect((const(GamepadState)* gamepad) {
+            log.write("Disconnected %s gamepad '%s' (slot %d, %d axes, %d buttons)",
+                gamepad.profile, gamepad.name, gamepad.id, gamepad.naxes, gamepad.nbuttons);
+        });
+        onGamepadButtonPressed.connect((GamepadButton btn) {
+            log.write("Gamepad button %d pressed", btn);
+        });
+        onGamepadButtonReleased.connect((GamepadButton btn) {
+            log.write("Gamepad button %d released", btn);
+        });
+        
+
+
+
     }
 
     // Basic ctor. In the future, would like to have this driven by a config file instead.
@@ -262,6 +290,20 @@ private:
     }
     extern (C) static void scrollCallback (GLFWwindow* window, double xdelta, double ydelta) nothrow {
         getPtr(window).emit!"onScrollInput"(vec2(xdelta, ydelta));
+    }
+
+public:
+    private immutable uint UPDATE_FREQUENCY = 60; // update expensive stuff every 60 frames, and regular events every frame
+    private uint frameCount = UPDATE_FREQUENCY;
+
+    // Only call this from the main thread! Does additional event polling and processing not covered by glfwPollEvents
+    // for stuff that is (mostly) connected to this window instance.
+    void runEventUpdates () {
+        if (frameCount++ >= UPDATE_FREQUENCY) {
+            frameCount = 0;
+            gamepadMgr.updateDeviceList();
+        }
+        gamepadMgr.update();
     }
 }
 
