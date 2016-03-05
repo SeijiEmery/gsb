@@ -113,6 +113,9 @@ class DebugLineRenderer2D {
                     points[i].x - dir.y, points[i].y + dir.x, 0.0, packedColor,
                     points[i].x + dir.y, points[i].y - dir.x, 0.0, packedColor,
                     points[i+1].x + dir.y, points[i+1].y - dir.x, 0.0, packedColor,
+                    points[i+1].x + dir.y, points[i+1].y - dir.x, 0.0, packedColor,
+                    points[i+1].x - dir.y, points[i+1].y + dir.x, 0.0, packedColor,
+                    points[i].x - dir.y, points[i].y + dir.x, 0.0, packedColor,
                 ];
             }
         }

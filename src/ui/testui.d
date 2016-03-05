@@ -41,9 +41,9 @@ class UITestModule {
         DebugRenderer.drawTri(lastPos, Color("#fadd4c"), size);
 
         if (points.length) {
-                        foreach (point; points) {
-                DebugRenderer.drawTri(point, Color(0.0, 1.0, 0.0), 10);
-            }
+            //foreach (point; points) {
+            //    DebugRenderer.drawTri(point, Color(0.0, 1.0, 0.0), 10);
+            //}
 
             // vec2[2] nextSeg = [ points[$-1], lastPos ];
             //DebugRenderer.drawLines(nextSeg, Color("#90cc80"), 15);
