@@ -5,6 +5,7 @@ import gsb.core.log;
 import gsb.core.pseudosignals;
 
 import gl3n.linalg;
+import Derelict.glfw3.glfw3;
 import core.thread;
 
 // Window event API.
@@ -26,9 +27,11 @@ public:
     //mixin Signal!(float, float) onFramebufferSizeChanged;
     //mixin Signal!(float, float) onScreenScaleChanged;
 
+    // Screen size callbacks
     Signal!(float, float) onScreenSizeChanged;
     Signal!(float, float) onFramebufferSizeChanged;
     Signal!(float, float) onScreenScaleChanged;
+
 
     void init (typeof(mainWindow) window) { 
         assert(mainWindow is null);
@@ -74,6 +77,25 @@ public:
 struct GraphicsEvents {
     static Signal!() glStateInvalidated;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -351,6 +351,10 @@ class TextRenderer {
                 auto lineHeight = fragment.font.lineHeight, x0 = fragment.bstate.position.x;
                 auto buffer = buffers[curBuffer].buffer;
                 auto atlas  = atlases[curAtlas].atlas;
+                //log.write("Font scale = %f, pixelsize = %f, height = %f, height2 = %f", fragment.font.getScale(1.0),
+                //    fragment.font.getSize(1.0), fragment.font.getLineHeight(1.0),
+                //    fragment.font.lineHeight);
+                //log.write("cursor = %0.2f, %0.2f", layout.x, layout.y);
                 foreach (line; fragment.bstate.text.splitter('\n')) {
                     layout.x = x0; layout.y += lineHeight;
                     foreach (quad; atlas.getQuads(fragment.font, line.byDchar, layout.x, layout.y, false)) {
@@ -383,7 +387,7 @@ class TextRenderer {
             }
 
             if (tmp_renderBuffers.length > 0) {
-                everyNFrame(log.write("Rendering %d text buffers", tmp_renderBuffers.length));
+                //everyNFrame(log.write("Rendering %d text buffers", tmp_renderBuffers.length));
                 tmp_renderBuffers.sort!((SharedTGB a, SharedTGB b) => 
                     cast(size_t)cast(void*)a.atlas < cast(size_t)cast(void*)b.atlas);
 
@@ -399,9 +403,9 @@ class TextRenderer {
 
                 PackedFontAtlas curAtlas = null; int i = 0;
                 foreach (rb; tmp_renderBuffers) {
-                    everyNFrame(log.write("Rendering buffer %d", i++));
+                    //everyNFrame(log.write("Rendering buffer %d", i++));
                     if (rb.atlas != curAtlas) {
-                        everyNFrame(log.write("Switching atlas"));
+                        //everyNFrame(log.write("Switching atlas"));
                         rb.atlas.backend.update();
                         rb.atlas.backend.bindTexture();
                     }

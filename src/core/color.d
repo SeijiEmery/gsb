@@ -7,13 +7,12 @@ import std.regex;
 import std.conv;
 import std.stdio;
 
-
 private auto clamp (T) (T x, T m, T n) {
     return max(min(x, m), n);
 }
 
 struct Color {
-    float r = 0, g = 0, b = 0, a = 0;
+    float r = 0, g = 0, b = 0, a = 1.0;
 
     this (float r, float g, float b, float a) {
         this.r = r; this.g = g; this.b = b; this.a = a;
@@ -39,12 +38,53 @@ struct Color {
             throw new Exception(format("Cannot construct Color from '%s'", colorHash));
         }
     }
+    vec4 toVec () {
+        return vec4(r, g, b, a);
+    }
+    // from http://aras-p.info/blog/2009/07/30/encoding-floats-to-rgba-the-final/
+    float toPackedFloat () {
+        return toVec.dot(vec4(1.0, 1/255.0, 1/65025.0, 1/160581375.0));
+    }
+    // Add this to shaders to unpack packed color values
+    mixin template unpackRGBA () {
+        vec4 unpackRGBA (float packed) {
+            vec4 enc = vec4(1.0, 255.0, 65025.0, 160581375.0) * packed;
+            enc = fract(enc);
+            vec4 foo = enc.yzww * vec4(1.0/255.0, 1.0/255.0, 1.0/255.0, 0.0);
+            enc -= foo;
+            //enc -= enc.yzww * vec4(1.0/255.0, 1.0/255.0, 1.0/255.0, 0.0);
+            return enc;
+        }
+    }
+    static Color unpack (float v) {
+        mixin fract;
+        mixin unpackRGBA;
+        return Color(unpackRGBA(v));
+    }
+
+
+
+    // And here's a basic fract implementation so we can get the above to compile in D
+    // (do NOT mixin this into the actual shader; the function should just be in scope outside,
+    //  and we should hopefully never need to actually _use_ this (since it's defined in glsl))
+    mixin template fract () {
+        vec4 fract (vec4 v) {
+            import std.math: floor;
+            return vec4(
+                v.x - floor(v.x),
+                v.y - floor(v.y),
+                v.z - floor(v.z),
+                v.w - floor(v.w),
+            );
+        }
+    }
+
     string toString () {
-        return format("#%2x%2x%2x", 
+        return format("#%2x%2x%2x%2x", 
             cast(int)(clamp(r, 1.0, 0.0) * 255),
             cast(int)(clamp(g, 1.0, 0.0) * 255),
             cast(int)(clamp(b, 1.0, 0.0) * 255),
-            //cast(int)(clamp(a, 1.0, 0.0) * 255)
+            cast(int)(clamp(a, 1.0, 0.0) * 255)
         );
     }
     //vec4  () {
