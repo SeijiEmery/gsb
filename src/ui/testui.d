@@ -44,18 +44,12 @@ class UITestModule {
                         foreach (point; points) {
                 DebugRenderer.drawTri(point, Color(0.0, 1.0, 0.0), 10);
             }
-            
+
             // vec2[2] nextSeg = [ points[$-1], lastPos ];
             //DebugRenderer.drawLines(nextSeg, Color("#90cc80"), 15);
 
-            DebugRenderer.drawLines([ points[$-1], lastPos ], Color(1.0, 0.0, 0.5), 10);
-
-            auto tmp = points; tmp ~= lastPos;
-            DebugRenderer.drawLines(tmp, Color("#ffcc80"), 15);
-
-
-
-  
+            DebugRenderer.drawLines([ points[$-1], lastPos ], Color("#e80202"), 10);
+            DebugRenderer.drawLines(points, Color("#e37f2d"), 10);
         }
     }
 }
