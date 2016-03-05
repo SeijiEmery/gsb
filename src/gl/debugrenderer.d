@@ -72,12 +72,13 @@ class DebugLineRenderer2D {
             } else {
                 checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
                 checked_glBufferData(GL_ARRAY_BUFFER, vbuffer.length * 4, vbuffer.ptr, GL_STREAM_DRAW);
+
                 checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[1]);
                 checked_glBufferData(GL_ARRAY_BUFFER, cbuffer.length * 4, cbuffer.ptr, GL_STREAM_DRAW);
             }
 
             checked_glBindVertexArray(vao);
-            checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 2);
+            checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length);
 
             //string s = "";
             //for (uint i = 0; i < vbuffer.length; i += 2) {
@@ -102,7 +103,19 @@ class DebugLineRenderer2D {
 
     void drawLines (vec2[] points, Color color, float width) {
         synchronized {
-            
+            log.write("writing %d lines", points.length);
+            foreach (i; 0 .. (points.length-1)) {
+                states[fstate].vbuffer ~= [
+                    points[i].x - 0.5 * width, points[i].y,
+                    points[i].x + 0.5 * width, points[i].y,
+                    points[i+1].x + 0.5 * width, points[i+1].y 
+                ];
+                states[fstate].cbuffer ~= [
+                    color.r, color.g, color.b, color.a,
+                    color.r, color.g, color.b, color.a,
+                    color.r, color.g, color.b, color.a,
+                ];
+            }
         }
     }
     void drawTri (vec2 pt, Color color, float size) {

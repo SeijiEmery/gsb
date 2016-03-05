@@ -3,6 +3,11 @@ module gsb.core.pseudosignals;
 
 import gsb.core.log;
 
+
+interface ISlot {
+    void disconnect ();
+}
+
 // Custom signals/slots, b/c std.signals sucks.
 //
 // Not a pure qt/boost implementation, but a reinterpretation of the signals/slots / observer
@@ -64,7 +69,7 @@ struct Signal(T...) {
     // would be a refcounted struct). Wraps a function callback and connection state; shared between
     // the signal's connectedSlots list, and the (maybe) stored return from connect() (and whatever
     // the user does with it)
-    class Slot(T...) {
+    class Slot(T...) : ISlot {
         void delegate (T) cb;
         bool active = true;
 
