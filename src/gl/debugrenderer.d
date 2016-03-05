@@ -135,12 +135,48 @@ class DebugLineRenderer2D {
                 for (auto i = 1; i < points.length-1; ++i) {
                     // If two points are the same, we reuse the last direction vector.
                     // This prevents adjacent line segments from disappearing since dir is +/- infinity (bug)
-                    if (points[i] != points[i+1]) {
-                        dir = points[i+1] - points[i];
-                        dir *= width * 0.5 / dir.magnitude();
-                    }
-                    tbuf ~= vec2(points[i].x - dir.y, points[i].y + dir.x);
-                    tbuf ~= vec2(points[i].x + dir.y, points[i].y - dir.x);
+                    //if (points[i] != points[i+1]) {
+                    //    dir = points[i+1] - points[i];
+                    //    dir *= width * 0.5 / dir.magnitude();
+                    //}
+                    //vec2 a = points[i] - points[i-1]; a /= a.magnitude();
+                    //vec2 b = points[i+1] - points[i]; b /= b.magnitude();
+
+                    //auto a1 = a.y - a.x, ka = -0.5 * width * a.dot(a);
+                    //auto b1 = b.y - b.x, kb = -0.5 * width * b.dot(b);
+                    //auto dv = 1.0 / (a.x * b.y - a.y * b.x);
+
+                    //log.write("a = (%0.2f,%0.2f), a1 = %0.2f, ka = %0.2f, dv = %0.2f", a.x, a.y, a1, ka, dv);
+                    //log.write("b = (%0.2f,%0.2f), b1 = %0.2f, kb = %0.2f, dv = %0.2f", b.x, b.y, b1, kb, dv);
+
+                    //tbuf ~= dv * vec2(
+                    //    a.x * (kb + points[i].y * b1) + b.x * (ka + points[i].x * a1),
+                    //    a.y * (kb + points[i].y * b1) - b.y * (ka + points[i].x * a1));
+                    //tbuf ~= dv * vec2(
+                    //    a.x * (kb - points[i].y * b1) + b.x * (ka - points[i].x * a1),
+                    //    a.y * (kb - points[i].y * b1) - b.y * (ka - points[i].x * a1));
+
+                    float a = (points[i].y - points[i-1].y) / (points[i].x - points[i-1].x);
+                    float b = (points[i].y - points[i+1].y) / (points[i].x - points[i+1].x);
+
+                    dir = points[i] - points[i-1]; dir *= width * 0.5 / dir.magnitude();
+
+                    float c1 = (points[i].y + dir.x) - a * (points[i].x - dir.y);
+                    float c2 = (points[i].y - dir.x) - a * (points[i].x + dir.y);
+
+                    dir = points[i] - points[i+1]; dir *= width * 0.5 / dir.magnitude();
+
+                    float d1 = (points[i].y + dir.x) - b * (points[i].x - dir.y);
+                    float d2 = (points[i].y - dir.x) - b * (points[i].x + dir.y);
+
+                    //tbuf ~= vec2(points[i].x, points[i].x * a + c1);
+                    //tbuf ~= vec2(points[i].x, points[i].x * a + c2);
+
+                    //tbuf ~= vec2(points[i].x, points[i].x * b + d1);
+                    //tbuf ~= vec2(points[i].x, points[i].x * b + d2);
+
+                    tbuf ~= vec2((d1 - c1) / (a - b), (a * d1 + b * c1) / (a - b));
+                    tbuf ~= vec2((d2 - c2) / (a - b), (a * d2 + b * c2) / (a - b));
                 }
 
                 // Push end cap
@@ -148,6 +184,13 @@ class DebugLineRenderer2D {
                 dir *= width * 0.5 / dir.magnitude();
                 tbuf ~= vec2(points[$-1].x - dir.y, points[$-1].y + dir.x);
                 tbuf ~= vec2(points[$-1].x + dir.y, points[$-1].y - dir.x);
+
+                string s = "";
+                foreach (pt; tbuf) {
+                    s ~= format("(%0.2f,%0.2f), ", pt.x,pt.y);
+                }
+                log.write(s);
+
 
                 // Push quads
                 for (auto i = tbuf.length; i >= 4; i -= 2) {
