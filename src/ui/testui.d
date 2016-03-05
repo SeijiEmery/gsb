@@ -38,7 +38,7 @@ class UITestModule {
     }
 
     void update () {
-        DebugRenderer.drawTri(lastPos, Color("#fadd4c"), size);
+        //DebugRenderer.drawTri(lastPos, Color("#fadd4c"), size);
 
         if (points.length) {
             //foreach (point; points) {
@@ -48,8 +48,8 @@ class UITestModule {
             // vec2[2] nextSeg = [ points[$-1], lastPos ];
             //DebugRenderer.drawLines(nextSeg, Color("#90cc80"), 15);
 
-            DebugRenderer.drawLines([ points[$-1], lastPos ], Color("#e80202"), 10);
-            DebugRenderer.drawLines(points, Color("#e37f2d"), 10);
+            DebugRenderer.drawLines([ points[$-1], lastPos ], Color("#e80202"), 0.1 * size);
+            DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size);
         }
     }
 }
