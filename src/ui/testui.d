@@ -69,6 +69,94 @@ class UITestModule {
         onScroll(scroll => size += scroll.y);
     }
 
+    /+ Note: maybe in the future we could do something like this: 
+
+    class UITestModule : UIComponent
+    
+    this () {
+        UIManager.setupOnce(this, events => {
+            events.onMouseMoved( pos => lastPos = pos );
+            events.onPressed ( MouseButtons.LEFT, KeyboardModifiers.ANY, => {
+                points ~= lastPos;
+            });
+            events.onPressed ( Keys.ascii('+'), PressDuration.every(0.1), => {
+                lineSamples += 1;
+                log.write("Set lineSamples = %d", lineSamples);
+            });
+            events.onPressed ( Keys.ascii('-'), PressDuration.every(0.1), => {
+                if (lineSamples > 0) {
+                    lineSamples -= 1;
+                    log.write("Set lineSamples = %d", lineSamples);
+                }
+            });
+            events.onScroll (scroll => size += scroll.y);
+        });
+    }
+    ~this () {
+        UIManager.unbindEvents(this);
+    }
+
+    class AppController : BaseAppController {
+        void init () {
+            //UI.createComponent!UITestModule();
+            UI.registerComponents!(UITestModule);
+            
+            // enable / disable components
+            UI.setActive("UITestModule", false);
+            UI.setActive("UITestModule", true);
+
+            // iter components
+            foreach (component; UI.components) {
+                if (component.name == "UITestModule")
+                    component.setActive(true);        // equivalent
+            }
+        }
+    }
+
+    void mainThread () {
+        // ...
+    
+        auto stats      = new StatsCollector(STATS_METACATEGORY_MAINTHREAD);  
+        auto controller = new AppController();
+        auto uiworker   = new UIWorker();
+        auto textRenderer = new TextRenderer();
+        auto graphicsworker = new GraphicsWorker();
+
+        // stats.timeIt("Initializing", {
+        //    appController = new AppController();    
+        // });
+
+        while (...) {
+            case PREPARE_NEXT_FRAME: {
+                stats.beginFrame();
+                stats.collectPerFrame(controller,     => controller.update());
+                stats.collectPerFrame(uiworker,       => uiworker.update());
+                stats.collectPerFrame(textRenderer,   => textRenderer.update());
+                stats.collectPerFrame(graphicsworker, => graphicsWorker.update());
+                stats.endFrame();
+
+                send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
+                goto nextFrame;
+            } break;
+
+        nextFrame:
+        }
+
+        controller.shutdown();
+    }
+
+    class StatsCollector {
+        final void collectPerFrame (T)(T _, delegate(void) stuff) {
+            frameStats[fullyQualifiedName!T] = timeit(stuff);
+        }
+        final void endFrame () {
+            presentStats(frameStats);
+            foreach (k; frameStats.keys)
+                frameStats[k] = typeof(frameStats[k]).init;
+        }
+    }
+    +/
+
     private void disconnectAllSlots () {
         if (slots.length) {
             foreach (slot; slots)
