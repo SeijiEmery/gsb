@@ -171,17 +171,17 @@ class DebugLineRenderer2D {
 
                     c1 = points[i].x   + k2 * points[i].y;
                     c2 = points[i-1].x + k2 * points[i-1].y;
-                    
+
                     if (!approxEqual(c1, c2)) {
                         log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
                             points[i+1].x, points[i+1].y, points[i].x, points[i].y, k2, c1, c2);
                     }
 
                     tbuf ~= intersect(1.0, k1, points[i].x + v1.x + k1 * (points[i].y + v1.y),
-                                      1.0, k2, points[i].x + v2.x + k2 * (points[i].y + v2.y));
+                                      1.0, k2, points[i].x - v2.x + k2 * (points[i].y - v2.y));
 
                     tbuf ~= intersect(1.0, k1, points[i].x - v1.x + k1 * (points[i].y - v1.y),
-                                      1.0, k2, points[i].x - v2.x + k2 * (points[i].y - v2.y));
+                                      1.0, k2, points[i].x + v2.x + k2 * (points[i].y + v2.y));
                 }
 
                 // Push end cap
