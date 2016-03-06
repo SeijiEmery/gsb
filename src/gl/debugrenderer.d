@@ -52,18 +52,22 @@ class ColoredFragmentShader: Shader!Fragment {
     @output vec4 fragColor;
 
     void main () {
-        float alpha = abs(edgeDist) > 1.0 ?
+        float dist = abs(edgeDist) > 1.0 ? 
             1.0 - (abs(edgeDist) - 1.0) / (edgeBorder - 1.0) :
             1.0;
+
+        float alpha = dist;// * dist;
 
         //float alpha = abs(edgeDist) > 1.0 ? 0.5 : 1.0;
         //float alpha = edgeDist > 0.9 ? (1.0 - edgeDist) * 10.0 :
         //              edgeDist < 0.1 ? edgeDist * 10.0 :
         //              1.0;
 
-        fragColor = vec4(color.xy, alpha, 1.0);
-        if (abs(edgeDist) > 1.0)
-            fragColor.g += 0.2;
+        fragColor = vec4(color.rgb, alpha);
+
+        //fragColor = vec4(color.xy, alpha, 1.0);
+        //if (abs(edgeDist) > 1.0)
+        //    fragColor.g += 0.2;
     }
 }
 
@@ -147,16 +151,20 @@ class DebugLineRenderer2D {
     // temp buffer used by drawLines
     private vec3[] tbuf;
 
-    float edgePixels = 12.0;
-
-    void drawLines (vec2[] points, Color color, float width, float angle_cutoff = 15.0) {
+    void drawLines (vec2[] points, Color color, float width, float edgeSamples = 2.0, float angle_cutoff = 15.0) {
         synchronized {
             float packedColor = color.toPackedFloat();
 
             import std.math: PI, cos;
             float cutoff = -cos(angle_cutoff * PI / 180.0);
 
-            width += edgePixels * 2.0;
+            // Note: edgeSamples is recommended to to be in [0, 2] for retina resolutions (2x scale factor), 
+            // or [0, 4] for nonretina (1x). 0 = no samples (jagged edges), 2/4 = smooth (visually optimal).
+            // 1/2 is inbetween, and above 2/4 the lines become noticably blurry.
+            // We _have_ minimized apparent size changes though (lines appear to be the same width at all 
+            // sample values < ~10); this is why we do sqrt(edgeSamples * 4.0) here, and dist * dist in the
+            // fragment shader.
+            width = abs(width) + sqrt(edgeSamples * 4.0);// + edgeSamples * 2.0;
 
             tbuf.length = 0;
             if (points.length >= 2) {
@@ -244,7 +252,7 @@ class DebugLineRenderer2D {
                 //log.write(s);
 
                 // Push quads
-                float edgeFactor = 1.0 + edgePixels / (width - edgePixels * 2.0);
+                float edgeFactor = 1.0 + edgeSamples / (width - edgeSamples * 1.0);
                 for (auto i = tbuf.length; i >= 4; i -= 2) {
                     pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], packedColor, edgeFactor);
                     //packedColor -= 80 / 255.0;

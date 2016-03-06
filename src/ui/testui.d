@@ -4,6 +4,7 @@ module gsb.ui.testui;
 import gsb.gl.debugrenderer;
 import gsb.core.window;
 import gsb.core.pseudosignals;
+import gsb.core.log;
 
 import gl3n.linalg;
 import gsb.glutils;
@@ -16,6 +17,8 @@ class UITestModule {
     auto lastPos = vec2(0, 0);
     float size = 50.0;
     vec2[] points;
+
+    int lineSamples = 1;
 
     ISlot[] slots;
     this () {
@@ -30,6 +33,18 @@ class UITestModule {
         });
         slots ~= g_mainWindow.onScrollInput.connect((vec2 scroll) {
             size += scroll.y;
+        });
+        slots ~= g_mainWindow.onKeyPressed.connect((Window.KeyPress evt) {
+            if (evt.key == '=' && (evt.mods & GLFW_MOD_SHIFT))
+                evt.key = '+';
+
+            if (evt.key == '+')
+                lineSamples += 1;
+            else if (evt.key == '-' && lineSamples > 0)
+                lineSamples -= 1;
+
+            if (evt.key == '+' || evt.key == '-')
+                log.write("Set lineSamples = %d", lineSamples);
         });
     }
     ~this () {
@@ -50,9 +65,9 @@ class UITestModule {
 
             //DebugRenderer.drawLines([ points[$-1], lastPos ], Color("#e80202"), 0.1 * size);
             if (points[$-1] != lastPos)
-                DebugRenderer.drawLines(points ~ [lastPos], Color("#e37f2d"), 0.1 * size);
+                DebugRenderer.drawLines(points ~ [lastPos], Color("#e37f2d"), 0.1 * size, lineSamples);
             else
-                DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size);
+                DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size, cast(float)lineSamples);
         }
     }
 }
