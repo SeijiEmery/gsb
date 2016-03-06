@@ -41,16 +41,21 @@ class ColoredVertexShader: Shader!Vertex {
     }
 }
 
+import std.math: abs;
 class ColoredFragmentShader: Shader!Fragment {
     @input vec4 color;
     @input float edgeDist;
     @output vec4 fragColor;
 
     void main () {
-        fragColor = vec4(color.xyz, 1.0);
-        if (edgeDist > 0.9 || edgeDist < 0.1) {
-            fragColor   -= vec4(0.2, 0.2, 0.0, 0.0);
-        }
+        float alpha = abs(edgeDist) > 1.0 ? 0.5 : 1.0;
+
+
+        //float alpha = edgeDist > 0.9 ? (1.0 - edgeDist) * 10.0 :
+        //              edgeDist < 0.1 ? edgeDist * 10.0 :
+        //              1.0;
+
+        fragColor = vec4(color.xyz, alpha);
     }
 }
 
@@ -83,7 +88,11 @@ class DebugLineRenderer2D {
             }
 
             checked_glBindVertexArray(vao);
+
+            glDisable(GL_DEPTH_TEST);
             checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 4);
+            glEnable(GL_DEPTH_TEST);
+
 
             //string s = "";
             //for (uint i = 0; i < vbuffer.length; i += 4) {
@@ -106,29 +115,31 @@ class DebugLineRenderer2D {
     //private auto fmutex = new Mutex();
     //private auto gmutex = new Mutex();
 
-    private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color) {
+    private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color, float edgeFactor) {
         states[fstate].vbuffer ~= [
-            a.x, a.y, 1.0, color,
-            b.x, b.y, 0.0, color,
-            d.x, d.y, 0.0, color,
+            a.x, a.y, +edgeFactor, color,
+            b.x, b.y, -edgeFactor, color,
+            d.x, d.y, -edgeFactor, color,
 
-            a.x, a.y, 1.0, color,// + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
-            d.x, d.y, 0.0, color,// + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
-            c.x, c.y, 1.0, color,// + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
+            a.x, a.y, +edgeFactor, color,
+            d.x, d.y, -edgeFactor, color,
+            c.x, c.y, +edgeFactor, color,
         ];
     }
-    private void pushQuad (vec3 a, vec3 b, vec3 c, vec3 d, float color) {
+    private void pushQuad (vec3 a, vec3 b, vec3 c, vec3 d, float color, float edgeFactor) {
         pushQuad(
             vec2(a.x / a.z, a.y / a.z),
             vec2(b.x / b.z, b.y / b.z),
             vec2(c.x / c.z, c.y / c.z),
             vec2(d.x / d.z, d.y / d.z),
-            color
+            color, edgeFactor
         );
     }
 
     // temp buffer used by drawLines
     private vec3[] tbuf;
+
+    float edgePixels = 2.0;
 
     void drawLines (vec2[] points, Color color, float width, float angle_cutoff = 15.0) {
         synchronized {
@@ -136,6 +147,8 @@ class DebugLineRenderer2D {
 
             import std.math: PI, cos;
             float cutoff = -cos(angle_cutoff * PI / 180.0);
+
+            width += edgePixels * 2.0;
 
             tbuf.length = 0;
             if (points.length >= 2) {
@@ -223,8 +236,9 @@ class DebugLineRenderer2D {
                 //log.write(s);
 
                 // Push quads
+                float edgeFactor = 1.0 + edgePixels / (width - edgePixels * 2.0);
                 for (auto i = tbuf.length; i >= 4; i -= 2) {
-                    pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], packedColor);
+                    pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], packedColor, edgeFactor);
                     //packedColor -= 80 / 255.0;
                 }
             }
