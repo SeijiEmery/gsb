@@ -124,9 +124,12 @@ class DebugLineRenderer2D {
     // temp buffer used by drawLines
     private vec3[] tbuf;
 
-    void drawLines (vec2[] points, Color color, float width) {
+    void drawLines (vec2[] points, Color color, float width, float angle_cutoff = 15.0) {
         synchronized {
             float packedColor = color.toPackedFloat();
+
+            import std.math: PI, cos;
+            float cutoff = -cos(angle_cutoff * PI / 180.0);
 
             tbuf.length = 0;
             if (points.length >= 2) {
@@ -142,6 +145,8 @@ class DebugLineRenderer2D {
 
                 // Push intermediate points
                 for (auto i = 1; i < points.length-1; ++i) {
+                    if (points[i] == points[i-1])
+                        continue;
 
                     vec2 v1 = vec2(points[i-1].y - points[i].y, points[i].x - points[i-1].x) * width * 0.5 / distance(points[i], points[i-1]);
                     vec2 v2 = vec2(points[i+1].y - points[i].y, points[i].x - points[i+1].x) * width * 0.5 / distance(points[i], points[i+1]);
@@ -161,27 +166,40 @@ class DebugLineRenderer2D {
                         return abs(a - b) > 1.0;
                     }
 
-                    auto c1 = points[i].x   + k1 * points[i].y;
-                    auto c2 = points[i+1].x + k1 * points[i+1].y;
+                    //assert(approxEqual(points[i].x + k1 * points[i].y, points[i+1].x + k1 * points[i+1].y) &&
+                    //       approxEqual(points[i].x + k2 * points[i].y, points[i-1].x + k2 * points[i-1].y));
+                    //auto c1 = points[i].x   + k1 * points[i].y;
+                    //auto c2 = points[i+1].x + k1 * points[i+1].y;
+                    //if (!approxEqual(c1, c2)) {
+                    //    log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
+                    //        points[i-1].x, points[i-1].y, points[i].x, points[i].y, k1, c1, c2);
+                    //}
+                    //c1 = points[i].x   + k2 * points[i].y;
+                    //c2 = points[i-1].x + k2 * points[i-1].y;
+                    //if (!approxEqual(c1, c2)) {
+                    //    log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
+                    //        points[i+1].x, points[i+1].y, points[i].x, points[i].y, k2, c1, c2);
+                    //}
 
-                    if (!approxEqual(c1, c2)) {
-                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
-                            points[i-1].x, points[i-1].y, points[i].x, points[i].y, k1, c1, c2);
+                    auto pt1 = intersect(1.0, k1, points[i].x + v1.x + k1 * (points[i].y + v1.y),
+                                         1.0, k2, points[i].x - v2.x + k2 * (points[i].y - v2.y));
+
+                    auto pt2 = intersect(1.0, k1, points[i].x - v1.x + k1 * (points[i].y - v1.y),
+                                         1.0, k2, points[i].x + v2.x + k2 * (points[i].y + v2.y));
+                   
+                    vec2 r1 = points[i] - points[i-1]; r1 /= r1.magnitude();
+                    vec2 r2 = points[i+1] - points[i]; r2 /= r2.magnitude();
+
+                    log.write("%f", dot(r1, r2));
+                    if (dot(r1, r2) > cutoff) {
+                        tbuf ~= pt1;
+                        tbuf ~= pt2;
+                    } else {
+                        dir = points[i] - points[i-1];
+                        dir *= width * 0.5 / dir.magnitude();
+                        tbuf ~= vec3(points[i].x - dir.y, points[i].y + dir.x, 1.0);
+                        tbuf ~= vec3(points[i].x + dir.y, points[i].y - dir.x, 1.0); 
                     }
-
-                    c1 = points[i].x   + k2 * points[i].y;
-                    c2 = points[i-1].x + k2 * points[i-1].y;
-
-                    if (!approxEqual(c1, c2)) {
-                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
-                            points[i+1].x, points[i+1].y, points[i].x, points[i].y, k2, c1, c2);
-                    }
-
-                    tbuf ~= intersect(1.0, k1, points[i].x + v1.x + k1 * (points[i].y + v1.y),
-                                      1.0, k2, points[i].x - v2.x + k2 * (points[i].y - v2.y));
-
-                    tbuf ~= intersect(1.0, k1, points[i].x - v1.x + k1 * (points[i].y - v1.y),
-                                      1.0, k2, points[i].x + v2.x + k2 * (points[i].y + v2.y));
                 }
 
                 // Push end cap
@@ -190,12 +208,11 @@ class DebugLineRenderer2D {
                 tbuf ~= vec3(points[$-1].x - dir.y, points[$-1].y + dir.x, 1.0);
                 tbuf ~= vec3(points[$-1].x + dir.y, points[$-1].y - dir.x, 1.0);
 
-                string s = "";
-                foreach (pt; tbuf) {
-                    s ~= format("(%0.2f,%0.2f), ", pt.x / pt.z ,pt.y / pt.z);
-                }
-                log.write(s);
-
+                //string s = "";
+                //foreach (pt; tbuf) {
+                //    s ~= format("(%0.2f,%0.2f), ", pt.x / pt.z ,pt.y / pt.z);
+                //}
+                //log.write(s);
 
                 // Push quads
                 for (auto i = tbuf.length; i >= 4; i -= 2) {

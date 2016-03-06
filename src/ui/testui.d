@@ -48,8 +48,11 @@ class UITestModule {
             // vec2[2] nextSeg = [ points[$-1], lastPos ];
             //DebugRenderer.drawLines(nextSeg, Color("#90cc80"), 15);
 
-            DebugRenderer.drawLines([ points[$-1], lastPos ], Color("#e80202"), 0.1 * size);
-            DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size);
+            //DebugRenderer.drawLines([ points[$-1], lastPos ], Color("#e80202"), 0.1 * size);
+            if (points[$-1] != lastPos)
+                DebugRenderer.drawLines(points ~ [lastPos], Color("#e37f2d"), 0.1 * size);
+            else
+                DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size);
         }
     }
 }
