@@ -24,6 +24,7 @@ class ColoredVertexShader: Shader!Vertex {
 
     @output vec4 color;
     @output float edgeDist;
+    @output float edgeBorder;
 
     vec4 unpackRGBA (float packed) {
         vec4 enc = vec4(1.0, 255.0, 65025.0, 160581375.0) * packed;
@@ -36,6 +37,8 @@ class ColoredVertexShader: Shader!Vertex {
 
     void main () {
         edgeDist    = pcv.z;
+        edgeBorder  = abs(pcv.z);
+
         gl_Position = transform * vec4(pcv.xy, 0.0, 1.0);
         color       = unpackRGBA(pcv.w);
     }
@@ -45,17 +48,22 @@ import std.math: abs;
 class ColoredFragmentShader: Shader!Fragment {
     @input vec4 color;
     @input float edgeDist;
+    @input float edgeBorder;
     @output vec4 fragColor;
 
     void main () {
-        float alpha = abs(edgeDist) > 1.0 ? 0.5 : 1.0;
+        float alpha = abs(edgeDist) > 1.0 ?
+            1.0 - (abs(edgeDist) - 1.0) / (edgeBorder - 1.0) :
+            1.0;
 
-
+        //float alpha = abs(edgeDist) > 1.0 ? 0.5 : 1.0;
         //float alpha = edgeDist > 0.9 ? (1.0 - edgeDist) * 10.0 :
         //              edgeDist < 0.1 ? edgeDist * 10.0 :
         //              1.0;
 
-        fragColor = vec4(color.xyz, alpha);
+        fragColor = vec4(color.xy, alpha, 1.0);
+        if (abs(edgeDist) > 1.0)
+            fragColor.g += 0.2;
     }
 }
 
@@ -139,7 +147,7 @@ class DebugLineRenderer2D {
     // temp buffer used by drawLines
     private vec3[] tbuf;
 
-    float edgePixels = 2.0;
+    float edgePixels = 12.0;
 
     void drawLines (vec2[] points, Color color, float width, float angle_cutoff = 15.0) {
         synchronized {
