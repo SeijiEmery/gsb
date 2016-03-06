@@ -105,7 +105,6 @@ class DebugLineRenderer2D {
             checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 4);
             glEnable(GL_DEPTH_TEST);
 
-
             //string s = "";
             //for (uint i = 0; i < vbuffer.length; i += 4) {
             //    auto v = vec4(vbuffer[i],vbuffer[i+1],vbuffer[i+2],1.0) * transform;
@@ -124,8 +123,6 @@ class DebugLineRenderer2D {
     }
     private State[2] states;
     private int fstate = 0, gstate = 1;
-    //private auto fmutex = new Mutex();
-    //private auto gmutex = new Mutex();
 
     private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color, float edgeFactor) {
         states[fstate].vbuffer ~= [
@@ -196,25 +193,6 @@ class DebugLineRenderer2D {
                     float k1 = (points[i-1].x - points[i].x) / (points[i].y - points[i-1].y);
                     float k2 = (points[i+1].x - points[i].x) / (points[i].y - points[i+1].y);
 
-                    //bool approxEqual (T)(T a, T b) {
-                    //    import std.math: abs;
-                    //    return abs(a - b) > 1.0;
-                    //}
-                    //assert(approxEqual(points[i].x + k1 * points[i].y, points[i+1].x + k1 * points[i+1].y) &&
-                    //       approxEqual(points[i].x + k2 * points[i].y, points[i-1].x + k2 * points[i-1].y));
-                    //auto c1 = points[i].x   + k1 * points[i].y;
-                    //auto c2 = points[i+1].x + k1 * points[i+1].y;
-                    //if (!approxEqual(c1, c2)) {
-                    //    log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
-                    //        points[i-1].x, points[i-1].y, points[i].x, points[i].y, k1, c1, c2);
-                    //}
-                    //c1 = points[i].x   + k2 * points[i].y;
-                    //c2 = points[i-1].x + k2 * points[i-1].y;
-                    //if (!approxEqual(c1, c2)) {
-                    //    log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
-                    //        points[i+1].x, points[i+1].y, points[i].x, points[i].y, k2, c1, c2);
-                    //}
-
                     auto pt1 = intersect(1.0, k1, points[i].x + v1.x + k1 * (points[i].y + v1.y),
                                          1.0, k2, points[i].x - v2.x + k2 * (points[i].y - v2.y));
 
@@ -245,36 +223,12 @@ class DebugLineRenderer2D {
                 tbuf ~= vec3(points[$-1].x - dir.y, points[$-1].y + dir.x, 1.0);
                 tbuf ~= vec3(points[$-1].x + dir.y, points[$-1].y - dir.x, 1.0);
 
-                //string s = "";
-                //foreach (pt; tbuf) {
-                //    s ~= format("(%0.2f,%0.2f), ", pt.x / pt.z ,pt.y / pt.z);
-                //}
-                //log.write(s);
-
                 // Push quads
                 float edgeFactor = 1.0 + edgeSamples / (width - edgeSamples * 1.0);
                 for (auto i = tbuf.length; i >= 4; i -= 2) {
                     pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], packedColor, edgeFactor);
-                    //packedColor -= 80 / 255.0;
                 }
             }
-
-
-            ////log.write("writing %d lines", points.length);
-            //float packedColor = color.toPackedFloat();
-            //foreach (i; 0 .. (points.length-1)) {
-            //    vec2 dir = points[i+1] - points[i];
-            //    dir *= width * 0.5 / dir.magnitude();
-
-            //    states[fstate].vbuffer ~= [
-            //        points[i].x - dir.y, points[i].y + dir.x, 0.0, packedColor,
-            //        points[i].x + dir.y, points[i].y - dir.x, 0.0, packedColor,
-            //        points[i+1].x + dir.y, points[i+1].y - dir.x, 0.0, packedColor,
-            //        points[i+1].x + dir.y, points[i+1].y - dir.x, 0.0, packedColor,
-            //        points[i+1].x - dir.y, points[i+1].y + dir.x, 0.0, packedColor,
-            //        points[i].x - dir.y, points[i].y + dir.x, 0.0, packedColor,
-            //    ];
-            //}
         }
     }
     void drawTri (vec2 pt, Color color, float size) {
