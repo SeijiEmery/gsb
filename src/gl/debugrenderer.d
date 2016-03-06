@@ -231,16 +231,36 @@ class DebugLineRenderer2D {
             }
         }
     }
-    void drawTri (vec2 pt, Color color, float size) {
+    void drawTri (vec2 pt, Color color, float size, float edgeSamples = 2.0) {
         import std.math: sqrt;
         immutable float k = 1 / sqrt(3.0);
 
         float packedColor = color.toPackedFloat();
         synchronized {
+            //states[fstate].vbuffer ~= [
+            //    pt.x,              pt.y + k * size,       0.0, packedColor,
+            //    pt.x + 0.5 * size, pt.y - k * size * 0.5, 0.0, packedColor,
+            //    pt.x - 0.5 * size, pt.y - k * size * 0.5, 0.0, packedColor,
+            //];
+
+            float edgeFactor = 1.0 + edgeSamples / (size - edgeSamples);
+            float[6] verts = [
+                pt.x,              pt.y + k * size,      
+                pt.x + 0.5 * size, pt.y - k * size * 0.5,
+                pt.x - 0.5 * size, pt.y - k * size * 0.5,
+            ];
             states[fstate].vbuffer ~= [
-                pt.x,              pt.y + k * size,       0.0, packedColor,
-                pt.x + 0.5 * size, pt.y - k * size * 0.5, 0.0, packedColor,
-                pt.x - 0.5 * size, pt.y - k * size * 0.5, 0.0, packedColor,
+                verts[0], verts[1], edgeFactor, packedColor + 40 / 255.0,
+                verts[2], verts[3], edgeFactor, packedColor + 40 / 255.0,
+                pt.x,     pt.y,    0, packedColor + 40 / 255.0,
+
+                verts[2], verts[3], edgeFactor, packedColor + 40 / (255.0 * 255.0),
+                verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0),
+                pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0),
+
+                verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
+                verts[0], verts[1], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
+                pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0 * 255.0),
             ];
         }
     }
