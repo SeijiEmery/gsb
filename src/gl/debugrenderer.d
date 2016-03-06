@@ -111,9 +111,18 @@ class DebugLineRenderer2D {
             a.x, a.y, 0.0, color
         ];
     }
+    private void pushQuad (vec3 a, vec3 b, vec3 c, vec3 d, float color) {
+        pushQuad(
+            vec2(a.x / a.z, a.y / a.z),
+            vec2(b.x / b.z, b.y / b.z),
+            vec2(c.x / c.z, c.y / c.z),
+            vec2(d.x / d.z, d.y / d.z),
+            color
+        );
+    }
 
     // temp buffer used by drawLines
-    private vec2[] tbuf;
+    private vec3[] tbuf;
 
     void drawLines (vec2[] points, Color color, float width) {
         synchronized {
@@ -128,66 +137,58 @@ class DebugLineRenderer2D {
                     points[1] - points[0] : points[0] + vec2(1e-3, 0);
                 dir = points[1] - points[0];
                 dir *= width * 0.5 / dir.magnitude();
-                tbuf ~= vec2(points[0].x - dir.y, points[0].y + dir.x);
-                tbuf ~= vec2(points[0].x + dir.y, points[0].y - dir.x);    
+                tbuf ~= vec3(points[0].x - dir.y, points[0].y + dir.x, 1.0);
+                tbuf ~= vec3(points[0].x + dir.y, points[0].y - dir.x, 1.0);    
 
                 // Push intermediate points
                 for (auto i = 1; i < points.length-1; ++i) {
-                    // If two points are the same, we reuse the last direction vector.
-                    // This prevents adjacent line segments from disappearing since dir is +/- infinity (bug)
-                    //if (points[i] != points[i+1]) {
-                    //    dir = points[i+1] - points[i];
-                    //    dir *= width * 0.5 / dir.magnitude();
-                    //}
-                    //vec2 a = points[i] - points[i-1]; a /= a.magnitude();
-                    //vec2 b = points[i+1] - points[i]; b /= b.magnitude();
 
-                    //auto a1 = a.y - a.x, ka = -0.5 * width * a.dot(a);
-                    //auto b1 = b.y - b.x, kb = -0.5 * width * b.dot(b);
-                    //auto dv = 1.0 / (a.x * b.y - a.y * b.x);
+                    //pushEdgeSet(width, points[i-1], points[i], points[i+1]);
 
-                    //log.write("a = (%0.2f,%0.2f), a1 = %0.2f, ka = %0.2f, dv = %0.2f", a.x, a.y, a1, ka, dv);
-                    //log.write("b = (%0.2f,%0.2f), b1 = %0.2f, kb = %0.2f, dv = %0.2f", b.x, b.y, b1, kb, dv);
+                    vec2 v1 = vec2(points[i-1].y - points[i].y, points[i].x - points[i-1].x) *
+                              width * 0.5 / distance(points[i], points[i-1]);
+                    vec2 v2 = vec2(points[i+1].y - points[i].y, points[i].x - points[i+1].x) *
+                              width * 0.5 / distance(points[i], points[i+1]);
 
-                    //tbuf ~= dv * vec2(
-                    //    a.x * (kb + points[i].y * b1) + b.x * (ka + points[i].x * a1),
-                    //    a.y * (kb + points[i].y * b1) - b.y * (ka + points[i].x * a1));
-                    //tbuf ~= dv * vec2(
-                    //    a.x * (kb - points[i].y * b1) + b.x * (ka - points[i].x * a1),
-                    //    a.y * (kb - points[i].y * b1) - b.y * (ka - points[i].x * a1));
+                    vec3 intersect (real a1, real b1, real c1, real a2, real b2, real c2) {
+                        return vec3(
+                            cast(float)(b1 * c2 - b2 * c1),
+                            cast(float)(a2 * c1 - a1 * c2),
+                            cast(float)(a2 * b1 - a1 * b2));
+                    }
 
-                    float a = (points[i].y - points[i-1].y) / (points[i].x - points[i-1].x);
-                    float b = (points[i].y - points[i+1].y) / (points[i].x - points[i+1].x);
+                    real k1 = (points[i-1].x - points[i].x) / (points[i].y - points[i-1].y);
+                    real k2 = (points[i+1].x - points[i].x) / (points[i].y - points[i+1].y);
 
-                    dir = points[i] - points[i-1]; dir *= width * 0.5 / dir.magnitude();
+                    if (points[i].x + k1 * (points[i].y) != points[i-1].x + k1 * (points[i-1].y)) {
+                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), width = %0.2f, vx,vy = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
+                            points[i-1].x, points[i-1].y, points[i].x, points[i].y, width, v1.x, v2.x, k1,
+                            (points[i].x   + k1 * (points[i].y  )), 
+                            (points[i-1].x + k1 * (points[i-1].y)));
+                    }
+                    if (points[i].x + k2 * (points[i].y) != points[i+1].x + k2 * (points[i+1].y)) {
+                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), width = %0.2f, vx,vy = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
+                            points[i+1].x, points[i+1].y, points[i].x, points[i].y, width, v1.x, v2.x, k2,
+                            (points[i].x   + k2 * (points[i].y  )), 
+                            (points[i+1].x + k2 * (points[i+1].y)));
+                    }
 
-                    float c1 = (points[i].y + dir.x) - a * (points[i].x - dir.y);
-                    float c2 = (points[i].y - dir.x) - a * (points[i].x + dir.y);
+                    tbuf ~= intersect(1.0, k1, points[i].x + v1.x + k1 * (points[i].y + v1.y),
+                                      1.0, k2, points[i].x + v2.x + k2 * (points[i].y + v2.y));
 
-                    dir = points[i] - points[i+1]; dir *= width * 0.5 / dir.magnitude();
-
-                    float d1 = (points[i].y + dir.x) - b * (points[i].x - dir.y);
-                    float d2 = (points[i].y - dir.x) - b * (points[i].x + dir.y);
-
-                    //tbuf ~= vec2(points[i].x, points[i].x * a + c1);
-                    //tbuf ~= vec2(points[i].x, points[i].x * a + c2);
-
-                    //tbuf ~= vec2(points[i].x, points[i].x * b + d1);
-                    //tbuf ~= vec2(points[i].x, points[i].x * b + d2);
-
-                    tbuf ~= vec2((d1 - c1) / (a - b), (a * d1 + b * c1) / (a - b));
-                    tbuf ~= vec2((d2 - c2) / (a - b), (a * d2 + b * c2) / (a - b));
+                    tbuf ~= intersect(1.0, k1, points[i].x - v1.x + k1 * (points[i].y - v1.y),
+                                      1.0, k2, points[i].x - v2.x + k2 * (points[i].y - v2.y));
                 }
 
                 // Push end cap
                 dir = points[$-1] - points[$-2];
                 dir *= width * 0.5 / dir.magnitude();
-                tbuf ~= vec2(points[$-1].x - dir.y, points[$-1].y + dir.x);
-                tbuf ~= vec2(points[$-1].x + dir.y, points[$-1].y - dir.x);
+                tbuf ~= vec3(points[$-1].x - dir.y, points[$-1].y + dir.x, 1.0);
+                tbuf ~= vec3(points[$-1].x + dir.y, points[$-1].y - dir.x, 1.0);
 
                 string s = "";
                 foreach (pt; tbuf) {
-                    s ~= format("(%0.2f,%0.2f), ", pt.x,pt.y);
+                    s ~= format("(%0.2f,%0.2f), ", pt.x / pt.z ,pt.y / pt.z);
                 }
                 log.write(s);
 
