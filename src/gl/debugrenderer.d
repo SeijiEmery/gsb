@@ -143,12 +143,8 @@ class DebugLineRenderer2D {
                 // Push intermediate points
                 for (auto i = 1; i < points.length-1; ++i) {
 
-                    //pushEdgeSet(width, points[i-1], points[i], points[i+1]);
-
-                    vec2 v1 = vec2(points[i-1].y - points[i].y, points[i].x - points[i-1].x) *
-                              width * 0.5 / distance(points[i], points[i-1]);
-                    vec2 v2 = vec2(points[i+1].y - points[i].y, points[i].x - points[i+1].x) *
-                              width * 0.5 / distance(points[i], points[i+1]);
+                    vec2 v1 = vec2(points[i-1].y - points[i].y, points[i].x - points[i-1].x) * width * 0.5 / distance(points[i], points[i-1]);
+                    vec2 v2 = vec2(points[i+1].y - points[i].y, points[i].x - points[i+1].x) * width * 0.5 / distance(points[i], points[i+1]);
 
                     vec3 intersect (real a1, real b1, real c1, real a2, real b2, real c2) {
                         return vec3(
@@ -160,17 +156,25 @@ class DebugLineRenderer2D {
                     real k1 = (points[i-1].x - points[i].x) / (points[i].y - points[i-1].y);
                     real k2 = (points[i+1].x - points[i].x) / (points[i].y - points[i+1].y);
 
-                    if (points[i].x + k1 * (points[i].y) != points[i-1].x + k1 * (points[i-1].y)) {
-                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), width = %0.2f, vx,vy = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
-                            points[i-1].x, points[i-1].y, points[i].x, points[i].y, width, v1.x, v2.x, k1,
-                            (points[i].x   + k1 * (points[i].y  )), 
-                            (points[i-1].x + k1 * (points[i-1].y)));
+                    bool approxEqual (T)(T a, T b) {
+                        import std.math: abs;
+                        return abs(a - b) > 1.0;
                     }
-                    if (points[i].x + k2 * (points[i].y) != points[i+1].x + k2 * (points[i+1].y)) {
-                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), width = %0.2f, vx,vy = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
-                            points[i+1].x, points[i+1].y, points[i].x, points[i].y, width, v1.x, v2.x, k2,
-                            (points[i].x   + k2 * (points[i].y  )), 
-                            (points[i+1].x + k2 * (points[i+1].y)));
+
+                    auto c1 = points[i].x   + k1 * points[i].y;
+                    auto c2 = points[i+1].x + k1 * points[i+1].y;
+
+                    if (!approxEqual(c1, c2)) {
+                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
+                            points[i-1].x, points[i-1].y, points[i].x, points[i].y, k1, c1, c2);
+                    }
+
+                    c1 = points[i].x   + k2 * points[i].y;
+                    c2 = points[i-1].x + k2 * points[i-1].y;
+                    
+                    if (!approxEqual(c1, c2)) {
+                        log.write("x1,y1 = (%0.2f, %0.2f), x2,y2 = (%0.2f, %0.2f), a = 1.0, b = %0.2f, c1 = %0.2f != c2 = %0.2f",
+                            points[i+1].x, points[i+1].y, points[i].x, points[i].y, k2, c1, c2);
                     }
 
                     tbuf ~= intersect(1.0, k1, points[i].x + v1.x + k1 * (points[i].y + v1.y),
