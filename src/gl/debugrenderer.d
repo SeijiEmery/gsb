@@ -106,9 +106,10 @@ class DebugLineRenderer2D {
             a.x, a.y, 0.0, color,
             b.x, b.y, 0.0, color,
             d.x, d.y, 0.0, color,
-            d.x, d.y, 0.0, color,
-            c.x, c.y, 0.0, color,
-            a.x, a.y, 0.0, color
+
+            a.x, a.y, 0.0, color + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
+            d.x, d.y, 0.0, color + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
+            c.x, c.y, 0.0, color + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
         ];
     }
     private void pushQuad (vec3 a, vec3 b, vec3 c, vec3 d, float color) {
@@ -190,15 +191,18 @@ class DebugLineRenderer2D {
                     vec2 r1 = points[i] - points[i-1]; r1 /= r1.magnitude();
                     vec2 r2 = points[i+1] - points[i]; r2 /= r2.magnitude();
 
-                    log.write("%f", dot(r1, r2));
                     if (dot(r1, r2) > cutoff) {
                         tbuf ~= pt1;
                         tbuf ~= pt2;
                     } else {
                         dir = points[i] - points[i-1];
                         dir *= width * 0.5 / dir.magnitude();
-                        tbuf ~= vec3(points[i].x - dir.y, points[i].y + dir.x, 1.0);
-                        tbuf ~= vec3(points[i].x + dir.y, points[i].y - dir.x, 1.0); 
+                        tbuf ~= vec3(points[i].x - dir.y, points[i].y + dir.x, 1.0); 
+                        tbuf ~= vec3(points[i].x + dir.y, points[i].y - dir.x, 1.0);
+                        if (dot(r1,r2) < 0) {
+                            tbuf ~= vec3(points[i].x + dir.y, points[i].y - dir.x, 1.0);
+                            tbuf ~= vec3(points[i].x - dir.y, points[i].y + dir.x, 1.0); 
+                        }
                     }
                 }
 
@@ -207,7 +211,7 @@ class DebugLineRenderer2D {
                 dir *= width * 0.5 / dir.magnitude();
                 tbuf ~= vec3(points[$-1].x - dir.y, points[$-1].y + dir.x, 1.0);
                 tbuf ~= vec3(points[$-1].x + dir.y, points[$-1].y - dir.x, 1.0);
-
+                
                 //string s = "";
                 //foreach (pt; tbuf) {
                 //    s ~= format("(%0.2f,%0.2f), ", pt.x / pt.z ,pt.y / pt.z);
