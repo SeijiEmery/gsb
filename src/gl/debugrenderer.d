@@ -23,6 +23,7 @@ class ColoredVertexShader: Shader!Vertex {
     @uniform mat4 transform;
 
     @output vec4 color;
+    @output float edgeDist;
 
     vec4 unpackRGBA (float packed) {
         vec4 enc = vec4(1.0, 255.0, 65025.0, 160581375.0) * packed;
@@ -34,18 +35,22 @@ class ColoredVertexShader: Shader!Vertex {
     }
 
     void main () {
-        gl_Position = transform * vec4(pcv.xyz, 1.0);
+        edgeDist    = pcv.z;
+        gl_Position = transform * vec4(pcv.xy, 0.0, 1.0);
         color       = unpackRGBA(pcv.w);
     }
 }
 
 class ColoredFragmentShader: Shader!Fragment {
     @input vec4 color;
+    @input float edgeDist;
     @output vec4 fragColor;
 
     void main () {
-        //fragColor = vec4(1.0, 0.0, 0.0, 1.0);
         fragColor = vec4(color.xyz, 1.0);
+        if (edgeDist > 0.9 || edgeDist < 0.1) {
+            fragColor   -= vec4(0.2, 0.2, 0.0, 0.0);
+        }
     }
 }
 
@@ -103,13 +108,13 @@ class DebugLineRenderer2D {
 
     private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color) {
         states[fstate].vbuffer ~= [
-            a.x, a.y, 0.0, color,
+            a.x, a.y, 1.0, color,
             b.x, b.y, 0.0, color,
             d.x, d.y, 0.0, color,
 
-            a.x, a.y, 0.0, color + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
-            d.x, d.y, 0.0, color + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
-            c.x, c.y, 0.0, color + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
+            a.x, a.y, 1.0, color,// + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
+            d.x, d.y, 0.0, color,// + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
+            c.x, c.y, 1.0, color,// + 0 / 255.0 + 20 / 65025.0 + 50 / 16581375.0,
         ];
     }
     private void pushQuad (vec3 a, vec3 b, vec3 c, vec3 d, float color) {
@@ -159,14 +164,13 @@ class DebugLineRenderer2D {
                             cast(float)(a2 * b1 - a1 * b2));
                     }
 
-                    real k1 = (points[i-1].x - points[i].x) / (points[i].y - points[i-1].y);
-                    real k2 = (points[i+1].x - points[i].x) / (points[i].y - points[i+1].y);
+                    float k1 = (points[i-1].x - points[i].x) / (points[i].y - points[i-1].y);
+                    float k2 = (points[i+1].x - points[i].x) / (points[i].y - points[i+1].y);
 
-                    bool approxEqual (T)(T a, T b) {
-                        import std.math: abs;
-                        return abs(a - b) > 1.0;
-                    }
-
+                    //bool approxEqual (T)(T a, T b) {
+                    //    import std.math: abs;
+                    //    return abs(a - b) > 1.0;
+                    //}
                     //assert(approxEqual(points[i].x + k1 * points[i].y, points[i+1].x + k1 * points[i+1].y) &&
                     //       approxEqual(points[i].x + k2 * points[i].y, points[i-1].x + k2 * points[i-1].y));
                     //auto c1 = points[i].x   + k1 * points[i].y;
@@ -211,7 +215,7 @@ class DebugLineRenderer2D {
                 dir *= width * 0.5 / dir.magnitude();
                 tbuf ~= vec3(points[$-1].x - dir.y, points[$-1].y + dir.x, 1.0);
                 tbuf ~= vec3(points[$-1].x + dir.y, points[$-1].y - dir.x, 1.0);
-                
+
                 //string s = "";
                 //foreach (pt; tbuf) {
                 //    s ~= format("(%0.2f,%0.2f), ", pt.x / pt.z ,pt.y / pt.z);
@@ -221,7 +225,7 @@ class DebugLineRenderer2D {
                 // Push quads
                 for (auto i = tbuf.length; i >= 4; i -= 2) {
                     pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], packedColor);
-                    packedColor -= 80 / 255.0;
+                    //packedColor -= 80 / 255.0;
                 }
             }
 
