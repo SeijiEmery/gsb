@@ -32,7 +32,9 @@ class UITestModule {
         }
         void onMouseButtonPressed (int buttonMask, int allMods, int anyMods, void delegate() cb) {
             slots ~= g_mainWindow.onMouseButtonPressed.connect((Window.MouseButton evt) {
-                if (evt.button & buttonMask && (evt.mods == allMods || evt.mods & anyMods)) { cb(); }
+                if ((evt.button+1) & ((buttonMask << 1) + 1) && (evt.mods == allMods || evt.mods & anyMods)) { 
+                    cb(); 
+                }
             });
         }
         void onScroll (void delegate(vec2) cb) {
