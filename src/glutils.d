@@ -193,6 +193,7 @@ alias checked_glBufferData = checked!("glBufferData", GLenum, GLsizeiptr, const(
 alias checked_glBufferSubData = checked!("glBufferSubData", GLenum, GLintptr, GLsizeiptr, const(void)*);
 
 alias checked_glDrawArrays = checked!("glDrawArrays", GLenum, GLint, GLint);
+alias checked_glDrawElements = checked!("glDrawElements", GLenum, GLsizei, GLenum, const(GLvoid)*);
 
 
 alias checked_glActiveTexture = checked!("glActiveTexture", GLenum);

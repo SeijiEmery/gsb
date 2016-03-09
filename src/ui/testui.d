@@ -12,7 +12,6 @@ import gsb.core.color;
 import Derelict.glfw3.glfw3;
 
 
-
 class UITestModule {
     auto lastPos = vec2(0, 0);
     float size = 50.0;
@@ -21,52 +20,52 @@ class UITestModule {
     int lineSamples = 1;
 
     ISlot[] slots;
-    struct KeyHandler { int key, allMods, anyMods; delegate(void) cb; }
+    struct KeyHandler { int key, allMods, anyMods; void delegate() cb; }
     KeyHandler[] keyHandlers;
 
     private void setup () {
         disconnectAllSlots();
 
         int GLFW_MOD_ANY = GLFW_MOD_SHIFT | GLFW_MOD_CONTROL | GLFW_MOD_ALT | GLFW_MOD_SUPER;
-        void onMouseMoved (delegate(vec2) cb) {
+        void onMouseMoved (void delegate(vec2) cb) {
             slots ~= g_mainWindow.onMouseMoved.connect(cb);
         }
-        void onMouseButtonPressed (int buttonMask, int allMods, int anyMods, delegate(void) cb) {
+        void onMouseButtonPressed (int buttonMask, int allMods, int anyMods, void delegate() cb) {
             slots ~= g_mainWindow.onMouseButtonPressed.connect((Window.MouseButton evt) {
                 if (evt.button & buttonMask && (evt.mods == allMods || evt.mods & anyMods)) { cb(); }
             });
         }
-        void onScroll (delegate(vec2) cb) {
+        void onScroll (void delegate(vec2) cb) {
             slots ~= g_mainWindow.onScrollInput.connect(cb);
         }
         keyHandlers.length = 0;
         slots ~= g_mainWindow.onKeyPressed.connect((Window.KeyPress evt) {
             foreach (handler; keyHandlers) {
-                if (evt.key == handler.key && (evt.mods == handler.allMods || evt.mods & anyMods))
+                if (evt.key == handler.key && (evt.mods == handler.allMods || evt.mods & handler.anyMods))
                     handler.cb();
             }
         });
-        void onKeyPressed (int key, int allMods, int anyMods, delegate(void) cb) {
+        void onKeyPressed (int key, int allMods, int anyMods, void delegate() cb) {
             keyHandlers ~= KeyHandler(key, allMods, anyMods, cb);
         }
-        void onGamepadAxes (delegate(float[]) cb) {
+        void onGamepadAxes (void delegate(float[]) cb) {
             slots ~= g_mainWindow.onGamepadAxesUpdate.connect(cb);
         }
 
-        onMouseMoved(pos => 
-            lastPos = pos
-        );
-        onMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT, 0, GLFW_MOD_ANY, => 
-            points ~= lastPos 
-        );
+        onMouseMoved((vec2 pos) {
+            lastPos = pos;
+        });
+        onMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT, 0, GLFW_MOD_ANY, {
+            points ~= lastPos;
+        });
         // '+' button (shift+'+'): increase line samples, '-' button: decrease samples
-        onKeyPressed('=', GLFW_MOD_SHIFT, 0, => {
+        onKeyPressed('=', GLFW_MOD_SHIFT, 0, {
             lineSamples += 1; log.write("Set lineSamples = %d", lineSamples);
         });
-        onKeyPressed('-', 0, GLFW_MOD_SHIFT, => {
+        onKeyPressed('-', 0, GLFW_MOD_SHIFT, {
             lineSamples = max(lineSamples-1, 0); log.write("Set lineSamples = %d", lineSamples);
         });
-        onScroll(scroll => size += scroll.y);
+        onScroll((vec2 scroll) { size += scroll.y; });
     }
 
     /+ Note: maybe in the future we could do something like this: 

@@ -9,6 +9,38 @@ import gsb.glutils;
 import derelict.opengl3.gl3;
 import dglsl;
 import gl3n.linalg;
+import std.traits;
+
+public __gshared GLState glState;
+struct GLState {
+    private bool depthTestEnabled = false;
+    private bool transparencyEnabled = false;
+
+    void enableDepthTest (bool enabled) {
+        if (depthTestEnabled != enabled) {
+            if ((depthTestEnabled = enabled) == true) {
+                log.write("Enabling glDepthTest (GL_LESS)");
+                glEnable(GL_DEPTH_TEST);
+                glDepthFunc(GL_LESS);
+            } else {
+                log.write("Disabling glDepthTest");
+                glDisable(GL_DEPTH_TEST);
+            }
+        }
+    }
+    void enableTransparency (bool enabled) {
+        if (transparencyEnabled != enabled) {
+            if ((transparencyEnabled = enabled) == true) {
+                log.write("Enabling alpha transparency blending");
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            } else {
+                log.write("Disabling alpha transparency");
+                glDisable(GL_BLEND);
+            }
+        }
+    }
+}
 
 
 class VertexArray {
@@ -32,12 +64,17 @@ struct VertexAttrib {
     GLenum type;
     GLboolean normalized = GL_FALSE;
     GLsizei   stride = 0;
-    const GLvoid* pointer = null;
+    const GLvoid* pointerOffset = null;
 }
 
 struct DynamicVertexData {
     void* data; size_t length;
     VertexAttrib[] attribs;
+}
+struct ElementData {
+    void* data; size_t length;
+    GLenum type = GL_UNSIGNED_SHORT;
+    void*  pointerOffset = null;
 }
 
 struct DynamicVertexBatch {
@@ -55,8 +92,8 @@ private auto toBase2Size (T) (T minSize) {
 
 
 interface IDynamicRenderer {
-    void drawArrays (VertexBatch batch);
-    void drawElements (VertexBatch batch, ElementData elements);
+    void drawArrays (DynamicVertexBatch batch);
+    void drawElements (DynamicVertexBatch batch, ElementData elements);
     void release ();
 }
 
@@ -69,7 +106,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
     size_t bufferSize    = 1 << 20;  // 1 mb
     size_t bufferOffset  = 0;
 
-    final void drawArrays (VertexBatch batch) {
+    final void drawArrays (DynamicVertexBatch batch) {
         size_t neededLength = 0;
         foreach (component; batch.components)
             neededLength += component.length;
@@ -116,13 +153,13 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             // ...
             foreach (attrib; component.attribs) {
                 checked_glEnableVertexAttribArray(attrib.index);
-                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointer);
+                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointerOffset);
             }
         }
         checked_glDrawArrays(batch.type, batch.offset, batch.count);
     }
 
-    final void drawElements (VertexBatch batch, ElementData elementData) {
+    final void drawElements (DynamicVertexBatch batch, ElementData elementData) {
         throw new Exception("Unimplemented!");
     }
 
@@ -137,7 +174,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
 private class BasicDynamicRenderer : IDynamicRenderer {
     mixin LowLockSingleton;
 
-    private GLuint vbos[];
+    private GLuint[] vbos;
 
     private final void genVbos (size_t count) {
         int toCreate = cast(int)count - cast(int)vbos.length;
@@ -150,7 +187,7 @@ private class BasicDynamicRenderer : IDynamicRenderer {
         }
     }
 
-    final void drawArrays (VertexBatch batch) {
+    final void drawArrays (DynamicVertexBatch batch) {
         // create new vbos as necessary
         genVbos(batch.components.length);
         
@@ -158,9 +195,9 @@ private class BasicDynamicRenderer : IDynamicRenderer {
         checked_glBindVertexArray(batch.vao);
         foreach (i; 0..batch.components.length) {
             checked_glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
-            checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].ptr, GL_STREAM_DRAW);
-            foreach (attrib; batch.components[i].attrib) {
-                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointer);
+            checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].data, GL_STREAM_DRAW);
+            foreach (attrib; batch.components[i].attribs) {
+                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointerOffset);
             }
         }
         glDrawArrays(batch.type, batch.offset, batch.count);
@@ -172,7 +209,7 @@ private class BasicDynamicRenderer : IDynamicRenderer {
         }
     }
 
-    final void drawElements (VertexBatch batch, ElementData elementData) {
+    final void drawElements (DynamicVertexBatch batch, ElementData elementData) {
         // create new vbos as necessary
         genVbos(batch.components.length + 1);
         
@@ -181,13 +218,13 @@ private class BasicDynamicRenderer : IDynamicRenderer {
         foreach (i; 0..batch.components.length) {
             checked_glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
             checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].data, GL_STREAM_DRAW);
-            foreach (attrib; batch.components[i].attrib) {
-                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointer);
+            foreach (attrib; batch.components[i].attribs) {
+                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointerOffset);
             }
         }
-        checked_glBindBuffer(GL_ELEMENT_BUFFER, vbos[batch.components.length]);
-        checked_glBufferData(GL_ELEMENT_BUFFER, elementData.length, elementData.data, GL_STREAM_DRAW);
-        glDrawElements(batch.type, batch.count);
+        checked_glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[batch.components.length]);
+        checked_glBufferData(GL_ELEMENT_ARRAY_BUFFER, elementData.length, elementData.data, GL_STREAM_DRAW);
+        checked_glDrawElements(batch.type, batch.count, elementData.type, elementData.pointerOffset);
 
         // orphan buffers so we can reuse them for the next drawcall (note: we're _not_ trying to be fast/efficient here; this is just a minimalistic
         // implementation that we can test against the others)
@@ -195,13 +232,13 @@ private class BasicDynamicRenderer : IDynamicRenderer {
             checked_glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
             checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, null, GL_STREAM_DRAW);
         }
-        checked_glBindBuffer(GL_ELEMENT_BUFFER, vbos[batch.components.length]);
-        checked_glBufferData(GL_ELEMENT_BUFFER, elementData.length, null, GL_STREAM_DRAW);
+        checked_glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[batch.components.length]);
+        checked_glBufferData(GL_ELEMENT_ARRAY_BUFFER, elementData.length, null, GL_STREAM_DRAW);
     }
 
     final void release () {
         if (vbos.length) {
-            glDeleteBuffers(vbos.length, vbos[0]);
+            glDeleteBuffers(cast(int)vbos.length, &vbos[0]);
             vbos.length = 0;
         }
     }
@@ -218,7 +255,7 @@ struct DynamicRenderer {
     private static auto lastRenderer = NO_RENDERER;
     private static IDynamicRenderer _currentRenderer;
 
-    private static IDynamicRenderer @property currentRenderer () {
+    private static @property IDynamicRenderer currentRenderer () {
         if (renderer == lastRenderer && _currentRenderer)
             return _currentRenderer;
         lastRenderer = renderer;
@@ -233,7 +270,7 @@ struct DynamicRenderer {
     }
 
     static void drawElements (VertexArray vao, GLenum type, GLsizei offset, GLsizei count,
-        DynamicVertexData[] vertexData, DynamicElementData elementData
+        DynamicVertexData[] vertexData, ElementData elementData
     ) {
         currentRenderer.drawElements(
             DynamicVertexBatch(vao.get(), type, offset, count, vertexData), 
@@ -247,7 +284,12 @@ struct DynamicRenderer {
     }
 }
 
-void example {
+void example () {
+
+    interface IRenderable {
+        void render ();
+    }
+
     class Example : IRenderable {
         struct PackedData {
             vec2 position;
@@ -260,12 +302,12 @@ void example {
             ushort    [] indexData;
 
             protected void render () {
-                DynamicRenderer.drawElements(vao.get(), 
+                DynamicRenderer.drawElements(vao, 
                     GL_TRIANGLES, 0, cast(int)vertexData.length / 6, [
-                        VertexData(vertexData.ptr, vertexData.length, [
-                            VertexAttrib(0, 2, GL_FLOAT, GL_FALSE, PackedData.size, 0),
-                            VertexAttrib(1, 1, GL_FLOAT, GL_FALSE, PackedData.size, vec2.size),
-                            VertexAttrib(2, 1, GL_FLOAT, GL_FALSE, PackedData.size, vec2.size + float.size)
+                        DynamicVertexData(vertexData.ptr, vertexData.length, [
+                            VertexAttrib(0, 2, GL_FLOAT, GL_FALSE, PackedData.sizeof, null),
+                            VertexAttrib(1, 1, GL_FLOAT, GL_FALSE, PackedData.sizeof, cast(void*)vec2.sizeof),
+                            VertexAttrib(2, 1, GL_FLOAT, GL_FALSE, PackedData.sizeof, cast(void*)(vec2.sizeof + float.sizeof))
                         ])
                     ],  ElementData(indexData.ptr, indexData.length));
             }
@@ -279,6 +321,7 @@ void example {
         MyShader myshader;
 
         override void render () {
+            import std.algorithm.mutation: swap;
             synchronized { swap(fstate, gstate); }
 
             glState.enableDepthTest(false);
@@ -300,20 +343,18 @@ void example {
             protected void render (ref mat4 transform) {
                 if (!vbuffer.length)
                     return;
-                if (!vao)
-                    checked_glGenVertexArrays(1, &vao);
 
-                DynamicRenderer.drawArrays(vao.get(),
+                DynamicRenderer.drawArrays(vao,
                     GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
-                        VertexData(vbuffer.ptr, vbuffer.length, [
+                        DynamicVertexData(vbuffer.ptr, vbuffer.length, [
                             VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
                         ])
                     ]);
 
-                DynamicRenderer.drawElements(vao.get(),
-                    GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
+                //DynamicRenderer.drawElements(vao.get(),
+                //    GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
 
-                    ]
+                //    ]);
             }
             protected void release () {
                 vao.release();

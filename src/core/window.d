@@ -95,6 +95,14 @@ public:
         return m_scalingFactors; 
     }
 
+    @property mat4 screenSpaceTransform () {
+        auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
+        auto inv_scale_y = 1.0 / g_mainWindow.pixelDimensions.y;
+        return mat4.identity()
+            .scale(inv_scale_x, inv_scale_y, 1.0)
+            .translate(-1.0, 1.0, 0.0);
+    }
+
     // Event signals:
     Signal!(float, float) onScreenSizeChanged;
     Signal!(float, float) onFramebufferSizeChanged;
