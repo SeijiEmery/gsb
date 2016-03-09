@@ -5,6 +5,7 @@ import gsb.gl.debugrenderer;
 import gsb.core.window;
 import gsb.core.pseudosignals;
 import gsb.core.log;
+import gsb.core.uimanager;
 
 import gl3n.linalg;
 import gsb.glutils;
