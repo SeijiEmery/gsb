@@ -24,6 +24,42 @@ class UITestModule {
     struct KeyHandler { int key, allMods, anyMods; void delegate() cb; }
     KeyHandler[] keyHandlers;
 
+
+    private void setupEvents (UIEvents events) {
+        events.connect(MouseMovement.ABSOLUTE, (vec2 position) {
+            lastPos = position;
+        });
+        events.connect(MouseButtons.LEFT, KeyboardModifiers.ANY, {
+            points ~= lastPos;
+        });
+        events.connect(Keys.ascii('=').KEYDOWN, KeyboardModifiers.ANY & KeyboardModifiers.SHIFT, {
+            lineSamples += 1; log.write("Set lineSamples = %d", lineSamples);
+        });
+        events.connect(Keys.ascii('-').KEYUP, KeyboardModifiers.ANY, {
+            if (lineSamples > 0) {
+                lineSamples -= 1;
+                log.write("Set lineSamples = %d", lineSamples);
+            }
+        });
+        events.connect(MouseScroll.RELATIVE, (vec2 dir) {
+            size += dir.y;
+        });
+
+        events.connect(GamepadInput.axis(GAMEPAD_AXIS_RTRIGGER).greaterThan(0.1), {
+
+        });
+
+    }
+
+
+
+    private void setup2 (UIEvents events) {
+        events.connect(MouseButtons.LEFT, KeyboardModifiers.ANY, {
+
+        });
+    }
+
+
     private void setup () {
         disconnectAllSlots();
 
@@ -74,6 +110,27 @@ class UITestModule {
     /+ Note: maybe in the future we could do something like this: 
 
     class UITestModule : UIComponent
+
+    events.connect(MouseButtons.LEFT, KeyboardModifiers.ANY)({
+        points ~= lastPos;
+    });
+
+    events.connect(MouseButtons.LEFT, Button.PRESSED, KeyboardModifiers.ANY)({
+        
+    });
+    events.connect(MouseButtons.RIGHT, Button.EACH_SECOND(0.1), KeyboardModifiers.ANY)({
+    
+    })
+
+
+
+
+
+    events.connect(MouseMoved)({
+        
+    })
+
+
     
     this () {
         UIManager.setupOnce(this, events => {
