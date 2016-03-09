@@ -13,6 +13,8 @@ import gl3n.linalg;
 import gsb.core.log;
 import gsb.core.window;
 import gsb.core.events;
+import gsb.core.time;
+import gsb.core.uimanager;
 
 import gsb.glutils;
 import gsb.text.font;
@@ -66,6 +68,8 @@ void graphicsThread (Tid mainThreadId) {
 
 	log.write("Launched graphics thread");
 
+	g_graphicsFrameTime.init();  // start tracking per-frame time for graphics thread
+
 	glfwMakeContextCurrent(g_mainWindow.handle);
 	glfwSwapInterval(1);
 
@@ -117,6 +121,8 @@ void graphicsThread (Tid mainThreadId) {
 			//} break;
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 
+				g_graphicsFrameTime.updateFromRespectiveThread(); // update g_graphicsTime and g_graphicsDt
+
 				//log.write("on frame %d", frame++);
 
 				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -153,6 +159,9 @@ void enterGraphicsThread (Tid mainThreadId) {
 }
 
 void mainThread (Tid graphicsThreadId) {
+
+	g_eventFrameTime.init(); // start tracking event thread per-frame time
+
 	// Setup event logging
 	WindowEvents.instance.onScreenScaleChanged.connect(delegate(float x, float y) {
 		log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y);	
@@ -218,6 +227,8 @@ void mainThread (Tid graphicsThreadId) {
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
 
 		//log.write("Starting frame %d", frameCount);
+
+		g_eventTime.updateFromRespectiveThread(); // update g_eventTime, g_eventDt
 
 		glfwPollEvents();
 		g_mainWindow.runEventUpdates();
