@@ -1,13 +1,32 @@
 
 module gsb.core.uimanager;
+import gsb.core.uievents;
 import gsb.core.log;
 import gsb.core.pseudosignals;
 import gsb.core.window;
 import gsb.core.gamepad;
-import gsb.core.time;
+import gsb.core.frametime;
 
 import gl3n.linalg;
 
+interface UIComponent {
+    void setup (UIEvents);    
+}
+
+class UIComponentManager {
+    void createComponent(T)() {
+
+    }
+}
+
+class UIEventDispatcher {
+    
+}
+
+
+
+
+/+
 
 protected class EventContext {
 
@@ -112,7 +131,7 @@ public struct PressCondition {
                 return false;
             }
         }
-    }
+    }            
     static auto EVERY_SECOND (double seconds) {
         return new Timer(seconds);
     }
@@ -120,7 +139,6 @@ public struct PressCondition {
         return new Timer(ms * 1e-3);
     }
 }
-
 
 enum : ubyte {
     SRC_EVT_NONE = 0,
@@ -156,7 +174,7 @@ protected class UIEventsInstance : UIEvents {
     void dispatchEvents (ubyte eventType)(EventContext ctx) if (eventType < NUM_SRC_EVENTS) {
         if (!eventsSorted) resortEvents();
         assert(firstEventLookup[i] >= 0);
-        foreach (auto i = firstEventLookup[eventType]; events[i].type == eventType; ++i) {
+        for (auto i = firstEventLookup[eventType]; events[i].type == eventType; ++i) {
             if (events[i].cond(ctx)) {
                 cb();
             }
@@ -175,12 +193,6 @@ protected class UIEventsInstance : UIEvents {
         }
         eventsSorted = true;
     }
-
-
-
-
-
-
 }
 
 protected struct PackedEvent {
@@ -449,7 +461,7 @@ class UIManagerInstance {
         }
 
     }
-}
+}+/
 
 
 

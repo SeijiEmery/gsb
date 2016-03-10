@@ -13,7 +13,7 @@ import gl3n.linalg;
 import gsb.core.log;
 import gsb.core.window;
 import gsb.core.events;
-import gsb.core.time;
+import gsb.core.frametime;
 import gsb.core.uimanager;
 
 import gsb.glutils;

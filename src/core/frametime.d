@@ -1,4 +1,4 @@
-module gsb.core.time;
+module gsb.core.frametime;
 import Derelict.glfw3.glfw3;
 
 private struct TimeState {
