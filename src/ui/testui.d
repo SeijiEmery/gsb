@@ -24,39 +24,39 @@ class UITestModule {
     struct KeyHandler { int key, allMods, anyMods; void delegate() cb; }
     KeyHandler[] keyHandlers;
 
-
-    private void setupEvents (UIEvents events) {
-        events.connect(MouseMovement.ABSOLUTE, (vec2 position) {
-            lastPos = position;
-        });
-        events.connect(MouseButtons.LEFT, KeyboardModifiers.ANY, {
-            points ~= lastPos;
-        });
-        events.connect(Keys.ascii('=').KEYDOWN, KeyboardModifiers.ANY & KeyboardModifiers.SHIFT, {
-            lineSamples += 1; log.write("Set lineSamples = %d", lineSamples);
-        });
-        events.connect(Keys.ascii('-').KEYUP, KeyboardModifiers.ANY, {
-            if (lineSamples > 0) {
-                lineSamples -= 1;
-                log.write("Set lineSamples = %d", lineSamples);
-            }
-        });
-        events.connect(MouseScroll.RELATIVE, (vec2 dir) {
-            size += dir.y;
-        });
-
-        events.connect(GamepadInput.axis(GAMEPAD_AXIS_RTRIGGER).greaterThan(0.1), {
-
-        });
-
+    private void increaseLineSamples () {
+        lineSamples += 1;
+        log.write("Set line samples = %d", lineSamples);
+    }
+    private void decreaseLineSamples () {
+        if (lineSamples > 0) {
+            lineSamples -= 1;
+            log.write("Set line samples = %d", lineSamples);
+        }
     }
 
-
-
-    private void setup2 (UIEvents events) {
-        events.connect(MouseButtons.LEFT, KeyboardModifiers.ANY, {
-
-        });
+    private void setupEvents (UIEventsInstance events) {
+        events.handle(
+            (MouseButtonEvent ev) => {
+                if (btn.isLMB && btn.released)
+                    points ~= Mouse.cursorPosition;
+            },
+            (KeyboardEvent key) => {
+                if (key.keystr == "+") increaseLineSamples();
+                if (key.keystr == "-") decreaseLineSamples();
+            },
+            (ScrollEvent scroll) => size += scroll.y,
+            (GamepadButtonEvent ev) => {
+                if (ev.button == GamepadButton.A) increaseLineSamples();
+                if (ev.button == GamepadButton.B) decreaseLineSamples();
+            },
+            (GamepadAxisEvent ev) => {
+                if (ev.AXIS_LX || ev.AXIS_LY)
+                    panCamera(vec2(ev.AXIS_LX, ev.AXIS_RY) * cameraMoveSpeed);
+                if (ev.AXIS_RY)
+                    zoomCamera(ev.AXIS_RY * cameraZoomSpeed);
+            }
+        );
     }
 
 
