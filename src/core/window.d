@@ -10,8 +10,22 @@ import gsb.core.log;
 import gsb.core.pseudosignals;
 import gsb.core.gamepad;
 import gsb.core.uievents;
+import gsb.core.uimanager;
 
 public __gshared Window g_mainWindow = null;
+
+private void setMainWindow (Window window) {
+    assert(!g_mainWindow);
+    g_mainWindow = window;
+    UIComponentManager.registerEventSource(window.m_eventCollector);
+}
+private void unsetMainWindow (Window window) {
+    assert(g_mainWindow == window);
+    g_mainWindow = null;
+    UIComponentManager.unregisterEventSource(window.m_eventCollector);
+}
+
+
 
 // Wraps GLFWwindow and monitor stuff.
 class Window {
@@ -21,7 +35,7 @@ private:
     vec2i m_framebufferSize;  // window size in scaled pixels   (2.0x screen size if retina)
     vec2i m_screenSize;       // window size in unscaled pixels (0.5x framebuffer size if retina)
     vec2  m_screenScale;      // screen scaling factor -- either 1.0 (standard / old monitors), or 2.0 (retina)
-    GamepadManager!(GLFW_JOYSTICK_LAST+1) gamepadMgr;
+    EventCollector m_eventCollector;
 
 public:
     @property GLFWwindow* handle () { return m_window; }
@@ -133,20 +147,22 @@ public:
         this();
     }
     private this () {
-        if (!g_mainWindow)
-            g_mainWindow = this;
         glfwSetWindowUserPointer(m_window, cast(void*)this);
         m_eventCollector = new EventCollector(m_window);
+
+        if (!g_mainWindow)
+            setMainWindow(this);
     }
     ~this () {
         if (m_hasOwnership && m_window)
             glfwDestroyWindow(m_window);
-        if (g_mainWindow == this)
+        if (g_mainWindow == this) {
             g_mainWindow = null;
+        }
     }
 
-    private static EventCollector getCollector (GLFWwindow* window) {
-        return glfwGetWindowUserPointer(window).m_eventCollector;
+    private static EventCollector getCollector (GLFWwindow* window) nothrow {
+        return (cast(Window)glfwGetWindowUserPointer(window)).m_eventCollector;
     }
 
     private void updateScreenScale (vec2i screenSize, vec2i framebufferSize) {
@@ -176,7 +192,6 @@ public:
     class EventCollector : IEventCollector {
     private:
         UIEvent[] events, nextFrameEvents;
-        GLFWwindow* window = null;
 
         // retained / new state
         vec2i newScreenSize, newFramebufferSize;
@@ -186,16 +201,13 @@ public:
 
     public:
         protected this (GLFWwindow* window) {
-            this.window = window;
             glfwSetWindowSizeCallback(window,      &screenSizeCallback);
             glfwSetFramebufferSizeCallback(window, &framebufferSizeCallback);
 
             int w, h;
-            glfwGetWindowSize(&w, &h);
-            lastScreenSize = newScreenSize = vec2i(w, h);
-
-            glfwGetFramebufferSize(&w, &h);
-            lastFramebufferSize = newFramebufferSize = vec2i(w, h);
+            glfwGetWindowSize(window, &w, &h);      newScreenSize = vec2i(w, h);
+            glfwGetFramebufferSize(window, &w, &h); newFramebufferSize = vec2i(w, h);
+            updateScreenScale(newScreenSize, newFramebufferSize);
 
             glfwSetKeyCallback(window, &keyCallback);
             glfwSetCharCallback(window, &textCallback);
@@ -209,7 +221,7 @@ public:
         override UIEvent[] getEvents () {
             import std.algorithm.mutation: swap;
             synchronized {
-                swap(events, nextEvents);
+                swap(events, nextFrameEvents);
                 events.length = 0;
 
                 // check if window size or scale changed
@@ -218,7 +230,7 @@ public:
                     auto lastSize  = m_screenSize;
 
                     updateScreenScale(newScreenSize, newFramebufferSize);
-                    events ~= WindowResizeEvent(
+                    nextFrameEvents ~= WindowResizeEvent.create(
                         m_screenSize, lastSize,
                         m_screenScale, lastScale
                     );
@@ -229,26 +241,26 @@ public:
 
                 // check + update mouse
                 if (lastMousePos != newMousePos) {
-                    events ~= MouseMoveEvent(newMousePos, lastMousePos);
+                    nextFrameEvents ~= MouseMoveEvent.create(newMousePos, lastMousePos);
                     lastMousePos = newMousePos;
                 }
 
                 if (text.length)
-                    nextEvents ~= TextEvent(text);
+                    nextFrameEvents ~= TextEvent.create(text);
                 text.length = 0;
             }
-            return nextEvents;
+            return nextFrameEvents;
         }
 
     private:
-        extern (C) static void windowSizeCallback (GLFWwindow * window, int width, int height) nothrow {
+        extern (C) static void screenSizeCallback (GLFWwindow * window, int width, int height) nothrow {
             getCollector(window).windowSizeChanged(width, height);
         }
         void windowSizeChanged (int width, int height) nothrow {
             synchronized { newScreenSize = vec2i(width, height); }
         }
 
-        extern (C) static void windowFramebufferSizeCallback (GLFWwindow * window, int width, int height) nothrow {
+        extern (C) static void framebufferSizeCallback (GLFWwindow * window, int width, int height) nothrow {
             getCollector(window).framebufferSizeChanged(width, height);
         }
         void framebufferSizeChanged (int width, int height) nothrow {
@@ -260,12 +272,7 @@ public:
         }
         void keyPressed (int key, int scancode, int action, int mods) nothrow {
             synchronized {
-                switch (action) {
-                    case GLFW_PRESS:   events ~= KeyboardEvent(key, mods, 0.0); break;
-                    case GLFW_RELEASE: events ~= KeyboardEvent(key, mods, -1.0); break;
-                    case GLFW_REPEAT:  events ~= KeyboardEvent(key, mods, 1.0); break;
-                    default: log.write("INVALID KEY EVENT ACTION!");
-                }
+                events ~= KeyboardEvent.createFromGlfwValues(key, scancode, action, mods);
             }
         }
 
@@ -286,37 +293,18 @@ public:
         extern (C) static void mouseButtonCallback (GLFWwindow* window, int button, int action, int mods) nothrow {
             getCollector(window).mouseButton(button, action, mods);
         }
-        void mouseButton (int button, int action, int mods) {
+        void mouseButton (int button, int action, int mods) nothrow {
             synchronized { 
-                switch (action) {
-                    case GLFW_PRESS:   events ~= MouseButtonEvent(button, mods, 0.0); break;
-                    case GLFW_RELEASE: events ~= MouseButtonEvent(button, mods, -1.0); break;
-                    case GLFW_REPEAT:  events ~= MouseButtonEvent(button, mods, 1.0); break;
-                    default: log.write("INVALID MOUSE EVENT ACTION!");
-                }
+                events ~= MouseButtonEvent.createFromGlfwValues(button, action, mods);
             }
         }
 
         extern (C) static void scrollCallback (GLFWwindow* window, double xdelta, double ydelta) nothrow {
             getCollector(window).scroll(xdelta, ydelta);
         }
-        void scroll (double x, double y) {
-            synchronized { events ~= ScrollEvent(vec2(x, y)); }
+        void scroll (double x, double y) nothrow {
+            synchronized { events ~= ScrollEvent.create(vec2(x, y)); }
         }
-    }
-
-public:
-    private immutable uint UPDATE_FREQUENCY = 60; // update expensive stuff every 60 frames, and regular events every frame
-    private uint frameCount = UPDATE_FREQUENCY;
-
-    // Only call this from the main thread! Does additional event polling and processing not covered by glfwPollEvents
-    // for stuff that is (mostly) connected to this window instance.
-    void runEventUpdates () {
-        if (frameCount++ >= UPDATE_FREQUENCY) {
-            frameCount = 0;
-            gamepadMgr.updateDeviceList();
-        }
-        gamepadMgr.update();
     }
 }
 

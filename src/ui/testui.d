@@ -6,13 +6,15 @@ import gsb.core.window;
 import gsb.core.pseudosignals;
 import gsb.core.log;
 import gsb.core.uimanager;
+import gsb.core.uievents;
+import gsb.core.gamepad;
 
 import gl3n.linalg;
 import gsb.glutils;
 import gsb.core.color;
 import Derelict.glfw3.glfw3;
 
-this () {
+static this () {
     UIComponentManager.registerComponent(new UITestModule(), "uiTestModule", true);
 }
 
@@ -21,9 +23,11 @@ class UITestModule : UIComponent {
     float size = 50.0;
     vec2[] points;
     int lineSamples = 1;
-    Color triangleColor = Color("#fadd4c");
+    Color triangleColor;
 
-    override void onComponentInit () {}
+    override void onComponentInit () {
+        triangleColor = Color("#fadd4c");
+    }
     override void onComponentShutdown () {}
 
     private void increaseLineSamples () {
@@ -37,19 +41,19 @@ class UITestModule : UIComponent {
         }
     }
     override void handleEvent (UIEvent event) {
-        event.tryVisit!(
-            (MouseButtonEvent ev) => {
+        event.handle( 
+            (MouseButtonEvent btn) {
                 if (btn.isLMB && btn.released)
                     points ~= Mouse.cursorPosition;
             },
-            (KeyboardEvent key) => {
+            (KeyboardEvent key) {
                 if (key.keystr == "+") increaseLineSamples();
                 if (key.keystr == "-") decreaseLineSamples();
             },
-            (ScrollEvent scroll) => size += scroll.y,
-            (GamepadButtonEvent ev) => {
-                if (ev.button == GamepadButton.A) increaseLineSamples();
-                if (ev.button == GamepadButton.B) decreaseLineSamples();
+            (ScrollEvent scroll) => size += scroll.dir.y,
+            (GamepadButtonEvent ev) {
+                if (ev.button == GamepadButton.BUTTON_A && ev.pressed) increaseLineSamples();
+                if (ev.button == GamepadButton.BUTTON_B && ev.pressed) decreaseLineSamples();
             },
             //(GamepadAxisEvent ev) => {
             //    if (ev.AXIS_LX || ev.AXIS_LY)
@@ -57,7 +61,7 @@ class UITestModule : UIComponent {
             //    if (ev.AXIS_RY)
             //        zoomCamera(ev.AXIS_RY * cameraZoomSpeed);
             //},
-            (FrameUpdateEvent frame) => {
+            (FrameUpdateEvent frame) {
                 triangleColor.r += frame.dt * 0.5;
                 if (triangleColor.r > 1.0) triangleColor.r -= 1.0;
 

@@ -8,6 +8,7 @@ import gsb.core.gamepad;
 import gsb.core.frametime;
 import gsb.core.singleton;
 
+import std.traits;
 import gl3n.linalg;
 
 // UIComponent base class. Note: components should use onInit() / onShutdown() as its 
@@ -49,15 +50,26 @@ private class UIComponentManagerInstance {
     public Signal!(UIComponent) onComponentDeactivated;
     public Signal!(UIComponent, string) onComponentRegistered;
 
+    public Signal!(IEventCollector) onEventSourceRegistered;
+    public Signal!(IEventCollector) onEventSourceUnregistered;
+
     // Dispatch events on components
     void update () {
         dispatcher.dispatchEvents(activeComponents);
     }
 
+    void shutdown () {
+        foreach (component; activeComponents) {
+            component.onComponentShutdown();
+            onComponentDeactivated.emit(component);
+        }
+        activeComponents.length = 0;
+    }
+
     // Register component instance. Components are created once
     void registerComponent (UIComponent component, string name, bool active = true) {
         if (name in registeredComponents)
-            throw Exception("Already registered component '%s'", name);
+            throw new Exception("Already registered component '%s'", name);
 
         component._id = nextComponentId++;
         component._name = name;
@@ -70,15 +82,24 @@ private class UIComponentManagerInstance {
             activateComponent(component);
     }
 
+    void registerEventSource (IEventCollector source) {
+        onEventSourceUnregistered.emit(source);
+        dispatcher.registerEventSource(source);
+    }
+    void unregisterEventSource (IEventCollector source) {
+        onEventSourceUnregistered.emit(source);
+        dispatcher.unregisterEventSource(source);
+    }
+
     void createComponent (string name) {
         if (name !in registeredComponents)
-            throw Exception("No registered component '%s'", name);
+            throw new Exception("No registered component '%s'", name);
 
         activateComponent(registeredComponents[name]);
     }
     void deleteComponent (string name) {
         if (name !in registeredComponents)
-            throw Exception("No registered component '%s'", name);
+            throw new Exception("No registered component '%s'", name);
 
         deactivateComponent(registeredComponents[name]);
     }
@@ -87,14 +108,14 @@ private class UIComponentManagerInstance {
         if (!component.active) {
             component._active = true;
             activeComponents ~= component;
-            component.onInit();
+            component.onComponentInit();
             onComponentActivated.emit(component);
         }
     }
     private void deactivateComponent (UIComponent component) {
         if (component.active) {
             component._active = false;
-            component.onShutdown();
+            component.onComponentShutdown();
             onComponentDeactivated.emit(component);
 
             // swap-delete (or could std.algorithm remove, but w/e; this is faster)
@@ -112,7 +133,7 @@ private class UIComponentManagerInstance {
 }
 
 private struct UIEventDispatcher {
-    private IEventCollector eventSources;
+    private IEventCollector[] eventSources;
     private UIEvent[] eventList;
 
     void registerEventSource (IEventCollector source) {
@@ -121,10 +142,28 @@ private struct UIEventDispatcher {
             assert(ev != source);
         eventSources ~= source;
     }
+    void unregisterEventSource (IEventCollector source) {
+        for (auto i = eventSources.length; i --> 0; ) {
+            if (eventSources[i] == source) {
+                if (i != eventSources.length - 1)
+                    eventSources[i] = eventSources[$-1];
+                eventSources.length -= 1;
+                return;
+            }
+        }
+        throw new Exception("Event source was not registered");
+    }
+
     void dispatchEvents (UIComponent[] components) {
         eventList.length = 0;
         foreach (ev; eventSources)
             eventList ~= ev.getEvents();
+        
+        eventList ~= FrameUpdateEvent.create(
+            g_eventFrameTime.current,
+            g_eventFrameTime.dt,
+            g_eventFrameTime.frameCount
+        );
 
         foreach (event; eventList) {
             foreach (component; components) {

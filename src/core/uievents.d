@@ -8,59 +8,84 @@ import gsb.core.frametime;
 import gl3n.linalg;
 import Derelict.glfw3.glfw3;
 
+import std.traits: isSomeString;
+import std.conv: to;
 import std.variant;
 
 // Events are ADTs (sum types). See std.variant and/or haskell.
 alias UIEvent = Algebraic!(
-    WindowResizeEvent, KeyboardEvent, TextEvent, MouseButtonEvent, 
+    FrameUpdateEvent, WindowResizeEvent, KeyboardEvent, TextEvent, MouseButtonEvent, 
     MouseMoveEvent, ScrollEvent, GamepadButtonEvent, GamepadAxisEvent
 );
+
+auto handle (Handlers...)(UIEvent event, Handlers handlers) {
+    return event.tryVisit(handlers);
+}
+
 
 interface IEventCollector {
     UIEvent[] getEvents ();
 }
 
+struct FrameUpdateEvent {
+    double time, dt;
+    ulong  frame;
+
+    static UIEvent create (T...)(T args) { return UIEvent(FrameUpdateEvent(args)); }
+}
+
 struct WindowResizeEvent {
     vec2i newDimensions, prevDimensions;
     vec2  newScale, prevScale;    
+
+    static UIEvent create (T...)(T args) { return UIEvent(WindowResizeEvent(args)); }
 }
 
-struct KeyboardModifier {
-    enum : ubyte {
-        SHIFT = GLFW_MOD_SHIFT,
-        CTRL  = GLFW_MOD_CONTROL,
-        ALT   = GLFW_MOD_ALT,
-        CMD   = GLFW_MOD_SUPER,
-        META  = GLFW_MOD_SUPER,
-    }
-    static string toString (ubyte mods) {
-        string[] s;
-        if (mods & SHIFT) s ~= "SHIFT";
-        if (mods & CTRL)  s ~= "CTRL";
-        if (mods & ALT)   s ~= "ALT";
-        version(OSX) { if (mods & CMD) s ~= "CMD"; }
-        else         { if (mods & META) s ~= "META"; }
-        return s.length ? s.join(" | ") : "NONE";
-    }
+enum KeyboardModifier : ubyte {
+    NONE  = 0,
+    SHIFT = GLFW_MOD_SHIFT,
+    CTRL  = GLFW_MOD_CONTROL,
+    ALT   = GLFW_MOD_ALT,
+    CMD   = GLFW_MOD_SUPER,
+    META  = GLFW_MOD_SUPER,
 }
-
+static string toString (KeyboardModifier mods) {
+    string[] s;
+    if (mods & KeyboardModifier.SHIFT) s ~= "SHIFT";
+    if (mods & KeyboardModifier.CTRL)  s ~= "CTRL";
+    if (mods & KeyboardModifier.ALT)   s ~= "ALT";
+    version(OSX) { if (mods & KeyboardModifier.CMD) s ~= "CMD"; }
+    else         { if (mods & KeyboardModifier.META) s ~= "META"; }
+    return s.length ? s.join(" | ") : "NONE";
+}
+enum PressAction : ubyte {
+    PRESSED = GLFW_PRESS,
+    RELEASED = GLFW_RELEASE,
+    REPEAT   = GLFW_REPEAT
+}
 
 // Wraps a glfw key event
 struct KeyboardEvent {
-    int              keycode = -1; // glfw key value (-1 => unknown; positive values map to ascii or special glfw values)
-    KeyboardModifier mods = 0;     // bitmask of glfw modifiers
-    double           keyDownTime = 0.0; // time since keydown event in seconds; set to 0.0 for keyPress events, -1.0 for keyRelease events, and something > 0.0 for keyDown eve
+    // glfw key value (-1 => unknown; positive values map to ascii or special glfw values)
+    short keycode = -1;
+    PressAction      action;
+    KeyboardModifier mods = KeyboardModifier.NONE;  // bitmask of glfw keyboard modifiers
 
-    @property bool keyDown () { return keyDownTime >= 0.0; }
-    @property bool keyUp   () { return keyDownTime < 0.0; }
-    @property bool keyPressed () { return keyDownTime == 0.0; }
-    @property bool keyReleased () { return keyDownTime < 0.0; }
+    static auto createFromGlfwValues (int key, int scancode, int action, int mods) nothrow {
+        return UIEvent(KeyboardEvent(
+            cast(short)key, cast(PressAction)(cast(ubyte)action), cast(KeyboardModifier)(cast(ubyte)mods) ));
+    }
+    static UIEvent create (T...)(T args) nothrow  { return UIEvent(KeyboardEvent(args)); }
 
-    @property bool shift   () { return mods & KeyboardModifier.SHIFT; }
-    @property bool ctrl    () { return mods & KeyboardModifier.CTRL; }
-    @property bool cmd     () { return mods & KeyboardModifier.CMD; }
-    @property bool meta    () { return mods & KeyboardModifier.META; }
-    @property bool alt     () { return mods & KeyboardModifier.ALT; }
+    @property bool keyDown () { return action == PressAction.PRESSED || action == PressAction.REPEAT; }
+    @property bool keyPressed () { return action == PressAction.PRESSED; }
+    @property bool keyReleased () { return action == PressAction.RELEASED; }
+
+    @property bool shift   () { return (mods & KeyboardModifier.SHIFT) != 0; }
+    @property bool ctrl    () { return (mods & KeyboardModifier.CTRL) != 0; }
+    @property bool cmd     () { return (mods & KeyboardModifier.CMD) != 0; }
+    @property bool meta    () { return (mods & KeyboardModifier.META) != 0; }
+    @property bool alt     () { return (mods & KeyboardModifier.ALT) != 0; }
 
     // Stringified representation of key code, including shift => alternate character codes
     @property string keystr () {
@@ -68,7 +93,7 @@ struct KeyboardEvent {
             case GLFW_KEY_UNKNOWN: return "UNKNOWN";
             case GLFW_KEY_SPACE:   return "SPACE";
             case GLFW_KEY_ESCAPE:  return "ESC";
-            case GLFW_KEY_ENDER:   return "ENTER";
+            case GLFW_KEY_ENTER:   return "ENTER";
             case GLFW_KEY_DELETE:
             case GLFW_KEY_BACKSPACE: return "DELETE";
             case GLFW_KEY_INSERT:  return "INSERT";
@@ -85,7 +110,7 @@ struct KeyboardEvent {
             case GLFW_KEY_SCROLL_LOCK: return "SCROLL_LOCK";
             case GLFW_KEY_NUM_LOCK:    return "NUM_LOCK";
             case GLFW_KEY_LEFT_SHIFT:   case GLFW_KEY_RIGHT_SHIFT: return "SHIFT";
-            case GLFW_KEY_LEFT_CONTROL: case GLW_KEY_RIGHT_CONTROL: return "CTRL";
+            case GLFW_KEY_LEFT_CONTROL: case GLFW_KEY_RIGHT_CONTROL: return "CTRL";
             case GLFW_KEY_LEFT_ALT: case GLFW_KEY_RIGHT_ALT: return "ALT";
             case GLFW_KEY_LEFT_SUPER: case GLFW_KEY_RIGHT_SUPER:
                 version (OSX) { return "CMD"; } else { return "META"; }
@@ -117,17 +142,17 @@ struct KeyboardEvent {
             case GLFW_KEY_KP_MULTIPLY: return "*";
             case GLFW_KEY_KP_SUBTRACT: return "-";
             case GLFW_KEY_KP_ADD:      return "+";
-            case GLFW_KEY_KP_ENDER:    return "ENTER";
+            case GLFW_KEY_KP_ENTER:    return "ENTER";
             case GLFW_KEY_KP_EQUAL:    return "=";
             default: {
                 if (keycode >= 'a' && keycode <= 'z') {
-                    return mods & KeyboardModifier.SHIFT ? keycode + 'A' - 'a' : keycode;
+                    return format("%c", mods & KeyboardModifier.SHIFT ? keycode + 'A' - 'a' : keycode);
                 }
                 if (keycode >= GLFW_KEY_F1 && keycode <= GLFW_KEY_F25) {
                     return format("F%d", keycode - GLFW_KEY_F1 + 1);
                 }
                 if (keycode >= GLFW_KEY_KP_0 && keycode <= GLFW_KEY_KP_1) {
-                    return '0' + keycode - GLFW_KEY_KP_0;
+                    return format("%c", '0' + keycode - GLFW_KEY_KP_0);
                 }
             }
             return keycode > 0 ? format("%c", cast(dchar)keycode) : "";
@@ -136,13 +161,19 @@ struct KeyboardEvent {
 
     auto toString () {
         if (mods)
-            return format("[KB Event %d(%s) %s]", keycode, keystr, KeyboardModifier.toString(mods));
+            return format("[KB Event %d(%s) %s]", keycode, keystr, mods.toString);
         return format("KBEvent %d(%s)]", keycode, keystr);
     }
+
+
 }
 
 struct TextEvent {
-    string text;
+    dchar[] text;
+
+    static auto create (typeof(text) text) nothrow {
+        return UIEvent(TextEvent(text));
+    }
 }
 
 enum MouseButton {
@@ -157,38 +188,50 @@ enum MouseButton {
 }
 
 struct MouseButtonEvent {
-    MouseButton button;
-    KeyboardModifier modifiers;
-    double      pressTime = 0.0;
+    MouseButton      button;
+    PressAction      action;
+    KeyboardModifier modifiers = KeyboardModifier.NONE;
 
-    @property bool down    () { return pressTime >= 0.0; }
-    @property bool pressed () { return pressTime == 0.0; }
-    @property bool released () { return pressTime < 0.0; }
+    @property bool down    () { return action == PressAction.PRESSED || action == PressAction.REPEAT; }
+    @property bool pressed () { return action == PressAction.PRESSED; }
+    @property bool released () { return action == PressAction.RELEASED; }
 
     @property bool isLMB () { return button == MouseButton.LMB; }
     @property bool isRMB () { return button == MouseButton.RMB; }
     @property bool isMMB () { return button == MouseButton.MMB; }
 
-    @property bool shift () { return modifiers & KeyboardModifier.SHIFT; }
-    @property bool cmd   () { return modifiers & KeyboardModifier.CMD; }
-    @property bool meta  () { return modifiers & KeyboardModifier.META; }
-    @property bool ctrl  () { return modifiers & KeyboardModifier.CTRL; }
-    @property bool alt   () { return modifiers & KeyboardModifier.ALT; }
+    @property bool shift () { return (modifiers & KeyboardModifier.SHIFT) != 0; }
+    @property bool cmd   () { return (modifiers & KeyboardModifier.CMD)   != 0; }
+    @property bool meta  () { return (modifiers & KeyboardModifier.META)  != 0; }
+    @property bool ctrl  () { return (modifiers & KeyboardModifier.CTRL)  != 0; }
+    @property bool alt   () { return (modifiers & KeyboardModifier.ALT)   != 0; }
+
+    static UIEvent create (T...)(T args) nothrow { return UIEvent(MouseButtonEvent(args)); }
+    static auto createFromGlfwValues (int button, int action, int mods) nothrow {
+        return UIEvent(MouseButtonEvent(
+            cast(MouseButton)(cast(ubyte)button), cast(PressAction)(cast(ubyte)action), cast(KeyboardModifier)(cast(ubyte)mods)));
+    }
 }
 
 struct MouseMoveEvent {
     vec2 position;
     vec2 prevPosition;
+
+    static UIEvent create (T...)(T args) nothrow { return UIEvent(MouseMoveEvent(args)); }
 }
 
 struct ScrollEvent {
     vec2 dir;
+
+    static UIEvent create (T...)(T args) nothrow { return UIEvent(ScrollEvent(args)); }
 }
 
 struct GamepadButtonEvent {
     GamepadButton button;
     bool          pressed = true;
     @property bool released () { return !pressed; }
+
+    static UIEvent create (T...)(T args) nothrow { return UIEvent(GamepadButtonEvent(args)); }
 }
 
 struct GamepadAxisEvent {
@@ -202,6 +245,8 @@ struct GamepadAxisEvent {
     @property auto AXIS_RT () { return axes[GamepadAxis.AXIS_RTRIGGER]; }
     @property auto DPAD_X () { return axes[GamepadAxis.AXIS_DPAD_X]; }
     @property auto DPAD_Y () { return axes[GamepadAxis.AXIS_DPAD_Y]; }
+
+    static UIEvent create (T...)(T args) nothrow { return UIEvent(GamepadAxisEvent(args)); }
 }
 
 
