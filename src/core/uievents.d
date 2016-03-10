@@ -4,26 +4,56 @@ import gsb.core.log;
 import gsb.core.pseudosignals;
 import gsb.core.window;
 import gsb.core.gamepad;
-import gsb.core.time;
+import gsb.core.frametime;
 import gl3n.linalg;
+import Derelict.glfw3.glfw3;
 
 import std.variant;
 
 // Events are ADTs (sum types). See std.variant and/or haskell.
 alias UIEvent = Algebraic!(
     WindowResizeEvent, KeyboardEvent, TextEvent, MouseButtonEvent, 
-    MouseMoveEvent, GamepadButtonEvent, GamepadAxisEvent
+    MouseMoveEvent, ScrollEvent, GamepadButtonEvent, GamepadAxisEvent
 );
+
+interface IEventCollector {
+    UIEvent[] getEvents ();
+}
+
+
+
+
+private class WindowEventCollector {
+    GLFWwindow* window = null; // observed window
+
+    void setWindow (GLFWwindow * window) {
+        this.window = window;
+        if (window) {
+            glfwSetWindowUserPointer(window, cast(void*)this);
+            glfwSetWindowSizeCallback()
+
+
+            glfwSetKeyCallback(window, &keyCallback);
+            glfwSetCharCallback(window, &charCallback);
+            glfwSetCursorPosCallback(window, &mousePosCallback);
+            glfwSetMouseButtonCallback(window, &mouseButtonCallback);
+            glfwSetScrollCallback(window, &scrollCallback);
+        }
+    }
+
+
+
+}
 
 struct WindowResizeEvent {
     vec2i newDimensions, prevDimensions;
-    vec2i newScale, prevScale;    
+    vec2  newScale, prevScale;    
 }
 
 struct KeyboardModifier {
     enum : ubyte {
         SHIFT = GLFW_MOD_SHIFT,
-        CTRL  = GLFW_MOD_CTRL,
+        CTRL  = GLFW_MOD_CONTROL,
         ALT   = GLFW_MOD_ALT,
         CMD   = GLFW_MOD_SUPER,
         META  = GLFW_MOD_SUPER,
@@ -84,7 +114,7 @@ struct KeyboardEvent {
             case GLFW_KEY_LEFT_ALT: case GLFW_KEY_RIGHT_ALT: return "ALT";
             case GLFW_KEY_LEFT_SUPER: case GLFW_KEY_RIGHT_SUPER:
                 version (OSX) { return "CMD"; } else { return "META"; }
-                
+
             case '`': return shift ? "~" : "`";
             case '1': return shift ? "!" : "1";
             case '2': return shift ? "@" : "2";
@@ -129,7 +159,7 @@ struct KeyboardEvent {
         }
     }
 
-    override auto toString () {
+    auto toString () {
         if (mods)
             return format("[KB Event %d(%s) %s]", keycode, keystr, KeyboardModifier.toString(mods));
         return format("KBEvent %d(%s)]", keycode, keystr);
@@ -174,6 +204,29 @@ struct MouseButtonEvent {
 struct MouseMoveEvent {
     vec2 position;
     vec2 prevPosition;
+}
+
+struct ScrollEvent {
+    vec2 dir;
+}
+
+struct GamepadButtonEvent {
+    GamepadButton button;
+    bool          pressed = true;
+    @property bool released () { return !pressed; }
+}
+
+struct GamepadAxisEvent {
+    float[NUM_GAMEPAD_AXES] axes;
+
+    @property auto AXIS_LX () { return axes[GamepadAxis.AXIS_LX]; }
+    @property auto AXIS_LY () { return axes[GamepadAxis.AXIS_LY]; }
+    @property auto AXIS_RX () { return axes[GamepadAxis.AXIS_RX]; }
+    @property auto AXIS_RY () { return axes[GamepadAxis.AXIS_RY]; }
+    @property auto AXIS_LT () { return axes[GamepadAxis.AXIS_LTRIGGER]; }
+    @property auto AXIS_RT () { return axes[GamepadAxis.AXIS_RTRIGGER]; }
+    @property auto DPAD_X () { return axes[GamepadAxis.AXIS_DPAD_X]; }
+    @property auto DPAD_Y () { return axes[GamepadAxis.AXIS_DPAD_Y]; }
 }
 
 
