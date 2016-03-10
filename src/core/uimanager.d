@@ -6,21 +6,132 @@ import gsb.core.pseudosignals;
 import gsb.core.window;
 import gsb.core.gamepad;
 import gsb.core.frametime;
+import gsb.core.singleton;
 
 import gl3n.linalg;
 
-interface UIComponent {
-    void setup (UIEvents);    
+// UIComponent base class. Note: components should use onInit() / onShutdown() as its 
+// ctor / dtor, respectively, NOT this() / ~this().
+class UIComponent {
+    // Called when component is activated / 'created'
+    abstract void onComponentInit ();
+
+    // Called when component is deactivated / 'destroyed'
+    abstract void onComponentShutdown();
+
+    // Event handler. Doesn't support event eating / forwarding (yet); currently all components recieve the same events.
+    abstract void handleEvent (UIEvent);
+    
+    // Public properties: registered name, unique instance id, and active / inactive state.
+    @property auto name ()   { return _name; }
+    @property auto id ()     { return _id; }
+    @property auto active () { return _active; }
+
+    private string _name;
+    private ulong  _id = 0;
+    private bool   _active = false;
 }
 
-class UIComponentManager {
-    void createComponent(T)() {
+public @property auto UIComponentManager () {
+    return UIComponentManagerInstance.instance;
+}
 
+private class UIComponentManagerInstance {
+    mixin LowLockSingleton;
+
+    private UIEventDispatcher dispatcher;
+
+    private UIComponent[string] registeredComponents;
+    private UIComponent[]       activeComponents;
+    private ulong nextComponentId = 1;
+
+    public Signal!(UIComponent) onComponentActivated;
+    public Signal!(UIComponent) onComponentDeactivated;
+    public Signal!(UIComponent, string) onComponentRegistered;
+
+    // Dispatch events on components
+    void update () {
+        dispatcher.dispatchEvents(activeComponents);
+    }
+
+    // Register component instance. Components are created once
+    void registerComponent (UIComponent component, string name, bool active = true) {
+        if (name in registeredComponents)
+            throw Exception("Already registered component '%s'", name);
+
+        component._id = nextComponentId++;
+        component._name = name;
+        component._active = active;
+
+        registeredComponents[name] = component;
+        onComponentRegistered.emit(component, name);
+
+        if (component.active)
+            activateComponent(component);
+    }
+
+    void createComponent (string name) {
+        if (name !in registeredComponents)
+            throw Exception("No registered component '%s'", name);
+
+        activateComponent(registeredComponents[name]);
+    }
+    void deleteComponent (string name) {
+        if (name !in registeredComponents)
+            throw Exception("No registered component '%s'", name);
+
+        deactivateComponent(registeredComponents[name]);
+    }
+
+    private void activateComponent (UIComponent component) {
+        if (!component.active) {
+            component._active = true;
+            activeComponents ~= component;
+            component.onInit();
+            onComponentActivated.emit(component);
+        }
+    }
+    private void deactivateComponent (UIComponent component) {
+        if (component.active) {
+            component._active = false;
+            component.onShutdown();
+            onComponentDeactivated.emit(component);
+
+            // swap-delete (or could std.algorithm remove, but w/e; this is faster)
+            for (auto i = activeComponents.length; i --> 0; ) {
+                if (activeComponents[i] == component) {
+                    if (i != activeComponents.length - 1)
+                        activeComponents[$-1] = activeComponents[i];
+                    activeComponents.length -= 1;
+                    return;
+                }
+            }
+            assert(0);
+        }
     }
 }
 
-class UIEventDispatcher {
-    
+private struct UIEventDispatcher {
+    private IEventCollector eventSources;
+    private UIEvent[] eventList;
+
+    void registerEventSource (IEventCollector source) {
+        // assert unique
+        foreach (ev; eventSources)
+            assert(ev != source);
+        eventSources ~= source;
+    }
+    void dispatchEvents (UIComponent[] components) {
+        eventList.length = 0;
+        foreach (ev; eventSources)
+            eventList ~= ev.getEvents();
+
+        foreach (event; eventList) {
+            foreach (component; components) {
+                component.handleEvent(event);
+            }
+        }
+    }
 }
 
 

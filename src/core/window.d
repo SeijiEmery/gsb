@@ -9,71 +9,9 @@ import std.math;
 import gsb.core.log;
 import gsb.core.pseudosignals;
 import gsb.core.gamepad;
+import gsb.core.uievents;
 
 public __gshared Window g_mainWindow = null;
-
-//string formatGlfwKey (int key) {
-//    switch (key) {
-//        case GLFW_KEY_UNKNOWN: return "<Unknown Key>";
-//        case GLFW_KEY_ESCAPE:  return "<Esc>";
-//        case GLFW_KEY_ENTER:   return "<Enter>";
-//        case GLFW_KEY_TAB:     return "<Tab>";
-//        case GLFW_KEY_BACKSPACE: return "<Backspace>";
-//        case GLFW_KEY_INSERT:    return "<Insert>";
-//        case GLFW_KEY_DELETE:    return "<Delete>";
-//        case GLFW_KEY_LEFT: return "<Left Arrow>";
-//        case GLFW_KEY_RIGHT: return "<Right Arrow>";
-//        case GLFW_KEY_UP: return "<Up Arrow>";
-//        case GLFW_KEY_DOWN: return "<Down Arrow>";
-//        case GLFW_KEY_PAGE_UP: return "<PageUp>";
-//        case GLFW_KEY_PAGE_DOWN: return "<PageDown>";
-//        case GLFW_KEY_HOME: return "<Home>";
-//        case GLFW_KEY_END: return "<End>";
-//        case GLFW_KEY_LEFT_SHIFT: case GLFW_KEY_RIGHT_SHIFT:
-//            return "<Shift>";
-//        case GLFW_KEY_LEFT_CONTROL: case GLFW_KEY_RIGHT_CONTROL:
-//            return "<Ctrl>";
-//        case GLFW_KEY_LEFT_ALT: case GLFW_KEY_RIGHT_ALT:
-//            return "<Alt>";
-//        case GLFW_KEY_LEFT_SUPER: case GLFW_KEY_RIGHT_SUPER:
-//            version(OSX) return "<Cmd>";
-//            else         return "<Meta>";
-//        case GLFW_KEY_KP_DECIMAL: key = '.'; break;
-//        default: break;
-//    }
-//    if (key >= GLFW_KEY_F1 && key <= GLFW_KEY_F25)
-//        return format("<F%d>", key - GLFW_KEY_F1 + 1);
-
-//    return format("<Key %c>", cast(dchar)key);
-//}
-
-//string formatGlfwModifiers (int mod) {
-//    string result = "";
-//    if (mod & GLFW_MOD_SHIFT)
-//        result = "SHIFT";
-//    if (mod & GLFW_MOD_CONTROL)
-//        result.length ? result ~= " | CTRL" : result = "CTRL";
-//    if (mod & GLFW_MOD_ALT)
-//        result.length ? result ~= " | ALT" : result = "ALT";
-//    if (mod & GLFW_MOD_SUPER) {
-//        version(OSX) result.length ? result ~= " | CMD" : result = "CMD";
-//        else         result.length ? result ~= " | META" : result = "META";
-//    }
-//    return result;
-//}
-
-//string formatGlfwMouseButton (int button) {
-//    switch (button) {
-//        case GLFW_MOUSE_BUTTON_LEFT: return "MOUSE_LMB";
-//        case GLFW_MOUSE_BUTTON_RIGHT: return "MOUSE_RMB";
-//        case GLFW_MOUSE_BUTTON_MIDDLE: return "MOUSE_MMB";
-//        default:
-//            if (button >= 0 && button <= GLFW_MOUSE_BUTTON_LAST)
-//                return format("MOUSE_BTN_%d", (button+1));
-//            return format("<INVALID MOUSE BUTTON (%d)>", button);
-//    }
-//}
-
 
 // Wraps GLFWwindow and monitor stuff.
 class Window {

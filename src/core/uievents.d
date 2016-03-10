@@ -20,31 +20,6 @@ interface IEventCollector {
     UIEvent[] getEvents ();
 }
 
-
-
-
-private class WindowEventCollector {
-    GLFWwindow* window = null; // observed window
-
-    void setWindow (GLFWwindow * window) {
-        this.window = window;
-        if (window) {
-            glfwSetWindowUserPointer(window, cast(void*)this);
-            glfwSetWindowSizeCallback()
-
-
-            glfwSetKeyCallback(window, &keyCallback);
-            glfwSetCharCallback(window, &charCallback);
-            glfwSetCursorPosCallback(window, &mousePosCallback);
-            glfwSetMouseButtonCallback(window, &mouseButtonCallback);
-            glfwSetScrollCallback(window, &scrollCallback);
-        }
-    }
-
-
-
-}
-
 struct WindowResizeEvent {
     vec2i newDimensions, prevDimensions;
     vec2  newScale, prevScale;    
