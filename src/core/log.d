@@ -12,10 +12,13 @@ private Log localLog = null;
 //}
 public @property Log log (Log log_ = null) {
     if (!localLog) {
-        localLog = log_ ?
-            log_ :
-            createEnumeratedWorkerLog();
-
+        if (!g_mainLog) {
+            g_mainLog = localLog = new Log("main-thread");
+        } else {
+            localLog = log_ ?
+                log_ :
+                createEnumeratedWorkerLog();
+        }
     }
     return localLog;
 }

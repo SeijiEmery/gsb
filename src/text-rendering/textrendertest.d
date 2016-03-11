@@ -77,7 +77,7 @@ class StbTextRenderTest {
     static immutable bool RENDER_FULLSCREEN_QUAD = false;
 
     string lastText;
-    vec2i  currentScalingFactor;
+    vec2  currentScalingFactor;
 
     auto allocator = stbtt_createAllocator();
 
@@ -344,9 +344,9 @@ class StbTextRenderTest {
             glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
 
             if (currentScalingFactor != g_mainWindow.screenScale) {
-                log.write("Rescaling text: %0.2f -> %0.2f, %0.2f -> %0.2f",
-                    currentScalingFactor.x, g_mainWindow.screenScale.x,
-                    currentScalingFactor.y, g_mainWindow.screenScale.y);
+                //log.write("Rescaling text: %0.2f -> %0.2f, %0.2f -> %0.2f",
+                //    currentScalingFactor.x, g_mainWindow.screenScale.x,
+                //    currentScalingFactor.y, g_mainWindow.screenScale.y);
                 setText(lastText);
             }
         }

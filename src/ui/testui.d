@@ -14,8 +14,10 @@ import gsb.glutils;
 import gsb.core.color;
 import Derelict.glfw3.glfw3;
 
-static this () {
-    UIComponentManager.registerComponent(new UITestModule(), "uiTestModule", true);
+shared static this () {
+    UIComponentManager.runAtInit({
+        UIComponentManager.registerComponent(new UITestModule(), "uiTestModule", true);
+    });
 }
 
 class UITestModule : UIComponent {
@@ -45,22 +47,28 @@ class UITestModule : UIComponent {
         }
     }
     override void handleEvent (UIEvent event) {
-        event.handle( 
-            (MouseMoveEvent mouse) {
+        event.handle!( 
+            (MouseMoveEvent mouse) @system {
                 lastPos = mouse.position;
+                return false;
             },
-            (MouseButtonEvent btn) {
+            (MouseButtonEvent btn) @system {
                 if (btn.isLMB && btn.released)
                     points ~= lastPos;
+                else if (btn.isRMB && btn.released)
+                    points = [ lastPos ];
+                return false;
             },
-            (KeyboardEvent key) {
+            (KeyboardEvent key) @system {
                 if (key.keystr == "+") increaseLineSamples();
                 if (key.keystr == "-") decreaseLineSamples();
+                return false;
             },
-            (ScrollEvent scroll) => size += scroll.dir.y,
-            (GamepadButtonEvent ev) {
+            (ScrollEvent scroll) @system { size += scroll.dir.y; return false; },
+            (GamepadButtonEvent ev) @system {
                 if (ev.button == GamepadButton.BUTTON_A && ev.pressed) increaseLineSamples();
                 if (ev.button == GamepadButton.BUTTON_B && ev.pressed) decreaseLineSamples();
+                return false;
             },
             //(GamepadAxisEvent ev) => {
             //    if (ev.AXIS_LX || ev.AXIS_LY)
@@ -68,7 +76,7 @@ class UITestModule : UIComponent {
             //    if (ev.AXIS_RY)
             //        zoomCamera(ev.AXIS_RY * cameraZoomSpeed);
             //},
-            (FrameUpdateEvent frame) {
+            (FrameUpdateEvent frame) @system {
                 triangleColor.r += frame.dt * 0.5;
                 if (triangleColor.r > 1.0) triangleColor.r -= 1.0;
 
@@ -80,8 +88,9 @@ class UITestModule : UIComponent {
                     else
                         DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size, cast(float)lineSamples);
                 }
+                return false;
             }
-        );
+        )();
     }
 
     /+ Note: maybe in the future we could do something like this: 

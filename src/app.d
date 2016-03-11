@@ -14,6 +14,7 @@ import gsb.core.log;
 import gsb.core.window;
 import gsb.core.frametime;
 import gsb.core.uimanager;
+import gsb.core.uievents;
 
 import gsb.glutils;
 import gsb.text.font;
@@ -63,8 +64,6 @@ enum ThreadSyncEvent {
 }
 
 void graphicsThread (Tid mainThreadId) {
-	log = g_graphicsLog = new Log("graphics-thread");
-
 	log.write("Launched graphics thread");
 
 	g_graphicsFrameTime.init();  // start tracking per-frame time for graphics thread
@@ -146,6 +145,9 @@ void graphicsThread (Tid mainThreadId) {
 	prioritySend(mainThreadId, ThreadSyncEvent.NOTIFY_THREAD_DIED);	
 }
 void enterGraphicsThread (Tid mainThreadId) {
+	log = g_graphicsLog = new Log("graphics-thread");
+
+	log.write("ENTERING GRAPHICS THREAD");
 	try {
 		graphicsThread(mainThreadId);
 	} catch (Throwable e) {
@@ -171,6 +173,23 @@ void mainThread (Tid graphicsThreadId) {
 	g_mainWindow.onScreenSizeChanged.connect(delegate(float x, float y) {
 		log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
 	});
+
+	UIComponentManager.onComponentRegistered.connect((UIComponent component, string name) {
+		log.write("Registered component %s (active = %s)", name, component.active ? "true" : "false");
+	});
+	UIComponentManager.onComponentActivated.connect((UIComponent component) {
+		log.write("Activated component %s", component.name);
+	});
+	UIComponentManager.onComponentDeactivated.connect((UIComponent component) {
+		log.write("Deactivated component %s", component.name);
+	});
+	UIComponentManager.onEventSourceRegistered.connect((IEventCollector collector) {
+		log.write("Registered event source");
+	});
+	UIComponentManager.onEventSourceUnregistered.connect((IEventCollector collector) {
+		log.write("Unregistered event source");
+	});
+
 
 	registerDefaultFonts();  // from gsb.text.font
 
@@ -215,6 +234,13 @@ void mainThread (Tid graphicsThreadId) {
 	//	log.write("gl state may be invalid!");
 	//	glStateInvalidated = true;
 	//});
+
+	UIComponentManager.init();
+
+	log.write("Window: %d,%d, %d,%d, %f,%f",
+		g_mainWindow.pixelDimensions.x, g_mainWindow.pixelDimensions.y,
+		g_mainWindow.screenDimensions.x, g_mainWindow.screenDimensions.y,
+		g_mainWindow.screenScale.x, g_mainWindow.screenScale.y);
 
 	int frameCount = 0;
 
@@ -272,6 +298,8 @@ void mainThread (Tid graphicsThreadId) {
 gthreadDied:
 }
 void enterMainThread (Tid graphicsThreadId) {
+
+	log.write("ENTERING MAIN THREAD");
 	try {
 		mainThread(graphicsThreadId);
 	} catch (Throwable e) {
@@ -290,7 +318,8 @@ void enterMainThread (Tid graphicsThreadId) {
 void main()
 {
 	defaultPoolThreads(16);
-	log = g_mainLog = new Log("main-thread");
+	//log = g_mainLog = new Log("main-thread");
+	log.write("launching gsb");
 
 	// Preload gl + glfw
 	DerelictGLFW3.load();

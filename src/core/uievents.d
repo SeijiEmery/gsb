@@ -18,10 +18,9 @@ alias UIEvent = Algebraic!(
     MouseMoveEvent, ScrollEvent, GamepadButtonEvent, GamepadAxisEvent
 );
 
-auto handle (Handlers...)(UIEvent event, Handlers handlers) {
-    return event.tryVisit(handlers);
+void handle (Handler...)(UIEvent event) {
+    event.tryVisit!Handler();
 }
-
 
 interface IEventCollector {
     UIEvent[] getEvents ();

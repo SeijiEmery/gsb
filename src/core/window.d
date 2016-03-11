@@ -42,7 +42,7 @@ public:
 
     @property auto pixelDimensions () { return m_framebufferSize; }
     @property auto screenDimensions () { return m_screenSize; }
-    @property auto screenScale () { return m_screenSize; }
+    @property auto screenScale () { return m_screenScale; }
 
     @property mat4 screenSpaceTransform () {
         auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
@@ -166,6 +166,7 @@ public:
     }
 
     private void updateScreenScale (vec2i screenSize, vec2i framebufferSize) {
+        log.write("Updating screen scale");
         double scale_x = cast(double)framebufferSize.x / cast(double)screenSize.x;
         double scale_y = cast(double)framebufferSize.y / cast(double)screenSize.y;
 
@@ -184,9 +185,11 @@ public:
         m_framebufferSize = framebufferSize;
 
         // Still want our old code to work, and some stuff needs to operate outside of the UIEvent system
-        if (scaleChanged) onScreenScaleChanged.emit(newScale.x, newScale.y);
-        if (sizeChanged) onScreenSizeChanged.emit(screenSize.x, screenSize.y);
-        if (fbChanged) onFramebufferSizeChanged.emit(framebufferSize.x, framebufferSize.y);
+        if (scaleChanged) onScreenScaleChanged.emit(cast(float)newScale.x, cast(float)newScale.y);
+        if (sizeChanged) onScreenSizeChanged.emit(cast(float)screenSize.x, cast(float)screenSize.y);
+        if (fbChanged) onFramebufferSizeChanged.emit(cast(float)framebufferSize.x, cast(float)framebufferSize.y);
+
+        log.write("changed: %d, %d, %d", scaleChanged, sizeChanged, fbChanged);
     }
 
     class EventCollector : IEventCollector {

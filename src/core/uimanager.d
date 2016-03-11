@@ -46,6 +46,10 @@ private class UIComponentManagerInstance {
     private UIComponent[]       activeComponents;
     private ulong nextComponentId = 1;
 
+    // workaround for module constructors (useless unless they can run code _after_
+    // app init). No better place to put it atm, so it goes here
+    private void delegate()[] deferredInitCode;
+
     public Signal!(UIComponent) onComponentActivated;
     public Signal!(UIComponent) onComponentDeactivated;
     public Signal!(UIComponent, string) onComponentRegistered;
@@ -55,7 +59,11 @@ private class UIComponentManagerInstance {
 
     // Dispatch events on components
     void updateFromMainThread () {
-        dispatcher.dispatchEvents(activeComponents);
+        if (activeComponents.length) {
+            dispatcher.dispatchEvents(activeComponents);
+        } else {
+            dispatcher.dispatchEvents([]);
+        }
     }
 
     void shutdown () {
@@ -64,6 +72,16 @@ private class UIComponentManagerInstance {
             onComponentDeactivated.emit(component);
         }
         activeComponents.length = 0;
+    }
+
+    void init () {
+        foreach (cb; deferredInitCode)
+            cb();
+        deferredInitCode.length = 0;
+    }
+
+    void runAtInit (void delegate() deferredCallback) {
+        deferredInitCode ~= deferredCallback;
     }
 
     // Register component instance. Components are created once
@@ -78,8 +96,10 @@ private class UIComponentManagerInstance {
         registeredComponents[name] = component;
         onComponentRegistered.emit(component, name);
 
-        if (component.active)
+        if (component._active) {
+            component._active = false;
             activateComponent(component);
+        }
     }
 
     void registerEventSource (IEventCollector source) {
@@ -164,6 +184,9 @@ private struct UIEventDispatcher {
             g_eventFrameTime.dt,
             g_eventFrameTime.frameCount
         );
+
+        log.write("Dispatching %d events to %d components",
+            eventList.length, components.length);
 
         foreach (event; eventList) {
             foreach (component; components) {
