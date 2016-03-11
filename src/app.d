@@ -12,7 +12,6 @@ import gl3n.linalg;
 
 import gsb.core.log;
 import gsb.core.window;
-import gsb.core.events;
 import gsb.core.frametime;
 import gsb.core.uimanager;
 
@@ -160,23 +159,20 @@ void enterGraphicsThread (Tid mainThreadId) {
 
 void mainThread (Tid graphicsThreadId) {
 
-	g_eventFrameTime.init(); // start tracking event thread per-frame time
+	g_eventFrameTime.init(); // start tracking event thread time
 
 	// Setup event logging
-	WindowEvents.instance.onScreenScaleChanged.connect(delegate(float x, float y) {
+	g_mainWindow.onScreenScaleChanged.connect(delegate(float x, float y) {
 		log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y);	
 	});
-	WindowEvents.instance.onFramebufferSizeChanged.connect(delegate(float x, float y) {
+	g_mainWindow.onFramebufferSizeChanged.connect(delegate(float x, float y) {
 		log.write("WindowEvent: Framebuffer size set to %0.2f, %0.2f", x, y);
 	});
-	WindowEvents.instance.onScreenSizeChanged.connect(delegate(float x, float y) {
+	g_mainWindow.onScreenSizeChanged.connect(delegate(float x, float y) {
 		log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
 	});
 
-	g_mainWindow.setupDefaultEventLogging();
-
 	registerDefaultFonts();  // from gsb.text.font
-
 
 	//auto loadFontTime = benchmark!loadFonts(1);
 	//log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
@@ -192,8 +188,6 @@ void mainThread (Tid graphicsThreadId) {
 		new Font("menlo", 32),
 		Color("#ffaaff"),
 		vec2(0,0));
-
-	auto uitest = new UITestModule();
 
 	//auto text = TextRenderer.instance.createTextElement()
 	//	.style("console")
@@ -225,24 +219,28 @@ void mainThread (Tid graphicsThreadId) {
 	int frameCount = 0;
 
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
+		// update 'current' time for this frame. Note: graphics and event frame time is
+		// always constant until the next frame; it does not change while we're doing updates.
+		g_eventFrameTime.updateFromRespectiveThread(); // update g_eventTime, g_eventDt
 
-		//log.write("Starting frame %d", frameCount);
-
-		g_eventTime.updateFromRespectiveThread(); // update g_eventTime, g_eventDt
-
+		// Poll glfw + system events
 		glfwPollEvents();
-		g_mainWindow.runEventUpdates();
-		WindowEvents.instance.updateFromMainThread();
 
+		// poll gsb events for current frame + dispatch to all active UIComponents.
+		// This effectively drives the entire application.
+		UIComponentManager.updateFromMainThread();
 
-		uitest.update();
-
-
+		// Run textrenderer updates on any modified state. Does stuff like re-rasterize + repack
+		// font glyphs and generate text geometry to be fed to the cpu. Includes tasks that we
+		// don't want bottlenecking the graphics thread; could be moved to a worker thread.
 		TextRenderer.instance.updateFragments();
 
+		// Notify graphics thread that it can begin processing the next frame. 
 		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
-		//log.write("Sent frame %d", frameCount++);
 
+		// Wait for next frame or some other synchronized message (gthread terminated with
+		// an exception, for example). Note: this is super-crappy synchronization, but we
+		// won't change it until / if it's determined to be a performance problem.
 		while (1) {
 			auto evt = receiveOnly!(ThreadSyncEvent)();
 			switch (evt) {
@@ -258,14 +256,13 @@ void mainThread (Tid graphicsThreadId) {
 			}
 		}
 	nextFrame:
-		//if (g_mainLog.lines.length != curLine) {
-		//	auto n = g_mainLog.lines.length;
-		//	text.append(join(g_mainLog.lines[curLine..n], "\n"));
-		//	curLine = n;
-		//}
 	}
+
 	log.write("Killing graphics thread");
 	prioritySend(graphicsThreadId, ThreadSyncEvent.NOTIFY_SHOULD_DIE);
+
+	// kill all running components (note: usually this doesn't do much, since component updates are dependent on the event loop)
+	UIComponentManager.shutdown();
 	{
 		ThreadSyncEvent evt;
 		while ((evt = receiveOnly!(ThreadSyncEvent)()) != ThreadSyncEvent.NOTIFY_THREAD_DIED) {
@@ -317,8 +314,6 @@ void main()
 		return;
 	}
 
-	WindowEvents.instance.init(g_mainWindow);
-
 	// And then hand our gl context off to the graphics thread (via the __gshared window handle)
 	auto gthreadHandle = spawn(&enterGraphicsThread, thisTid);
 
@@ -327,11 +322,11 @@ void main()
 
 	try {
 		enterMainThread(gthreadHandle);
-	} catch (Error e) {
+	} catch (Throwable e) {
 		writeln(e);
 	}
 
-	// Finally, we run our shutdown code here.
+	// App shutdown code
 	// Note: the main thread terminates iff
 	// - app exits normally (cmd+q / window closed / etc)
 	// - main thread threw an exception and must terminate
@@ -341,7 +336,6 @@ void main()
 	// for confirmation before returning
 	//
 	log.write("Shutting down");
-	WindowEvents.instance.deinit();
 	glfwDestroyWindow(g_mainWindow.handle);
 	glfwTerminate();
 }

@@ -150,7 +150,7 @@ public:
         glfwSetWindowUserPointer(m_window, cast(void*)this);
         m_eventCollector = new EventCollector(m_window);
 
-        if (!g_mainWindow)
+        if (!g_mainWindow || g_mainWindow == this)
             setMainWindow(this);
     }
     ~this () {

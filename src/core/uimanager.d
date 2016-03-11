@@ -54,7 +54,7 @@ private class UIComponentManagerInstance {
     public Signal!(IEventCollector) onEventSourceUnregistered;
 
     // Dispatch events on components
-    void update () {
+    void updateFromMainThread () {
         dispatcher.dispatchEvents(activeComponents);
     }
 

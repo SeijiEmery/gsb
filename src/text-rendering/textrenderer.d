@@ -3,7 +3,6 @@ module gsb.text.textrenderer;
 
 import gsb.core.log;
 import gsb.core.window;
-import gsb.core.events;
 import gsb.core.errors;
 import gsb.core.singleton;
 import gsb.text.textshader;
@@ -469,23 +468,11 @@ class TextRenderer {
 
         string cachedText;
 
-        WindowEvents.instance.onScreenScaleChanged.Connection scaleChangedSlot;
-
         this (string fontName, float size) {
             log.write("Creating new TextElement");
             this.font = new Font(fontName, size);
 
-            screenScaleFactor = 1.0;// g_mainWindow.screenScale;
-            //scaleChangedSlot = 
-            //WindowEvents.instance.onScreenScaleChanged.connect((float x, float y) {
-            //    log.write("recalculating buffers for new screen scale %0.2f", y);
-            //    log.write("num chars = %d (expected tris = %d)", cachedText.length, cachedText.length * 2);
-            //    screenScaleFactor.x = x; screenScaleFactor.y = y;
-            //    layouter.reset();
-            //    textBuffer.clear();
-            //    writeText(cachedText, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
-            //        //screenScaleFactor.y == 1.0 ? screenScaleFactor.y : screenScaleFactor.y * 0.75);
-            //});
+            screenScaleFactor = g_mainWindow.screenScale.y;
 
             textBuffer  = new TextGeometryBuffer();
             packedAtlas = new PackedFontAtlas();

@@ -19,14 +19,18 @@ static this () {
 }
 
 class UITestModule : UIComponent {
-    auto lastPos = vec2(0, 0);
-    float size = 50.0;
+    vec2 lastPos;
+    float size;
     vec2[] points;
     int lineSamples = 1;
     Color triangleColor;
 
     override void onComponentInit () {
         triangleColor = Color("#fadd4c");
+        lastPos = vec2(0, 0);
+        size = 50.0;
+        points.length = 0;
+        lineSamples = 1;
     }
     override void onComponentShutdown () {}
 
@@ -42,9 +46,12 @@ class UITestModule : UIComponent {
     }
     override void handleEvent (UIEvent event) {
         event.handle( 
+            (MouseMoveEvent mouse) {
+                lastPos = mouse.position;
+            },
             (MouseButtonEvent btn) {
                 if (btn.isLMB && btn.released)
-                    points ~= Mouse.cursorPosition;
+                    points ~= lastPos;
             },
             (KeyboardEvent key) {
                 if (key.keystr == "+") increaseLineSamples();

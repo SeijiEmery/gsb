@@ -14,6 +14,7 @@ import gsb.core.errors;
 import gsb.glutils;
 
 import stb.truetype;
+import gl3n.linalg;
 import derelict.opengl3.gl3;
 import dglsl;
 
@@ -76,7 +77,7 @@ class StbTextRenderTest {
     static immutable bool RENDER_FULLSCREEN_QUAD = false;
 
     string lastText;
-    vec2   currentScalingFactor;
+    vec2i  currentScalingFactor;
 
     auto allocator = stbtt_createAllocator();
 
@@ -342,10 +343,7 @@ class StbTextRenderTest {
             glUseProgram(0); CHECK_CALL("glUseProgram(0)");
             glBindVertexArray(0); CHECK_CALL("glBindVertexArray(0)");
 
-            float epsilon = 0.1;
-            if (abs(currentScalingFactor.x - g_mainWindow.screenScale.x) > epsilon ||
-                abs(currentScalingFactor.y - g_mainWindow.screenScale.y) > epsilon)
-            {
+            if (currentScalingFactor != g_mainWindow.screenScale) {
                 log.write("Rescaling text: %0.2f -> %0.2f, %0.2f -> %0.2f",
                     currentScalingFactor.x, g_mainWindow.screenScale.x,
                     currentScalingFactor.y, g_mainWindow.screenScale.y);
