@@ -100,9 +100,9 @@ void graphicsThread (Tid mainThreadId) {
 					threadStats.timedCall("send threadSync message", {
 						send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
 					});
-					threadStats.timedCall("swapBuffers", {
-						glfwSwapBuffers(g_mainWindow.handle);
-					});
+				});
+				threadStats.timedCall("swapBuffers", {
+					glfwSwapBuffers(g_mainWindow.handle);
 				});
 			} break;
 			default: {

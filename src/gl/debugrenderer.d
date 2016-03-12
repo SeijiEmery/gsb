@@ -101,6 +101,8 @@ class DebugLineRenderer2D {
 
             checked_glBindVertexArray(vao);
 
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
             glDisable(GL_DEPTH_TEST);
             checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 4);
             glEnable(GL_DEPTH_TEST);

@@ -44,7 +44,7 @@ class StatsCollector {
         collection[name] = SampleCollection();
         onCollectionRegistered.emit(name);
     }
-
+ 
     struct CallTime {
         string name;
         Duration time;
