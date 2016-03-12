@@ -35,33 +35,11 @@ auto todstr(inout(char)* cstr) {
 	return cstr ? cstr[0 .. strlen(cstr)] : "";
 }
 
-void checkGlErrors (string context = "") {
-	GLenum err;
-	while ((err = glGetError()) != GL_NO_ERROR) {
-		switch (err) {
-			case GL_INVALID_OPERATION: writefln("gl: INVALID OPERATION"); break;
-			case GL_INVALID_ENUM:      writefln("gl: INVALID ENUM"); break;
-			case GL_INVALID_VALUE:     writefln("gl: INVALID VALUE"); break;
-			case GL_INVALID_FRAMEBUFFER_OPERATION: writeln("gl: INVALID FRAMEBUFFER OPERATION"); break;
-			default:                   writefln("gl: UNKNOWN ERROR %d", err);
-		}
-	}
-}
-
-//static string[GLenum] glErrors;
-
 enum ThreadSyncEvent {
 	READY_FOR_NEXT_FRAME,        // sent from graphics thread => main thread
 	NOTIFY_NEXT_FRAME,           // sent from main thread => graphics thread
 	NOTIFY_SHOULD_DIE,           // sent from main thread => worker thread(s)
-	NOTIFY_THREAD_DIED ,          // sent from worker thread to main thread
-
-	// sent when gl state is potentially invalid (framebuffer/monitor changed?), 
-	// and should be regenerated.
-	// This is basically a hook so the main thread can make the graphics thread emit a 
-	// GraphicsEvent.glStateInvalidated() signal before the next frame
-	//NOTIFY_GL_STATE_INVALIDATED, 
-
+	NOTIFY_THREAD_DIED,          // sent from worker thread to main thread
 }
 
 void graphicsThread (Tid mainThreadId) {
@@ -78,18 +56,9 @@ void graphicsThread (Tid mainThreadId) {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
 
-	//glEnable(GL_BLEND);
     glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
 	CHECK_CALL("setup gl state");
-	//glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-	//glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
-	//glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ZERO);
-
-	//auto call = tryCall(glEnable);
-	//call(GL_DEPTH_TEST);
-	//checkGlErrors();
-
 	bool running = true;
 
 	log.write("Running GLSandbox");
@@ -101,12 +70,6 @@ void graphicsThread (Tid mainThreadId) {
 
 	auto textRenderer = TextRenderer.instance.getGraphicsThreadHandle();
 
-	//auto utfTest = StbTextRenderTest.defaultTest();
-
-	//GraphicsEvents.glStateInvalidated.connect(() {
-	//	log.write("Recieved glStateInvalidated");
-	//});
-
 	int frame = 0;
 	while (running) {
 		auto evt = receiveOnly!(ThreadSyncEvent)();
@@ -115,10 +78,6 @@ void graphicsThread (Tid mainThreadId) {
 				log.write("Recieved kill event");
 				running = false;
 			} break;
-			//case ThreadSyncEvent.NOTIFY_GL_STATE_INVALIDATED: {
-			//	log.write("emitting GL_STATE_INVALIDATED");
-			//	GraphicsEvents.glStateInvalidated.emit();
-			//} break;
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
 				threadStats.timedCall("frame", {
 					g_graphicsFrameTime.updateFromRespectiveThread(); // update g_graphicsTime and g_graphicsDt
@@ -200,50 +159,13 @@ void mainThread (Tid graphicsThreadId) {
 		log.write("Unregistered event source");
 	});
 
-
-	registerDefaultFonts();  // from gsb.text.font
-
-	//auto loadFontTime = benchmark!loadFonts(1);
-	//log.write("Loaded fonts in %s ms", loadFontTime[0].msecs);
-
-	//auto font = new Font("arial", 40);
-	//auto elem = new TextFragment("Hello World!", font, Color("#ffbf9d"), vec2(200, 200));
-
-	//auto text = TextRenderer.instance.createTextElement("menlo", 32);
-	//text.append("Hello world!\nü@asdlfj;\n");
+	registerDefaultFonts();
 
 	auto text2 = new TextFragment(
 		"Hello world!\nü@asdlfj;\n",
 		new Font("menlo", 32),
 		Color("#ffaaff"),
 		vec2(0,0));
-
-	//auto text = TextRenderer.instance.createTextElement()
-	//	.style("console")
-	//	.fontSize(22)
-	//	.position(TextRenderer.RelPos.TOP_LEFT, 10, 10)
-	//	.bounds(800, 400)
-	//	.color("#ffaadd")
-	//	.scroll(true);
-
-	//text.append("Hello World!");
-	//auto curLine = g_mainLog.lines.length;
-	//text.append(join(g_mainLog.lines[0..curLine], "\n"));
-
-	//taskPool.put(task!loadFonts());
-	//log.write("parallelism -- cpus = %u", totalCPUs);
-	//log.write("parallelism -- default work threads = %u", defaultPoolThreads);
-
-	//auto stuff = new int[100];
-	//foreach (i, ref elem; taskPool.parallel(stuff, 1)) {
-	//	createWorkerLog().write("foo %d", i);
-	//}
-
-	//bool glStateInvalidated = false;
-	//auto conn = WindowEvents.instance.onScreenScaleChanged.connect(delegate(float x, float y) {
-	//	log.write("gl state may be invalid!");
-	//	glStateInvalidated = true;
-	//});
 
 	UIComponentManager.init();
 
