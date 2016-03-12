@@ -15,13 +15,14 @@ import gsb.core.window;
 import gsb.core.frametime;
 import gsb.core.uimanager;
 import gsb.core.uievents;
+import gsb.core.stats;
+import gsb.core.color;
 
 import gsb.glutils;
 import gsb.text.font;
 import gsb.text.textrenderer;
 import gsb.triangles_test;
 import gsb.text.textrendertest;
-import gsb.core.color;
 
 import gsb.ui.testui;
 import gsb.gl.debugrenderer;
@@ -65,6 +66,7 @@ enum ThreadSyncEvent {
 
 void graphicsThread (Tid mainThreadId) {
 	log.write("Launched graphics thread");
+	setupThreadStats("graphics-thread");
 
 	g_graphicsFrameTime.init();  // start tracking per-frame time for graphics thread
 
@@ -118,24 +120,31 @@ void graphicsThread (Tid mainThreadId) {
 			//	GraphicsEvents.glStateInvalidated.emit();
 			//} break;
 			case ThreadSyncEvent.NOTIFY_NEXT_FRAME: {
+				threadStats.timedCall("frame", {
+					g_graphicsFrameTime.updateFromRespectiveThread(); // update g_graphicsTime and g_graphicsDt
 
-				g_graphicsFrameTime.updateFromRespectiveThread(); // update g_graphicsTime and g_graphicsDt
+					//log.write("on frame %d", frame++);
 
-				//log.write("on frame %d", frame++);
+					//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-				//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+					//utfTest.render();
+					//textRenderer.render();
+					threadStats.timedCall("TextRenderer.renderFragments", {
+						TextRenderer.instance.renderFragments();
+					});
 
-				//utfTest.render();
-				//textRenderer.render();
-				TextRenderer.instance.renderFragments();
+					threadStats.timedCall("DebugRenderer.render", {
+						DebugRenderer.renderFromGraphicsThread();
+					});
 
-				DebugRenderer.renderFromGraphicsThread();
-
-				send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
-
-				glfwSwapBuffers(g_mainWindow.handle);
-				checkGlErrors();
+					threadStats.timedCall("send threadSync message", {
+						send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
+					});
+					threadStats.timedCall("swapBuffers", {
+						glfwSwapBuffers(g_mainWindow.handle);
+					});
+				});
 			} break;
 			default: {
 				log.write("Unexpected event: %d", evt);
@@ -162,6 +171,7 @@ void enterGraphicsThread (Tid mainThreadId) {
 void mainThread (Tid graphicsThreadId) {
 
 	g_eventFrameTime.init(); // start tracking event thread time
+	setupThreadStats("main-thread");
 
 	// Setup event logging
 	g_mainWindow.onScreenScaleChanged.connect(delegate(float x, float y) {
@@ -245,24 +255,36 @@ void mainThread (Tid graphicsThreadId) {
 	int frameCount = 0;
 
 	while (!glfwWindowShouldClose(g_mainWindow.handle)) {
-		// update 'current' time for this frame. Note: graphics and event frame time is
-		// always constant until the next frame; it does not change while we're doing updates.
-		g_eventFrameTime.updateFromRespectiveThread(); // update g_eventTime, g_eventDt
+		threadStats.timedCall("frame", {
+			// update 'current' time for this frame. Note: graphics and event frame time is
+			// always constant until the next frame; it does not change while we're doing updates.
+			g_eventFrameTime.updateFromRespectiveThread(); // update g_eventTime, g_eventDt
 
-		// Poll glfw + system events
-		glfwPollEvents();
+			// Poll glfw + system events
+			threadStats.timedCall("glfwPollEvents", {
+				glfwPollEvents();
+			});
 
-		// poll gsb events for current frame + dispatch to all active UIComponents.
-		// This effectively drives the entire application.
-		UIComponentManager.updateFromMainThread();
+			// poll gsb events for current frame + dispatch to all active UIComponents.
+			// This effectively drives the entire application.
+			threadStats.timedCall("UIComponents.update", {
+				UIComponentManager.updateFromMainThread();
+			});
 
-		// Run textrenderer updates on any modified state. Does stuff like re-rasterize + repack
-		// font glyphs and generate text geometry to be fed to the cpu. Includes tasks that we
-		// don't want bottlenecking the graphics thread; could be moved to a worker thread.
-		TextRenderer.instance.updateFragments();
+			// Run textrenderer updates on any modified state. Does stuff like re-rasterize + repack
+			// font glyphs and generate text geometry to be fed to the cpu. Includes tasks that we
+			// don't want bottlenecking the graphics thread; could be moved to a worker thread.
+			threadStats.timedCall("TextRenderer.update", {
+				TextRenderer.instance.updateFragments();
+			});
 
-		// Notify graphics thread that it can begin processing the next frame. 
-		send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
+			// Notify graphics thread that it can begin processing the next frame. 
+			send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
+
+			threadStats.timedCall("dumpStats", {
+				dumpAllStats();
+			});
+		});
 
 		// Wait for next frame or some other synchronized message (gthread terminated with
 		// an exception, for example). Note: this is super-crappy synchronization, but we

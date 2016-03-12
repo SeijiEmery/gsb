@@ -185,8 +185,8 @@ private struct UIEventDispatcher {
             g_eventFrameTime.frameCount
         );
 
-        log.write("Dispatching %d events to %d components",
-            eventList.length, components.length);
+        //log.write("Dispatching %d events to %d components",
+        //    eventList.length, components.length);
 
         foreach (event; eventList) {
             foreach (component; components) {
