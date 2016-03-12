@@ -193,9 +193,7 @@ class StatGraphModule : UIComponent {
                         graph.pos = ev.position - dragOffset;
                     }
                 }
-                label1.position = vec2(
-                    graph.pos.x,// * g_mainWindow.screenScale.x,
-                    graph.pos.y);// * g_mainWindow.screenScale.y);
+                label1.position = graph.pos * 2.0;
             },
             (MouseButtonEvent ev) {
                 if (ev.pressed && mouseover) {
