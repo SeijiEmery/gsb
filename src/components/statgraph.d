@@ -4,6 +4,7 @@ import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.log;
 import gsb.core.stats;
+import gsb.core.window;
 
 import gl3n.linalg;
 import gsb.core.color;
@@ -19,6 +20,11 @@ private immutable string MAIN_THREAD = "main-thread";
 private immutable string GTHREAD     = "graphics-thread";
 private immutable string FRAME_STATS_CAT = "frame";
 private immutable int NUM_SAMPLES = 100;
+
+private bool inBounds (vec2 pos, vec2 p1, vec2 p2) {
+    return !(pos.x < p1.x || pos.x > p2.x || pos.y < p1.y || pos.y > p2.y);
+}
+
 
 class Graph {
     vec2 pos;
@@ -113,83 +119,26 @@ class Graph {
         //drawLine(pos + dim, pos + vec2(0, dim.y), color); color.g += 0.2;
         //drawLine(pos + vec2(0, dim.y), pos, color);
     }
-
-
-
-
-    void render (StatsCollector stats) {
-        if (statsCategory !in stats.collection)
-            return;
-            //throw new Exception("Null category");
-        auto samples = stats.collection[statsCategory].samples;
-        auto collection = stats.collection[statsCategory];
-        auto n = collection.samples.length;
-
-        float getSample (size_t i) {
-            auto sample = collection.samples[i].to!TickDuration.to!("msecs", float);
-            return sample.isNaN || sample < 0 ? 0.0 : sample;
-        }
-
-        //float maxSample = float.max;
-        //foreach (i; 0 .. collection.count)
-        //    maxSample = min(maxSample, getSample(i));
-
-        float maxSample = 1 / 30.0;
-        points.length = 0;
-        foreach (i; 0 .. collection.count) {
-            points ~= vec2(
-                pos.x + dim.x * (cast(float)i / cast(float)n),
-                pos.y + 0.1 * dim.y + 0.8 * dim.y* maxSample / getSample(i));
-        }
-        //DebugRenderer.drawLines(points, Color("#ff2090"), 1.0, 2);
-
-        DebugRenderer.drawLines([
-            vec2(100, 100), vec2(500, 300), vec2(100, 100), vec2(20, 30)
-        ], Color("#00ff00"), 20.0, 2);
-
-
-        void drawLine (vec2 p1, vec2 p2, Color color) {
-            DebugRenderer.drawLines([ p1, p2 ], color, 1.0, 2);
-        }
-
-        auto color = Color("#f00020");
-        drawLine(pos, pos + vec2(dim.x, 0), color);  color.g += 0.2;
-        drawLine(pos + vec2(dim.x, 0), pos + vec2(dim.x, dim.y), color); color.g += 0.2;
-        drawLine(pos + dim, pos + vec2(0, dim.y), color); color.g += 0.2;
-        drawLine(pos + vec2(0, dim.y), pos, color);
-
-        //vec2[] box = [ pos, pos + vec2(dim.x, 0), pos + vec2(dim.x, dim.y) ];
-        //DebugRenderer.drawLines(box, Color("#f00020"), 1.0, 2);
-
-        log.write("pos = %s, dim = %s", pos, dim);
-
-
-        //DebugRenderer.drawLines([
-        //    vec2(pos.x, pos.y),
-        //    vec2(pos.x + dim.x, pos.y),
-        //    vec2(pos.x + dim.x, pos.y + dim.y),
-        //    vec2(pos.x, pos.y + dim.y),
-        //    //vec2(pos.x, pos.y)
-        //], Color("#ff9090"), 1.0, 2);
-        DebugRenderer.drawLines(points, Color("#00f020"), 1.0, 2);
-
-        DebugRenderer.drawTri(pos, Color("#909090"), 30.0, 2.0);
-        DebugRenderer.drawTri(pos + dim, Color("#909090"), 30.0, 2.0);
-
-
-
-        //DebugRenderer.drawLines([ 
-        //    vec2(pos.x,         pos.y + dim.y * (1 / 60.0) / maxSample),
-        //    vec2(pos.x + dim.x, pos.y + dim.y * (1 / 60.0) / maxSample)
-        //], Color("#ff9090"), 1.0, 2);
-        
-    }
 }
 
 
 
 class StatGraphModule : UIComponent {
     Graph graph = null;
+    vec2 dragOffset, lastClickPosition, lastDim, dimOffset;
+    bool dragging = false;
+    bool mouseover = false;
+
+    bool resizeLeft = false;
+    bool resizeRight = false;
+    bool resizeTop   = false;
+    bool resizeBtm   = false;
+
+    float baseResizeWidth = 5.0;
+    @property auto resizeWidth () {
+        return g_mainWindow.screenScale.y * baseResizeWidth;
+    }
+
     override void onComponentInit () {
         graph = new Graph(vec2(100, 100), vec2(400, 200));
     }   
@@ -198,11 +147,56 @@ class StatGraphModule : UIComponent {
     } 
     override void handleEvent (UIEvent event) {
         event.handle!(
+            (MouseMoveEvent ev) {
+                if (!dragging) {
+                    vec2 a = graph.pos, b = graph.pos + graph.dim;
+                    auto k = resizeWidth;
+
+                    // check graph mouseover
+                    mouseover = inBounds(ev.position, a - vec2(k, k), b + vec2(k, k));
+                    dragOffset = ev.position - graph.pos;
+                    lastClickPosition = ev.position;
+                    lastDim = graph.dim;
+                    dimOffset  = ev.position + graph.dim;
+
+                    // resize borders
+                    resizeLeft  = mouseover && inBounds(ev.position, vec2(a.x - k, a.y - k), vec2(a.x + k, b.y + k));
+                    resizeRight = mouseover && inBounds(ev.position, vec2(b.x - k, a.y - k), vec2(b.x + k, b.y + k));
+                    resizeTop   = mouseover && inBounds(ev.position, vec2(a.x - k, a.y - k), vec2(b.x + k, a.y + k));
+                    resizeBtm   = mouseover && inBounds(ev.position, vec2(a.x - k, b.y - k), vec2(b.x + k, b.y + k));
+
+                    //if (resizeLeft) log.write("LEFT!");
+                    //if (resizeRight) log.write("RIGHT!");
+                    //if (resizeTop) log.write("TOP!");
+                    //if (resizeBtm) log.write("BOTTOM!");
+                } else {
+                    if (resizeLeft) {
+                        graph.dim.x = lastClickPosition.x - ev.position.x + lastDim.x;
+                        graph.pos.x = ev.position.x - dragOffset.x;
+                    } else if (resizeRight) {
+                        graph.dim.x = ev.position.x - lastClickPosition.x + lastDim.x;
+                    }
+                    if (resizeTop) {
+                        graph.dim.y = lastClickPosition.y - ev.position.y + lastDim.y;
+                        graph.pos.y = ev.position.y - dragOffset.y;
+                    } else if (resizeBtm) {
+                        graph.dim.y = ev.position.y - lastClickPosition.y + lastDim.y;
+                    }
+
+                    if (!(resizeLeft || resizeRight || resizeTop || resizeBtm)) {
+                        graph.pos = ev.position - dragOffset;
+                    }
+                }
+            },
+            (MouseButtonEvent ev) {
+                if (ev.pressed && mouseover) {
+                    dragging = true;
+                } else if (ev.released) {
+                    dragging = false;
+                }
+            },
             (FrameUpdateEvent frame) {
                 graph.render();
-                //graph.render(threadStats);
-                //graph.render(perThreadStats["main-thread"]);
-                //DebugRenderer.drawLines([ vec2(200, 200), vec2(400, 400)], Color("#ffaaaa1f"), 50.0, 1);
             },
             () {}
         );
