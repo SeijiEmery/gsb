@@ -99,7 +99,7 @@ class TextFragment {
         synchronized { fstate.position = v; dirtyState = true; }
     }
     @property auto bounds () {
-        synchronized { return dirtyBounds ? cachedBounds : calcBounds(); }
+        synchronized { return dirtyBounds ? calcBounds() : cachedBounds; }
     }
     private auto calcBounds () {
         dirtyBounds = false;
