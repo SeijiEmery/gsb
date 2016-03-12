@@ -89,7 +89,8 @@ class UITestModule : UIComponent {
                         DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size, cast(float)lineSamples);
                 }
                 return false;
-            }
+            },
+            (){ return false; }
         )();
     }
 
