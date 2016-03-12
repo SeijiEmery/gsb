@@ -5,6 +5,8 @@ import gsb.core.uievents;
 import gsb.core.log;
 import gsb.core.stats;
 import gsb.core.window;
+import gsb.text.textrenderer;
+import gsb.text.font;
 
 import gl3n.linalg;
 import gsb.core.color;
@@ -121,8 +123,6 @@ class Graph {
     }
 }
 
-
-
 class StatGraphModule : UIComponent {
     Graph graph = null;
     vec2 dragOffset, lastClickPosition, lastDim, dimOffset;
@@ -134,6 +134,9 @@ class StatGraphModule : UIComponent {
     bool resizeTop   = false;
     bool resizeBtm   = false;
 
+    TextFragment label1;
+    float fontSize = 16.0;
+
     float baseResizeWidth = 5.0;
     @property auto resizeWidth () {
         return g_mainWindow.screenScale.y * baseResizeWidth;
@@ -141,6 +144,9 @@ class StatGraphModule : UIComponent {
 
     override void onComponentInit () {
         graph = new Graph(vec2(100, 100), vec2(400, 200));
+        label1 = new TextFragment("main-thread stats:\nstuff\nmore stuff\neven more stuff",
+            new Font("menlo", fontSize),
+            Color("#fe0020"), vec2(graph.pos.x, graph.pos.y + graph.dim.y));
     }   
     override void onComponentShutdown () {
 
@@ -187,6 +193,9 @@ class StatGraphModule : UIComponent {
                         graph.pos = ev.position - dragOffset;
                     }
                 }
+                label1.position = vec2(
+                    graph.pos.x,// * g_mainWindow.screenScale.x,
+                    graph.pos.y);// * g_mainWindow.screenScale.y);
             },
             (MouseButtonEvent ev) {
                 if (ev.pressed && mouseover) {
@@ -194,6 +203,9 @@ class StatGraphModule : UIComponent {
                 } else if (ev.released) {
                     dragging = false;
                 }
+            },
+            (ScrollEvent ev) {
+                label1.font = new Font("menlo", fontSize += ev.dir.y);
             },
             (FrameUpdateEvent frame) {
                 graph.render();
