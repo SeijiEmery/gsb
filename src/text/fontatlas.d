@@ -15,6 +15,9 @@ import Derelict.opengl3.gl3;
 import gsb.glutils;
 import gl3n.linalg;
 
+private void DEBUG_LOG (lazy void expr) {
+    static if (TEXTRENDERER_DEBUG_LOGGING_ENABLED) expr();
+}
 
 immutable int BITMAP_WIDTH = 1024;
 immutable int BITMAP_HEIGHT = 1024;
@@ -75,21 +78,21 @@ class PackedFontAtlas {
                 packedChars ~= packData;
                 foreach (chr; toInsert) {
                     charLookup[index][chr] = i++;
-                    //log.write("Set '%s', %c = %d", index, chr, i-1);
+                    //DEBUG_LOG(log.write("Set '%s', %c = %d", index, chr, i-1));
                 }
                 dirtyTexture = true;
             }
 
-            log.write("Packed %d characters into font atlas; font = '%s', charset = '%s'", toInsert.length, index, toInsert);
+            DEBUG_LOG(log.write("Packed %d characters into font atlas; font = '%s', charset = '%s'", toInsert.length, index, toInsert));
         }
     }
     void repack () {
         synchronized (write) {
-            log.write("Repacking FontAtlas");
+            DEBUG_LOG(log.write("Repacking FontAtlas"));
             foreach (kv; charLookup.byKeyValue()) {
                 auto parts = kv.key.split(":");
                 auto font = new Font(parts[0], to!int(parts[1]));
-                log.write("Recreating font: '%s' = '%s', %d", kv.key, font.name, to!int(font.size));
+                DEBUG_LOG(log.write("Recreating font: '%s' = '%s', %d", kv.key, font.name, to!int(font.size)));
                 // Note: creating a 'new' font is cheap since FontCache caches everything in the backend;
                 // new Font("foo", 16), new Font("foo", 16), and new Font("foo", 32) all point to the same
                 // shared FontData, and the backing truetype files are loaded lazily + cached
@@ -127,7 +130,7 @@ class PackedFontAtlas {
         ref auto getQuad (dchar chr) {
             if (chr !in charLookup[index])
                 throw new ResourceError("PackedFontAtlas codepoint %c (%s) has not been packed!", chr, index);
-            //log.write("Got '%s', %c = %d", index, chr, charLookup[index][chr]);
+            //DEBUG_LOG(log.write("Got '%s', %c = %d", index, chr, charLookup[index][chr]));
             stbtt_GetPackedQuad(packedChars.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, cast(int)charLookup[index][chr], 
                 &layoutX, &layoutY, &quad, alignToInteger);
             return quad;
@@ -137,7 +140,7 @@ class PackedFontAtlas {
 
     private void lazyInit () {
         if (!bitmapData) {
-            log.write("PackedFontAtlas: creating resources");
+            DEBUG_LOG(log.write("PackedFontAtlas: creating resources"));
             bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
             if (!stbtt_PackBegin(&packContext, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
                 throw new ResourceError("sbttt_PackBegin failed");
@@ -148,7 +151,7 @@ class PackedFontAtlas {
     void releaseResources () {
         shouldRelease = true;
         if (bitmapData) {
-            log.write("PackedFontAtlas: releasing resources!");
+            DEBUG_LOG(log.write("PackedFontAtlas: releasing resources!"));
             stbtt_PackEnd(&packContext);
             bitmapData = null;
         }
@@ -168,10 +171,10 @@ class PackedFontAtlas {
                 } else if (dirtyTexture) {
                     dirtyTexture = false;
                     if (!texture) {
-                        log.write("PackedFontAtlas.GraphicsBackend: creating texture");
+                        DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend: creating texture"));
                         checked_glGenTextures(1, &texture);
                     }
-                    log.write("PackedFontAtlas.GraphicsBackend: uploading bitmap data");
+                    DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend: uploading bitmap data"));
                     checked_glActiveTexture(GL_TEXTURE0);
                     checked_glBindTexture(GL_TEXTURE_2D, texture);
                     checked_glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, bitmapData.ptr);
@@ -186,12 +189,12 @@ class PackedFontAtlas {
                 checked_glActiveTexture(GL_TEXTURE0);
                 checked_glBindTexture(GL_TEXTURE_2D, texture);
             } else {
-                log.write("PackedFontAtlas.GraphicsBackend.bindTexture(): No texture!");
+                DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend.bindTexture(): No texture!"));
             }
         }
         void releaseResources () {
             if (texture) {
-                log.write("PackedFontAtlas.GraphicsBackend: releasing texture");
+                DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend: releasing texture"));
                 checked_glDeleteTextures(1, &texture);
                 texture = 0;
             }
