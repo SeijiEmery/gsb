@@ -17,7 +17,6 @@ import std.array;
 
 private immutable string FONT = "menlo";
 
-
 shared static this () {
     UIComponentManager.runAtInit({
         UIComponentManager.registerComponent(new ConsoleModule(), "console", true);
@@ -31,12 +30,18 @@ private bool inBounds (vec2 pos, vec2 p1, vec2 p2) {
 private class TextInputField {
     TextFragment tf;
     dchar[] textContent;
-    uint   textCursor;
-    vec2 padding = vec2(10, 10);
+    uint   textCursor, selectionLength = 0;
+    vec2 padding = vec2(0, 0);
+    float minWidth = 500.0;
 
     @property auto pos () { return tf.position / 2.0 - padding; }
     @property void pos (vec2 p) { tf.position = p * 2.0; }
-    @property auto dim () { return tf.bounds / 2.0 + padding * 2.0; }
+    @property auto dim () { 
+        vec2 bounds = tf.bounds;
+        if (bounds.x < minWidth)
+            bounds.x = minWidth;
+        return bounds + padding * 2.0; 
+    }
 
     @property auto fontSize () { return tf.font.size; }
     @property void fontSize (float size) {
@@ -48,19 +53,30 @@ private class TextInputField {
         this.textContent = text.byDchar.array;
     }
 
-    void render () {
-        //drawLine(pos * 2.0, (pos + dim) * 2.0, Color("#df2f4f"));
-    }
-
     void insert (string text) {
+        if (selectionLength)
+            doDelete();
         textContent ~= text.byDchar.array;
         tf.text = textContent.toUTF8;
     }
-    void deleteOnce () {
+    void doDelete () {
         if (textContent.length > 0) {
-            textContent.length -= 1;
+            textContent.length = max(0, textContent.length - (selectionLength ? selectionLength : 1));
+            selectionLength = 0;
+
             tf.text = textContent.toUTF8;
         }
+    }
+
+    void moveCursor (int dir, bool keepSelection = false) {
+        if (keepSelection) {
+            selectionLength = max(0, selectionLength + dir);
+        }
+    }
+
+    void selectAll () {
+        textCursor = 0;
+        selectionLength = cast(uint)textContent.length;
     }
 }
 
@@ -70,14 +86,16 @@ private void drawLine (vec2 p1, vec2 p2, Color color) {
 
 private class ConsoleModule : UIComponent {
     TextInputField textfield;
+    TextFragment   autocompleteList;
 
     bool dragging = false;
     bool mouseover = false;
-    bool hasFocus  = false;
+    bool hasFocus  = true;
     vec2 dragOffset;
 
     override void onComponentInit () {
-        textfield = new TextInputField("hello world!", new Font(FONT, 22.0), vec2(100, 100));
+        textfield = new TextInputField("hello world!", new Font(FONT, 30.0), vec2(100, 50));
+        autocompleteList = new TextFragment("", new Font(FONT, 22.0), Color("#fe4f2f"), textfield.pos + vec2(0, textfield.dim.y));
     }
     override void onComponentShutdown () {}
     override void handleEvent (UIEvent event) {
@@ -92,34 +110,48 @@ private class ConsoleModule : UIComponent {
                 }
             },
             (MouseButtonEvent ev) {
-                if (ev.pressed && mouseover) { 
-                    dragging = true; 
+                if (ev.pressed && mouseover) 
                     hasFocus = true;
-                } else if (ev.released) {
-                    dragging = false;          
-                } else if (ev.pressed && !mouseover) {
-                    hasFocus = false;
-                }
+
+                if (ev.pressed && ev.isRMB && mouseover)
+                    dragging = true;
+                else if (ev.released && ev.isRMB)
+                    dragging = false;
             },
             (ScrollEvent ev) {
                 if (mouseover)
                     textfield.fontSize = textfield.fontSize + ev.dir.y;
             },
             (TextEvent ev) {
-                textfield.insert(to!string(ev.text));
+                if (hasFocus)
+                    textfield.insert(to!string(ev.text));
             },
             (KeyboardEvent ev) {
-                log.write(ev.keystr);
-                if (ev.keystr == "DELETE") {
-                    textfield.deleteOnce();
-                }
+                if (!hasFocus)
+                    return;
+
+                if (ev.keystr == "DELETE")
+                    textfield.doDelete();
+                if (ev.keystr == "ESC")
+                    hasFocus = false;
+                if ((ev.cmd || ev.ctrl) && (ev.keystr == "a"))
+                    textfield.selectAll();
+
+                if (ev.keystr == "LEFT")
+                    textfield.moveCursor(-1, ev.shift);
+                if (ev.keystr == "RIGHT")
+                    textfield.moveCursor(+1, ev.shift);
+
+
             },
             (FrameUpdateEvent ev) {
-                drawLine(textfield.pos, (textfield.pos + textfield.dim),
-                    mouseover ? Color("#4ffe3f") : hasFocus ? Color("#2f2fff") : Color("#fe3f4f"));
+                auto color = hasFocus ? Color("#fefefe") : Color("#9f9f9f");
+                auto a = textfield.pos, b = a + textfield.dim;
 
-
-                textfield.render();
+                drawLine(vec2(a.x, a.y), vec2(b.x, a.y), color);
+                drawLine(vec2(b.x, a.y), vec2(b.x, b.y), color);
+                drawLine(vec2(b.x, b.y), vec2(a.x, b.y), color);
+                drawLine(vec2(a.x, b.y), vec2(a.x, a.y), color);
             },
             () {}
         )();

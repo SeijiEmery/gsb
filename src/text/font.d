@@ -100,7 +100,7 @@ class Font {
             if (chr == '\n') { maxWidth = max(maxWidth, lineWidth); lineWidth = 0; nlines++; }
             else { lineWidth += _data.getAdvanceWidth(chr); }
         }
-        return vec2(maxWidth, _data.lineHeight * nlines) * getScale(1.0);
+        return vec2(max(lineWidth, maxWidth), _data.lineHeight * nlines) * getScale(1.0);
     }
     float calcUnscaledPixelWidth (string text) {
         float lineWidth = 0, maxWidth = 0;
