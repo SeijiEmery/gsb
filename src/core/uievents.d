@@ -191,7 +191,7 @@ struct MouseButtonEvent {
     PressAction      action;
     KeyboardModifier modifiers = KeyboardModifier.NONE;
 
-    @property bool down    () { return action == PressAction.PRESSED || action == PressAction.REPEAT; }
+    @property bool down    () { return action == PressAction.REPEAT; }
     @property bool pressed () { return action == PressAction.PRESSED; }
     @property bool released () { return action == PressAction.RELEASED; }
 

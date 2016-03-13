@@ -16,7 +16,7 @@ import Derelict.glfw3.glfw3;
 
 shared static this () {
     UIComponentManager.runAtInit({
-        UIComponentManager.registerComponent(new UITestModule(), "uiTestModule", true);
+        UIComponentManager.registerComponent(new UITestModule(), "uiTestModule", false);
     });
 }
 

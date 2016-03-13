@@ -283,6 +283,9 @@ public:
             getCollector(window).textInput(cast(dchar)codepoint);
         }
         void textInput (dchar chr) nothrow {
+            if (chr < 20)
+                return;
+
             synchronized { text ~= chr; }
         }
 
