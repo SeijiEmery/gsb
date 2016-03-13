@@ -1,5 +1,9 @@
 
 module gsb.gl.debugrenderer;
+import gsb.gl.algorithms;
+import gsb.gl.state;
+import gsb.gl.drawcalls;
+
 import gsb.core.log;
 import gsb.core.color;
 import gsb.core.singleton;
@@ -10,9 +14,7 @@ import dglsl;
 import gl3n.linalg;
 
 import core.sync.mutex;
-
 import std.traits;
-
 
 mixin Color.fract;
 
@@ -77,50 +79,70 @@ class DebugLineRenderer2D {
     mixin LowLockSingleton;
 
     protected struct State {
-        GLuint vao = 0;
-        GLuint[1] buffers;
+        //GLuint vao = 0;
+        //GLuint[1] buffers;
         float[]   vbuffer;
+        auto vao = new VertexArray();
 
         protected void render (ref mat4 transform) {
             if (!vbuffer.length)
                 return;
 
-            if (!vao) {
-                checked_glGenVertexArrays(1, &vao);
-                checked_glGenBuffers(1, buffers.ptr);
-                checked_glBindVertexArray(vao);
+            glState.enableDepthTest(false);
+            glState.enableTransparency(true);
 
-                checked_glEnableVertexAttribArray(0);
-                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-                checked_glBufferData(GL_ARRAY_BUFFER, vbuffer.length * 4, vbuffer.ptr, GL_STREAM_DRAW);
-                checked_glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, null);
-            } else {
-                checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-                checked_glBufferData(GL_ARRAY_BUFFER, vbuffer.length * 4, vbuffer.ptr, GL_STREAM_DRAW);
-            }
+            DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
+                VertexData(vbuffer.ptr, vbuffer.length * 4, [
+                    VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
+                ])
+            ]);
 
-            checked_glBindVertexArray(vao);
-
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
-            glDisable(GL_DEPTH_TEST);
-            checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 4);
-            glEnable(GL_DEPTH_TEST);
-
-            //string s = "";
-            //for (uint i = 0; i < vbuffer.length; i += 4) {
-            //    auto v = vec4(vbuffer[i],vbuffer[i+1],vbuffer[i+2],1.0) * transform;
-            //    s ~= format("(%0.2f, %0.2f, %0.2f, color=%s), ", v.x, v.y, v.z, Color.unpack(vbuffer[i+3]));
-            //}
-            //log.write("Drawing stuff: %s", s);
-
+            glState.enableDepthTest(true);
+            glState.enableTransparency(true);
         }
+
+        //protected void render (ref mat4 transform) {
+        //    if (!vbuffer.length)
+        //        return;
+
+        //    checked_glBindVertexArray(vao.get());
+        //    if (!buffers[0]) {
+        //        checked_glGenBuffers(1, buffers.ptr);
+
+        //        checked_glEnableVertexAttribArray(0);
+        //        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+        //        checked_glBufferData(GL_ARRAY_BUFFER, vbuffer.length * 4, vbuffer.ptr, GL_STREAM_DRAW);
+        //        checked_glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, null);
+        //    } else {
+        //        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
+        //        checked_glBufferData(GL_ARRAY_BUFFER, vbuffer.length * 4, vbuffer.ptr, GL_STREAM_DRAW);
+        //    }
+
+        //    glEnable(GL_BLEND);
+        //    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
+        //    glDisable(GL_DEPTH_TEST);
+        //    checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 4);
+        //    glEnable(GL_DEPTH_TEST);
+
+        //    //string s = "";
+        //    //for (uint i = 0; i < vbuffer.length; i += 4) {
+        //    //    auto v = vec4(vbuffer[i],vbuffer[i+1],vbuffer[i+2],1.0) * transform;
+        //    //    s ~= format("(%0.2f, %0.2f, %0.2f, color=%s), ", v.x, v.y, v.z, Color.unpack(vbuffer[i+3]));
+        //    //}
+        //    //log.write("Drawing stuff: %s", s);
+
+        //}
         protected void releaseResources () {
-            if (vao) {
-                checked_glDeleteVertexArrays(1, &vao);
-                checked_glDeleteBuffers(1, buffers.ptr);
-                vao = 0;
-            }
+            vao.release();
+            //if (buffers[0]) {
+            //    checked_glDeleteBuffers(1, &buffers[0]);
+            //    buffers[0] = 0;
+            //}
+            //if (vao) {
+            //    checked_glDeleteVertexArrays(1, &vao);
+            //    checked_glDeleteBuffers(1, buffers.ptr);
+            //    vao = 0;
+            //}
         }
     }
     private State[2] states;

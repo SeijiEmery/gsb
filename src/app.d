@@ -26,6 +26,7 @@ import gsb.text.textrendertest;
 
 import gsb.ui.testui;
 import gsb.gl.debugrenderer;
+import gsb.gl.algorithms;
 
 import std.datetime;
 
@@ -96,6 +97,8 @@ void graphicsThread (Tid mainThreadId) {
 					threadStats.timedCall("DebugRenderer.render", {
 						DebugRenderer.renderFromGraphicsThread();
 					});
+
+					DynamicRenderer.signalFrameEnd();
 
 					threadStats.timedCall("send threadSync message", {
 						send(mainThreadId, ThreadSyncEvent.READY_FOR_NEXT_FRAME);
