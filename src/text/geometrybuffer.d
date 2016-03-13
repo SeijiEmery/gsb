@@ -6,6 +6,10 @@ import gsb.glutils;
 import derelict.opengl3.gl3;
 import core.sync.rwmutex;
 
+private void DEBUG_LOG (lazy void expr) {
+    static if (TEXTRENDERER_DEBUG_LOGGING_ENABLED) expr();
+}
+
 interface IGraphicsComponent {
     public void update ();
     public void draw ();
@@ -81,9 +85,9 @@ class TextGeometryBuffer {
                     auto numQuadTriangles = cast(int)(positionData.length / 9);
                     auto numUvTriangles = cast(int)(uvData.length / 6);
                     if (numQuadTriangles != numUvTriangles)
-                        log.write("WARNING: TextGeometryBuffer has mismatching triangle count: %s, %s", numQuadTriangles, numUvTriangles);
+                        DEBUG_LOG(log.write("WARNING: TextGeometryBuffer has mismatching triangle count: %s, %s", numQuadTriangles, numUvTriangles));
                     numTriangles = numQuadTriangles;
-                    log.write("TextGeometryBuffer.GraphicsBackend: set triangles = %d", numTriangles);
+                    DEBUG_LOG(log.write("TextGeometryBuffer.GraphicsBackend: set triangles = %d", numTriangles));
                     if (numTriangles > 0) {
                         rebufferData();
                     }
@@ -92,8 +96,8 @@ class TextGeometryBuffer {
         }
         private void rebufferData () {
             if (!vao) {
-                log.write("TextGeometryBuffer.GraphicsBackend: creating buffers");
-                log.write("TextGeometryBuffer.GraphicsBackend: buffering data");
+                DEBUG_LOG(log.write("TextGeometryBuffer.GraphicsBackend: creating buffers"));
+                DEBUG_LOG(log.write("TextGeometryBuffer.GraphicsBackend: buffering data"));
                 checked_glGenVertexArrays(1, &vao);
                 checked_glGenBuffers(3, buffers.ptr);
 
@@ -111,7 +115,7 @@ class TextGeometryBuffer {
 
                 checked_glBindVertexArray(0);
             } else {
-                log.write("TextGeometryBuffer.GraphicsBackend: rebuffering data");
+                DEBUG_LOG(log.write("TextGeometryBuffer.GraphicsBackend: rebuffering data"));
                 checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
                 checked_glBufferData(GL_ARRAY_BUFFER, positionData.length * 4, positionData.ptr, GL_DYNAMIC_DRAW);
 
@@ -122,14 +126,14 @@ class TextGeometryBuffer {
 
         override void draw () {
             if (vao && numTriangles > 0) {
-                //log.write("TextGeometryBuffer.GraphicsBackend: drawing %d triangles", numTriangles);
+                //DEBUG_LOG(log.write("TextGeometryBuffer.GraphicsBackend: drawing %d triangles", numTriangles));
                 checked_glBindVertexArray(vao);
                 checked_glDrawArrays(GL_TRIANGLES, 0, numTriangles * 3);
             }
         }
         override void releaseResources () {
             if (vao) {
-                log.write("TextGeometryBuffer.GraphicsBackend: releasing resources (had %d triangles)", numTriangles);
+                DEBUG_LOG(log.write("TextGeometryBuffer.GraphicsBackend: releasing resources (had %d triangles)", numTriangles));
                 checked_glDeleteVertexArrays(1, &vao);
                 checked_glDeleteBuffers(3, buffers.ptr);
                 vao = 0;

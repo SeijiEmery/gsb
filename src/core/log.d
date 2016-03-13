@@ -3,6 +3,11 @@ module gsb.core.log;
 import std.stdio;
 import std.format;
 
+
+// debug logging toggles
+immutable bool TEXTRENDERER_DEBUG_LOGGING_ENABLED = false;
+
+
 // Thread-local log (created in respective thread)
 private Log localLog = null;
 //public @property Log log () {

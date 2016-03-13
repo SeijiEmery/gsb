@@ -30,6 +30,9 @@ import gsb.glutils;
 import derelict.opengl3.gl3;
 import dglsl;
 
+private void DEBUG_LOG (lazy void expr) {
+    static if (TEXTRENDERER_DEBUG_LOGGING_ENABLED) expr();
+}
 
 // Generalized text frontend
 class TextFragment {
@@ -129,28 +132,28 @@ class TextRenderer {
         private auto @property doWrite () { return rwMutex.writer(); }
 
         void processFrame () {
-            //log.write("TextRenderer -- preparing to draw frame");
+            //DEBUG_LOG(log.write("TextRenderer -- preparing to draw frame"));
             synchronized {
                 for (auto i = cast(int)components.length - 1; i >= 0; --i) {
-                    //log.write("-- checking component %d", i);
+                    //DEBUG_LOG(log.write("-- checking component %d", i));
                     if (!components[i].active()) {
-                        //log.write("-- removing component %d", i);
+                        //DEBUG_LOG(log.write("-- removing component %d", i));
                         if (i != components.length - 1)
                             swap(components[i], components[$-1]);
                         components.length -= 1;
                     } else {
-                        //log.write("-- rendering component %d", i);
+                        //DEBUG_LOG(log.write("-- rendering component %d", i));
                         components[i].render();
                     }
                 }
             }
-            //log.write("TextRenderer: Finished drawing frame");
+            //DEBUG_LOG(log.write("TextRenderer: Finished drawing frame"));
         }
         void registerComponent (IGraphicsComponent component) {
             synchronized {
                 components ~= component;
             }
-            //log.write("registered component");
+            //DEBUG_LOG(log.write("registered component"));
         }
     }
 
@@ -169,7 +172,7 @@ class TextRenderer {
         }
     }
     auto getGraphicsThreadHandle () {
-        log.write("Creating new TextRenderer graphics thread handle");
+        DEBUG_LOG(log.write("Creating new TextRenderer graphics thread handle"));
         return new GThreadHandle();
     }
 
@@ -187,16 +190,16 @@ class TextRenderer {
     }
 
     void attachFragment (TextFragment fragment) {
-        log.write("Attaching %s", fragment);
+        DEBUG_LOG(log.write("Attaching %s", fragment));
         fragments.insert(fragment);
     }
     void removeFragment (TextFragment fragment) {
         if (fragment in fragments) {
-            log.write("Removing %s", fragment);
+            DEBUG_LOG(log.write("Removing %s", fragment));
             fragments.remove(fragments.equalRange(fragment));
             deletedFragments ~= fragment;
         } else {
-            log.write("Already removed: %s!", fragment);
+            DEBUG_LOG(log.write("Already removed: %s!", fragment));
         }
     }
     struct SharedAtlas {
@@ -245,19 +248,19 @@ class TextRenderer {
             atlases[fragment.currentAtlas].refcount--;
             buffers[fragment.currentTextBuffer].dflag = true;
             anyBufferChanges = true;
-            log.write("Removed fragment %d (buffer %d, atlas %d)",
-                fragment.id, fragment.currentTextBuffer, fragment.currentAtlas);
+            DEBUG_LOG(log.write("Removed fragment %d (buffer %d, atlas %d))",
+                fragment.id, fragment.currentTextBuffer, fragment.currentAtlas));
         }
         foreach (fragment; fragments) {
             if (fragment.dirtyFontAttrib) {
-                log.write("Fragment %d needs new atlas (was %d)", fragment.id, fragment.currentAtlas);
+                DEBUG_LOG(log.write("Fragment %d needs new atlas (was %d)", fragment.id, fragment.currentAtlas));
                 if (fragment.currentAtlas > 0)
                     atlases[fragment.currentAtlas].refcount--;
                 fragment.currentAtlas = -1;
                 assert(fragment.dirtyState);
             }
             if (fragment.dirtyState) {
-                log.write("Fragment %d needs new buffer (was %d)", fragment.id, fragment.currentTextBuffer);
+                DEBUG_LOG(log.write("Fragment %d needs new buffer (was %d)", fragment.id, fragment.currentTextBuffer));
                 if (fragment.currentTextBuffer >= 0)
                     buffers[fragment.currentTextBuffer].dflag = true;
                 else
@@ -268,8 +271,8 @@ class TextRenderer {
         if (anyBufferChanges) {
             foreach (fragment; fragments) {
                 if (fragment.currentTextBuffer >= 0 && buffers[fragment.currentTextBuffer].dflag) {
-                    log.write("Fragment %d changing buffer because buffer contents changed (%d)",
-                        fragment.id, fragment.currentTextBuffer);
+                    DEBUG_LOG(log.write("Fragment %d changing buffer because buffer contents changed (%d))",
+                        fragment.id, fragment.currentTextBuffer));
                     fragment.currentTextBuffer = -1;
                     if (isVisible(fragment)) {
                         addList ~= fragment;
@@ -277,11 +280,11 @@ class TextRenderer {
                 }
             }
 
-            log.write("-- Rebuilding %d fragments --", addList.length);
+            DEBUG_LOG(log.write("-- Rebuilding %d fragments --", addList.length));
             synchronized {
                 foreach (i; 0..buffers.length) {
                     if (buffers[i].dflag) {
-                        log.write("Releasing buffer %d", i);
+                        DEBUG_LOG(log.write("Releasing buffer %d", i));
                         buffers[i].dflag = false;
                         buffers[i].shouldRender = false;
                         freeBuffers ~= i;
@@ -299,7 +302,7 @@ class TextRenderer {
                 if (fragment.currentAtlas == -1) {
                     auto fontid = fragment.font.stringId;
                     if (fontid !in atlasLookup) {
-                        log.write("Creating new atlas %d", atlases.length);
+                        DEBUG_LOG(log.write("Creating new atlas %d", atlases.length));
                         atlasLookup[fontid] = atlases.length;
                         fragment.currentAtlas = cast(int)atlases.length;
                         atlases ~= SharedAtlas.create();
@@ -308,7 +311,7 @@ class TextRenderer {
                         fragment.currentAtlas = cast(int)atlasLookup[fontid];
                         atlases[fragment.currentAtlas].refcount++;
                     }
-                    log.write("Fragment %d set atlas %d", fragment.id, fragment.currentAtlas);
+                    DEBUG_LOG(log.write("Fragment %d set atlas %d", fragment.id, fragment.currentAtlas));
                 }
                 assert(fragment.currentAtlas >= 0 && fragment.currentAtlas < atlases.length);
                 auto sharedAtlas = atlases[fragment.currentAtlas];
@@ -317,7 +320,7 @@ class TextRenderer {
                 fragment.swapState();
 
                 if (dirtyCharset) {
-                    log.write("Fragment %d re-inserting charset into atlas %d", fragment.id, fragment.currentAtlas);
+                    DEBUG_LOG(log.write("Fragment %d re-inserting charset into atlas %d", fragment.id, fragment.currentAtlas));
                     tmp_charset.clear();
                     foreach (chr; fragment.bstate.text.byDchar)
                         if (chr >= 0x20)
@@ -330,15 +333,15 @@ class TextRenderer {
             addList.sort!((a,b) => a.currentAtlas < b.currentAtlas);
             int curAtlas = -1, curBuffer = -1;
             foreach (fragment; addList) {
-                log.write("Fragment %d writing to buffer (atlas %d)", fragment.id, fragment.currentAtlas);
+                DEBUG_LOG(log.write("Fragment %d writing to buffer (atlas %d)", fragment.id, fragment.currentAtlas));
                 if (fragment.currentAtlas != curAtlas) {
-                    log.write("atlas changed to %d; fetching new buffer", fragment.currentAtlas);
+                    DEBUG_LOG(log.write("atlas changed to %d; fetching new buffer", fragment.currentAtlas));
                     curAtlas = fragment.currentAtlas;
                     if (freeBuffers.length > 0) {
-                        log.write("Recycling buffer %d", freeBuffers[$-1]);
+                        DEBUG_LOG(log.write("Recycling buffer %d", freeBuffers[$-1]));
                         curBuffer = cast(int)freeBuffers[$-1]; freeBuffers.length--;
                     } else {
-                        log.write("Creating new buffer %d", buffers.length);
+                        DEBUG_LOG(log.write("Creating new buffer %d", buffers.length));
                         buffers ~= SharedTGB.create();
                         curBuffer = cast(int)buffers.length-1;
                     }
@@ -350,21 +353,21 @@ class TextRenderer {
                 auto lineHeight = fragment.font.lineHeight, x0 = fragment.bstate.position.x;
                 auto buffer = buffers[curBuffer].buffer;
                 auto atlas  = atlases[curAtlas].atlas;
-                //log.write("Font scale = %f, pixelsize = %f, height = %f, height2 = %f", fragment.font.getScale(1.0),
+                //DEBUG_LOG(log.write("Font scale = %f, pixelsize = %f, height = %f, height2 = %f", fragment.font.getScale(1.0)),
                 //    fragment.font.getSize(1.0), fragment.font.getLineHeight(1.0),
                 //    fragment.font.lineHeight);
-                //log.write("cursor = %0.2f, %0.2f", layout.x, layout.y);
+                //DEBUG_LOG(log.write("cursor = %0.2f, %0.2f", layout.x, layout.y));
                 foreach (line; fragment.bstate.text.splitter('\n')) {
                     layout.x = x0; layout.y += lineHeight;
                     foreach (quad; atlas.getQuads(fragment.font, line.byDchar, layout.x, layout.y, false)) {
                         buffer.pushQuad(quad);
                     }
-                    log.write("wrote line; cursor = %0.2f, %0.2f (atlas %d, buffer %d)", 
-                        layout.x, layout.y, curAtlas, curBuffer);
+                    DEBUG_LOG(log.write("wrote line; cursor = %0.2f, %0.2f (atlas %d, buffer %d))", 
+                        layout.x, layout.y, curAtlas, curBuffer));
                 }
                 buffers[curBuffer].shouldRender = true;
             }
-            log.write("-- Finished rebuilding fragments --");
+            DEBUG_LOG(log.write("-- Finished rebuilding fragments --"));
         }
     }
 
@@ -386,7 +389,7 @@ class TextRenderer {
             }
 
             if (tmp_renderBuffers.length > 0) {
-                //everyNFrame(log.write("Rendering %d text buffers", tmp_renderBuffers.length));
+                //everyNFrame(DEBUG_LOG(log.write("Rendering %d text buffers", tmp_renderBuffers.length)));
                 tmp_renderBuffers.sort!((SharedTGB a, SharedTGB b) => 
                     cast(size_t)cast(void*)a.atlas < cast(size_t)cast(void*)b.atlas);
 
@@ -402,9 +405,9 @@ class TextRenderer {
 
                 PackedFontAtlas curAtlas = null; int i = 0;
                 foreach (rb; tmp_renderBuffers) {
-                    //everyNFrame(log.write("Rendering buffer %d", i++));
+                    //everyNFrame(DEBUG_LOG(log.write("Rendering buffer %d", i++)));
                     if (rb.atlas != curAtlas) {
-                        //everyNFrame(log.write("Switching atlas"));
+                        //everyNFrame(DEBUG_LOG(log.write("Switching atlas")));
                         rb.atlas.backend.update();
                         rb.atlas.backend.bindTexture();
                     }
@@ -434,7 +437,7 @@ class TextRenderer {
                 charset.insert(chr);
 
         auto scale = font.getScale(screenScale);
-        log.write("font scale = %f", scale);
+        DEBUG_LOG(log.write("font scale = %f", scale));
 
         atlas.insertCharset(font, charset);
 
@@ -445,7 +448,7 @@ class TextRenderer {
                     foreach (quad; atlas.getQuads(font, line.byDchar, layout.x, layout.y, false)) {
                         buffer.pushQuad(quad);
                     }
-                    log.write("wrote line; cursor = %0.2f, %0.2f", layout.x, layout.y);
+                    DEBUG_LOG(log.write("wrote line; cursor = %0.2f, %0.2f", layout.x, layout.y));
                 }
             }
         }
@@ -469,7 +472,7 @@ class TextRenderer {
         string cachedText;
 
         this (string fontName, float size) {
-            log.write("Creating new TextElement");
+            DEBUG_LOG(log.write("Creating new TextElement"));
             this.font = new Font(fontName, size);
 
             screenScaleFactor = g_mainWindow.screenScale.y;
@@ -487,13 +490,13 @@ class TextRenderer {
             graphicsBackend = new GraphicsBackend();
         }
         ~this () {
-            log.write("Deleting TextElement");
+            DEBUG_LOG(log.write("Deleting TextElement"));
             graphicsBackend.deactivate();
             packedAtlas.releaseResources();
         }
 
         void append (string text) {
-            //log.write("Writing text '%s'", text);
+            //DEBUG_LOG(log.write("Writing text '%s'", text));
             cachedText ~= text;
             writeText(text, font, textBuffer, packedAtlas, layouter, screenScaleFactor.y);
         }
@@ -504,7 +507,7 @@ class TextRenderer {
             bool isActive = true;
 
             this () {
-                log.write("Creating new TextElement.GraphicsBackend");
+                DEBUG_LOG(log.write("Creating new TextElement.GraphicsBackend"));
 
                 textBufferBackend = textBuffer.new GraphicsBackend();
                 testQuadBackend   = textBuffer.new GraphicsBackend();
