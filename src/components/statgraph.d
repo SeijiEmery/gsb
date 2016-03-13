@@ -22,21 +22,29 @@ private immutable string MAIN_THREAD = "main-thread";
 private immutable string GTHREAD     = "graphics-thread";
 private immutable string FRAME_STATS_CAT = "frame";
 private immutable int NUM_SAMPLES = 100;
+private immutable string FONT = "menlo";
 
 private bool inBounds (vec2 pos, vec2 p1, vec2 p2) {
     return !(pos.x < p1.x || pos.x > p2.x || pos.y < p1.y || pos.y > p2.y);
 }
-
 
 class Graph {
     vec2 pos;
     vec2 dim;
     string statsCategory = FRAME_STATS_CAT;
     vec2[] points;
+    TextFragment[string] labels;
+
+    float fontSize = 22.0;
+    Color fontColor;
 
     this (vec2 pos, vec2 dim) {
         this.pos = pos;
         this.dim = dim;
+
+        fontColor = Color("#fe0020");
+        labels[MAIN_THREAD] = new TextFragment(MAIN_THREAD ~ "\n stuff", new Font(FONT, fontSize), fontColor, this.pos * 2.0);
+        labels[GTHREAD]     = new TextFragment(GTHREAD ~ "\nmore stuff", new Font(FONT, fontSize), fontColor, this.pos * 2.0);
     }
 
     private void drawGraph (StatsCollector stats, Color color, float maxSample) {
@@ -89,12 +97,14 @@ class Graph {
         DebugRenderer.drawLines(points, color, 1.0, 4);
     }
 
+    private void drawLine (vec2 p1, vec2 p2, Color color) {
+        DebugRenderer.drawLines([ p1, p2 ], color, 1.0, 4);
+    }
+
     void render () {
         float maxSample = 1 / 60.0;
 
-        void drawLine (vec2 p1, vec2 p2, Color color) {
-            DebugRenderer.drawLines([ p1, p2 ], color, 1.0, 4);
-        }
+        
 
         float y = dim.y * 0.5;
         drawLine(pos + vec2(0, y), pos + vec2(dim.x, y), Color("#f0f000"));
@@ -115,11 +125,58 @@ class Graph {
             pos 
         ], color, 1, 1);
 
+        updateLabels();
+    }
 
-        //drawLine(pos, pos + vec2(dim.x, 0), color);  color.g += 0.2;
-        //drawLine(pos + vec2(dim.x, 0), pos + vec2(dim.x, dim.y), color); color.g += 0.2;
-        //drawLine(pos + dim, pos + vec2(0, dim.y), color); color.g += 0.2;
-        //drawLine(pos + vec2(0, dim.y), pos, color);
+    auto getCallStats (string cat) {
+        if (cat !in perThreadStats)
+            return "<None>";
+        auto stats = perThreadStats[cat];
+
+        struct CallStat { string name; float avg, max_; }
+        CallStat[] callstats;
+
+        foreach (k, v; stats.collection) {
+            float total = 0.0, max_ = 0.0;
+            foreach (x; v.samples) {
+                float t = x.to!TickDuration.to!("msecs", float);
+                total += t;
+                max_  = max(max_, t);
+            }
+            callstats ~= CallStat(k, total / v.count, max_);
+        }
+
+        import std.algorithm.sorting;
+        callstats.sort!"a.max_ > b.max_"();
+
+        string label = cat;
+        foreach (s; callstats) {
+            label ~= format("\n%0.2f %0.2f %s", s.avg, s.max_, s.name);
+        }
+        return label;
+    }
+
+    void updateLabels () {
+        auto nextPos = pos * 2.0;
+        immutable float LABEL_SPACING = 10.0;
+
+        foreach (k, v; labels) {
+            v.position = nextPos; nextPos.x += v.bounds.x * 1.08;
+            v.text = getCallStats(k);
+
+
+            // Debug lines to draw text bounds
+            //auto pos = v.position / 2.0, bounds = v.bounds / 2.0;
+            //drawLine(pos, pos + bounds, Color("#fe0000"));
+            //drawLine(pos, pos + vec2(0, bounds.y), Color("#00fe00"));
+        }
+    }
+
+    void setFontSize (float size) {
+        auto font = new Font(FONT, fontSize = size);
+        foreach (k, v; labels) {
+            v.font = font;
+        }
     }
 }
 
@@ -134,7 +191,7 @@ class StatGraphModule : UIComponent {
     bool resizeTop   = false;
     bool resizeBtm   = false;
 
-    TextFragment label1;
+    //TextFragment label1;
     float fontSize = 16.0;
 
     float baseResizeWidth = 5.0;
@@ -144,9 +201,9 @@ class StatGraphModule : UIComponent {
 
     override void onComponentInit () {
         graph = new Graph(vec2(100, 100), vec2(400, 200));
-        label1 = new TextFragment("main-thread stats:\nstuff\nmore stuff\neven more stuff",
-            new Font("menlo", fontSize),
-            Color("#fe0020"), vec2(graph.pos.x, graph.pos.y + graph.dim.y));
+        //label1 = new TextFragment("main-thread stats:\nstuff\nmore stuff\neven more stuff",
+        //    new Font("menlo", fontSize),
+        //    Color("#fe0020"), vec2(graph.pos.x, graph.pos.y + graph.dim.y));
     }   
     override void onComponentShutdown () {
 
@@ -193,7 +250,7 @@ class StatGraphModule : UIComponent {
                         graph.pos = ev.position - dragOffset;
                     }
                 }
-                label1.position = graph.pos * 2.0;
+                //label1.position = graph.pos * 2.0;
             },
             (MouseButtonEvent ev) {
                 if (ev.pressed && mouseover) {
@@ -203,7 +260,8 @@ class StatGraphModule : UIComponent {
                 }
             },
             (ScrollEvent ev) {
-                label1.font = new Font("menlo", fontSize += ev.dir.y);
+                if (mouseover)
+                    graph.setFontSize(graph.fontSize + ev.dir.y);
             },
             (FrameUpdateEvent frame) {
                 graph.render();
