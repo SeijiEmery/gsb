@@ -202,10 +202,6 @@ void mainThread (Tid graphicsThreadId) {
 
 			// Notify graphics thread that it can begin processing the next frame. 
 			send(graphicsThreadId, ThreadSyncEvent.NOTIFY_NEXT_FRAME);
-
-			threadStats.timedCall("dumpStats", {
-				dumpAllStats();
-			});
 		});
 
 		// Wait for next frame or some other synchronized message (gthread terminated with
