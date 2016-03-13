@@ -93,13 +93,22 @@ class Font {
     }
 
     vec2 calcPixelBounds (string text) {
-        return vec2(calcUnscaledPixelWidth(text), _data.lineHeight) * getScale(1.0);
+        float lineWidth = 0, maxWidth = 0;
+        uint  nlines = 1;
+
+        foreach (chr; text.byDchar) {
+            if (chr == '\n') { maxWidth = max(maxWidth, lineWidth); lineWidth = 0; nlines++; }
+            else { lineWidth += _data.getAdvanceWidth(chr); }
+        }
+        return vec2(maxWidth, _data.lineHeight * nlines) * getScale(1.0);
     }
     float calcUnscaledPixelWidth (string text) {
-        float width = 0;
-        foreach (chr; text.byDchar)
-            width += _data.getAdvanceWidth(chr);
-        return width;
+        float lineWidth = 0, maxWidth = 0;
+        foreach (chr; text.byDchar) {
+            if (chr == '\n') { maxWidth = max(maxWidth, lineWidth); lineWidth = 0; }
+            else { lineWidth += _data.getAdvanceWidth(chr); }
+        }
+        return max(maxWidth, lineWidth);
     }
 
     // temp stuff for integrating w/ old textrenderer
