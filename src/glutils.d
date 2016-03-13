@@ -191,6 +191,9 @@ alias checked_glBindBufferRange = checked!("glBindBufferRange", GLenum, GLuint, 
 alias checked_glBindBufferBase  = checked!("glBindBufferBase", GLenum, GLuint, GLuint);
 alias checked_glBufferData = checked!("glBufferData", GLenum, GLsizeiptr, const(void)*, GLenum);
 alias checked_glBufferSubData = checked!("glBufferSubData", GLenum, GLintptr, GLsizeiptr, const(void)*);
+alias checked_glMapBufferRange = checked!("glMapBufferRange", GLenum, GLintptr, GLsizeiptr, GLbitfield);
+alias checked_glUnmapBuffer    = checked!("glUnmapBuffer", GLenum);
+
 
 alias checked_glDrawArrays = checked!("glDrawArrays", GLenum, GLint, GLint);
 alias checked_glDrawElements = checked!("glDrawElements", GLenum, GLsizei, GLenum, const(GLvoid)*);

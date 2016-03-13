@@ -15,10 +15,16 @@ import gl3n.linalg;
 import std.traits;
 
 
-private auto toBase2Size (T) (T minSize) {
-    T foo = 64;
-    while (foo < minSize) foo <<= 1;
-    return foo;
+// http://locklessinc.com/articles/next_pow2/
+private auto nextPow2 (T)(T x) {
+    x -= 1;
+    x |= (x >> 1);
+    x |= (x >> 2);
+    x |= (x >> 4);
+    x |= (x >> 8);
+    x |= (x >> 16);
+    x |= (x >> 32);
+    return x + 1;
 }
 
 
@@ -34,13 +40,15 @@ interface IDynamicRenderer {
 private class UMapBatchedDynamicRenderer : IDynamicRenderer {
     mixin LowLockSingleton;
 
-    GLuint vbo = 0;
-    size_t bufferSize    = 1 << 20;  // 1 mb
+    VBO vbo = null;
+    size_t bufferSize    = 1 << 20; //64;  // 1 mb
     size_t bufferOffset  = 0;
 
     final void onFrameEnd () {
-        if (vbo && bufferOffset != 0) {
-            checked_glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        if (vbo) {
+            log.write("Clearing vbo; reserving size %d", bufferSize);
+            //vbo.bind(GL_ARRAY_BUFFER);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo.get()); // need to force this, since not everything else uses glState.bindVbo yet...
             checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
             bufferOffset = 0;
         }
@@ -49,63 +57,54 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
     final void drawArrays (VADrawCall batch) {
         size_t neededLength = 0;
         foreach (component; batch.components)
-            neededLength += toBase2Size(component.length);
+            neededLength += nextPow2(component.length);
 
-        bool needsRemap = false;
+        if (!vbo) {
+            vbo = new VBO();
 
-        log.write("draw arrays");
+            log.write("Creating vbo; reserving size %d", bufferSize);
 
-        if (neededLength + bufferOffset >= bufferSize) {
-            log.write("needs resize");
-
-            // Orphan buffer, if it exists
-            if (vbo) {
-                log.write("orphaning buffer");
-                checked_glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
-            }
-
-            // reset cursor
-            bufferOffset = 0;
-
-            // Check that our entire data set will fit within the buffer (if not, we need a bigger buffer)
-            if (neededLength > bufferSize) {
-                log.write("Large data store requested -- UMapRenderer resizing vbo from %ld to %ld",
-                    bufferSize, toBase2Size(neededLength));
-                bufferSize = toBase2Size(neededLength);
-            }
-
-            // Rebuild buffer
-            if (!vbo) {
-                log.write("creating vbo");
-
-                checked_glGenBuffers(1, &vbo);
-                checked_glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            }
+            vbo.bind(GL_ARRAY_BUFFER);
             checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
+            //vbo.bufferData!(GL_ARRAY_BUFFER, GL_STREAM_DRAW)(bufferSize, null);
+            bufferOffset = 0;
+        }
+        if (neededLength + bufferOffset >= bufferSize) {
+            // Check that our entire data set will fit within the buffer (if not, we need a bigger buffer)
+            if (neededLength >= bufferSize) {
+                log.write("Large data store requested -- UMapRenderer resizing vbo from %d to %d",
+                    bufferSize, nextPow2(neededLength));
+                bufferSize = nextPow2(neededLength);
+            }
 
-        // If vbo doesn't exist, create it
-        } else if (!vbo) {
-            log.write("creating vbo");
 
-            checked_glGenBuffers(1, &vbo);
-            checked_glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            log.write("Orphaning vbo (%d + %d > %d); reserving size %d", neededLength, bufferOffset, bufferSize, bufferSize);
+            // Orphan buffer, reset cursor
+            vbo.bind(GL_ARRAY_BUFFER);
             checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
             bufferOffset = 0;
         } else {
-            checked_glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            vbo.bind(GL_ARRAY_BUFFER);
         }
 
-        log.write("vbo = %d (data size = %d, capacity - offset = %d)", vbo, neededLength, bufferSize - bufferOffset);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
 
         // map vao + process components
-        checked_glBindVertexArray(batch.vao);
+        glState.bindVao(batch.vao);
 
+        import core.stdc.string: memcpy;
         foreach (component; batch.components) {
-            auto size = toBase2Size(component.length);
+            //auto size = nextPow2(component.length);
+            //auto ptr  = vbo.mapRange(bufferOffset, size, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+            //memcpy(ptr, component.data, component.length);
+            //bufferOffset += size;
 
-            log.write("writing (length = %d, size = %d, offset = %d)", component.length, size, bufferOffset);
+            auto size = nextPow2(component.length);
 
+            log.write("writing (length = %d, size = %d, offset = %d | %d / %d (%0.2f))", component.length, size, bufferOffset, 
+                size + bufferOffset, bufferSize, cast(float)(size + bufferOffset) / cast(float)bufferSize);
+
+            //void* ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY) + bufferOffset;
             void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, bufferOffset, size, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
             CHECK_CALL("glMapBufferRange");
             import core.stdc.string: memcpy;
@@ -113,6 +112,8 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
 
             glUnmapBuffer(GL_ARRAY_BUFFER);
             CHECK_CALL("glUnmapBuffer");
+
+            //vbo.writeMappedRange!(GL_ARRAY_BUFFER)(bufferOffset, size, component.data, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
             bufferOffset += size;
 
             foreach (attrib; component.attribs) {
@@ -128,10 +129,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
     }
 
     final void release () {
-        if (vbo) {
-            glDeleteBuffers(1, &vbo);
-            vbo = 0;
-        }
+        vbo.release();
     }
 }
 
@@ -158,7 +156,7 @@ private class BasicDynamicRenderer : IDynamicRenderer {
         genVbos(batch.components.length);
         
         // buffer data + draw
-        checked_glBindVertexArray(batch.vao);
+        glState.bindVao(batch.vao);
         foreach (i; 0..batch.components.length) {
             checked_glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
             checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].data, GL_STREAM_DRAW);
@@ -234,14 +232,14 @@ struct DynamicRenderer {
         }
     }
 
-    static void drawElements (VertexArray vao, GLenum type, GLsizei offset, GLsizei count,
+    static void drawElements (VAO vao, GLenum type, GLsizei offset, GLsizei count,
         VertexData[] vertexData, ElementData elementData
     ) {
         currentRenderer.drawElements(
             VADrawCall(vao.get(), type, offset, count, vertexData), 
             elementData);
     }
-    static void drawArrays (VertexArray vao, GLenum type, GLsizei offset, GLsizei count,
+    static void drawArrays (VAO vao, GLenum type, GLsizei offset, GLsizei count,
         VertexData[] vertexData)
     {
         if (!currentRenderer)
@@ -272,7 +270,7 @@ void example () {
             float edgeDist;
         }
         struct State {
-            VertexArray  vao;
+            VAO  vao;
             PackedData[] vertexData;
             ushort    [] indexData;
 
@@ -311,7 +309,7 @@ void example () {
 
     class DebugRenderer2D {
         protected struct State {
-            VertexArray vao;
+            VAO vao;
             float[] vbuffer;
             int[]   ebuffer;
 

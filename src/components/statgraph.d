@@ -8,6 +8,8 @@ import gsb.core.window;
 import gsb.text.textrenderer;
 import gsb.text.font;
 
+import gsb.gl.algorithms: DynamicRenderer;
+
 import gl3n.linalg;
 import gsb.core.color;
 import core.time;
@@ -192,7 +194,7 @@ class StatGraphModule : UIComponent {
     bool resizeBtm   = false;
 
     //TextFragment label1;
-    float fontSize = 16.0;
+    float fontSize = 32.0;
 
     float baseResizeWidth = 5.0;
     @property auto resizeWidth () {
@@ -257,6 +259,15 @@ class StatGraphModule : UIComponent {
                     dragging = true;
                 } else if (ev.released) {
                     dragging = false;
+                }
+            },
+            (KeyboardEvent ev) {
+                if (ev.keystr == "1" && ev.keyPressed) {
+                    log.write("Setting DynamicRenderer to BASIC_DYNAMIC_BATCHED");
+                    DynamicRenderer.renderer = DynamicRenderer.BASIC_DYNAMIC_RENDERER;
+                } else if (ev.keystr == "2" && ev.keyPressed) {
+                    log.write("setting DynamicRenderer to UMAP_DYNAMIC_BATCHED");
+                    DynamicRenderer.renderer = DynamicRenderer.UMAP_BATCHED_DYNAMIC_RENDERER;
                 }
             },
             (ScrollEvent ev) {

@@ -82,7 +82,7 @@ class DebugLineRenderer2D {
         //GLuint vao = 0;
         //GLuint[1] buffers;
         float[]   vbuffer;
-        auto vao = new VertexArray();
+        auto vao = new VAO();
 
         protected void render (ref mat4 transform) {
             if (!vbuffer.length)
@@ -91,11 +91,13 @@ class DebugLineRenderer2D {
             glState.enableDepthTest(false);
             glState.enableTransparency(true);
 
-            DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
-                VertexData(vbuffer.ptr, vbuffer.length * 4, [
-                    VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
-                ])
-            ]);
+            foreach (i; 0 .. 100) {
+                DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
+                    VertexData(vbuffer.ptr, vbuffer.length * 4, [
+                        VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
+                    ])
+                ]);
+            }
 
             glState.enableDepthTest(true);
             glState.enableTransparency(true);
