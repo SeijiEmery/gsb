@@ -291,6 +291,11 @@ class DebugLineRenderer2D {
             ];
         }
     }
+    void drawRect (vec2 a, vec2 b, Color color) {
+        pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color.toPackedFloat(), 1.0);
+    }
+
+
 
     ColoredFragmentShader fs = null;
     ColoredVertexShader   vs = null;
