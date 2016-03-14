@@ -11,6 +11,10 @@ import gsb.text.font;
 
 import gl3n.linalg;
 
+private bool inBounds (vec2 pos, vec2 p1, vec2 p2) {
+    return !(pos.x < p1.x || pos.x > p2.x || pos.y < p1.y || pos.y > p2.y);
+}
+
 class UIElement : IResource, IRenderable, ILayoutable {
     vec2 pos, dim;
 
@@ -28,9 +32,12 @@ class UIElement : IResource, IRenderable, ILayoutable {
 class UITextElement : UIElement {
     private TextFragment fragment;
 
-    this (vec2 pos, vec2 dim, string text, Font font, Color color) {
+    this (vec2 pos, vec2 dim, string text, Font font, Color color, Color backgroundColor) {
         super(pos, dim);
-        fragment = new TextFragment(text, font, color, this.pos);
+        fragment = new TextFragment(text, font, color, this.pos * 2.0);
+        this.backgroundColor = backgroundColor;
+        recalcDimensions();
+        doLayout();
     }
 
     override void release () {
@@ -55,11 +62,18 @@ class UITextElement : UIElement {
     Color backgroundColor;
 
     override void render () {
-        DebugRenderer.drawRect(pos, pos + dim, backgroundColor);
+        //DebugRenderer.drawRect(pos, pos + dim, backgroundColor);
+        DebugRenderer.drawLineRect(pos, pos + dim, backgroundColor, 0.0);
     }
 
     override bool handleEvents (UIEvent event) {
         return false;
+    }
+    override void recalcDimensions () {
+        dim = fragment.bounds;
+    }
+    override void doLayout () {
+        fragment.position = pos * 2.0;
     }
 }
 
@@ -82,11 +96,10 @@ struct UIDecorators {
         }
 
         override bool handleEvents (UIEvent event) {
-            return super.handleEvents(event) || event.handle!(
+            return (super.handleEvents(event) || event.handle!(
                 (MouseMoveEvent ev) {
                     if (!dragging) {
                         // No drag / resize event; check for mouseover + update flags
-                        auto bounds = getViewBounds();
                         auto a = pos, b = pos + dim;
                         auto k = resizeWidth;
 
@@ -110,19 +123,20 @@ struct UIDecorators {
                         pos += ev.position - lastMousePosition;
                         lastMousePosition = ev.position;
                     }
-                    event.handled = true;
+                    return true;
                 },
                 (MouseButtonEvent ev) {
                     if (isDraggable && ev.pressed && mouseover) {
                         dragging = true;
-                        event.handled = true;
+                        return true;
                     } else if (dragging && ev.released) {
                         dragging = false;
-                        event.handled = true;
+                        return true;
                     }
+                    return false;
                 },
-                () {}
-            );
+                () { return false; }
+            ));
         }
     }
 }
