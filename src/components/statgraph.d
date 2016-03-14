@@ -161,7 +161,6 @@ class Graph {
             v.position = nextPos; nextPos.x += v.bounds.x * 1.08;
             v.text = getCallStats(k);
 
-
             // Debug lines to draw text bounds
             //auto pos = v.position / 2.0, bounds = v.bounds / 2.0;
             //drawLine(pos, pos + bounds, Color("#fe0000"));
@@ -195,7 +194,6 @@ class StatGraphModule : UIComponent {
     bool resizeTop   = false;
     bool resizeBtm   = false;
 
-    //TextFragment label1;
     float fontSize = 32.0;
 
     float baseResizeWidth = 5.0;
@@ -203,15 +201,18 @@ class StatGraphModule : UIComponent {
         return g_mainWindow.screenScale.y * baseResizeWidth;
     }
 
+    private bool initialized = false;
+
     override void onComponentInit () {
+        log.write("intitializing");
         graph = new Graph(vec2(100, 100), vec2(400, 200));
-        //label1 = new TextFragment("main-thread stats:\nstuff\nmore stuff\neven more stuff",
-        //    new Font("menlo", fontSize),
-        //    Color("#fe0020"), vec2(graph.pos.x, graph.pos.y + graph.dim.y));
     }   
     override void onComponentShutdown () {
+        log.write("shutdown!");
         graph.teardown(); graph = null;
     } 
+
+
     override void handleEvent (UIEvent event) {
         event.handle!(
             (MouseMoveEvent ev) {
@@ -270,6 +271,12 @@ class StatGraphModule : UIComponent {
                 } else if (ev.keystr == "2" && ev.keyPressed) {
                     log.write("setting DynamicRenderer to UMAP_DYNAMIC_BATCHED");
                     DynamicRenderer.renderer = DynamicRenderer.UMAP_BATCHED_DYNAMIC_RENDERER;
+                }
+
+                if (ev.keystr == "3" && ev.keyPressed) {
+                    log.write("rebuilding graph");
+                    graph.teardown();
+                    graph = new Graph(graph.pos, graph.dim);
                 }
             },
             (ScrollEvent ev) {

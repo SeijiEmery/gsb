@@ -245,8 +245,10 @@ class TextRenderer {
 
         // process deletions, additions, etc
         foreach (fragment; deletedFragments) {
-            atlases[fragment.currentAtlas].refcount--;
-            buffers[fragment.currentTextBuffer].dflag = true;
+            if (fragment.currentAtlas >= 0)
+                atlases[fragment.currentAtlas].refcount--;
+            if (fragment.currentTextBuffer >= 0)
+                buffers[fragment.currentTextBuffer].dflag = true;
             anyBufferChanges = true;
             DEBUG_LOG(log.write("Removed fragment %d (buffer %d, atlas %d))",
                 fragment.id, fragment.currentTextBuffer, fragment.currentAtlas));
