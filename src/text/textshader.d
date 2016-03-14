@@ -1,6 +1,6 @@
 
 module gsb.text.textshader;
-
+import gsb.gl.state;
 import gsb.core.window;
 import gsb.glutils;
 import derelict.opengl3.gl3;
@@ -32,7 +32,9 @@ class TextFragmentShader: Shader!Fragment {
 
     void main () {
         vec4 color = texture(textureSampler, texCoord);
-        fragColor = vec4(color.r);
+        fragColor = vec4(color.r) + vec4(0.5, 0, 0, 0.5);
+
+
         //fragColor = color.r > 0.02 ?
         //    vec4(color.r) :
         //    vec4(backgroundColor + vec3(texCoord, 0.0), 1.0) * 0.5;
@@ -53,23 +55,24 @@ class TextShader {
         vs = new TextVertexShader();   vs.compile(); CHECK_CALL("compiling text vertex shader");
         prog = makeProgram(vs, fs); CHECK_CALL("compiling/linking text shader program");
 
-        checked_glUseProgram(prog.id);
+        glState.enableDepthTest(true);
+        glState.enableTransparency(true);
+        glState.bindShader(prog.id);
         prog.textureSampler = 0; CHECK_CALL("set textShader texture sampler");
-        checked_glUseProgram(0);
     }
 
     void bind () {
         if (prog is null)
             lazyInit();
-        checked_glUseProgram(prog.id);
+        glState.bindShader(prog.id);
     }
 
     @property void transform (mat4 transformMatrix) {
-        checked_glUseProgram(prog.id);
+        glState.bindShader(prog.id);
         prog.transform = transformMatrix; CHECK_CALL("set textShader transform");
     }
     @property void backgroundColor (vec3 backgroundColor) {
-        checked_glUseProgram(prog.id);
+        glState.bindShader(prog.id);
         prog.backgroundColor = backgroundColor; CHECK_CALL("set backgroundColor");
     }
 }

@@ -55,6 +55,8 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
     }
 
     final void drawArrays (VADrawCall batch) {
+        //log.write("drawArrays: %s", batch);
+
         size_t neededLength = 0;
         foreach (component; batch.components)
             neededLength += nextPow2(component.length);
@@ -101,8 +103,8 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
 
             auto size = nextPow2(component.length);
 
-            //log.write("writing (length = %d, size = %d, offset = %d | %d / %d (%0.2f))", component.length, size, bufferOffset, 
-            //    size + bufferOffset, bufferSize, cast(float)(size + bufferOffset) / cast(float)bufferSize);
+            log.write("writing (length = %d, size = %d, offset = %d | %d / %d (%0.2f))", component.length, size, bufferOffset, 
+                size + bufferOffset, bufferSize, cast(float)(size + bufferOffset) / cast(float)bufferSize);
 
             //void* ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY) + bufferOffset;
             //void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, bufferOffset, size, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
@@ -112,7 +114,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             //glUnmapBuffer(GL_ARRAY_BUFFER);
             //CHECK_CALL("glUnmapBuffer");
 
-            vbo.writeMappedRange!(GL_ARRAY_BUFFER)(bufferOffset, size, component.data, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+            vbo.writeMappedRange!(GL_ARRAY_BUFFER)(bufferOffset, size, component.data, GL_MAP_WRITE_BIT);
             bufferOffset += size;
 
             foreach (attrib; component.attribs) {
@@ -121,6 +123,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             }
         }
         checked_glDrawArrays(batch.type, batch.offset, batch.count);
+        glState.bindVao(0);
     }
 
     final void drawElements (VADrawCall batch, ElementData elementData) {
