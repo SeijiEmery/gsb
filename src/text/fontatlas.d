@@ -67,7 +67,7 @@ class PackedFontAtlas {
                 lazyInit();
 
                 stbtt_pack_range r;
-                r.font_size = font.getSize(g_mainWindow.screenScale.y);
+                r.font_size = font.getSize(1.0);
                 r.array_of_unicode_codepoints = cast(int*)toInsert.ptr;
                 r.num_chars = cast(int)toInsert.length;
                 auto packData = new stbtt_packedchar[toInsert.length];
