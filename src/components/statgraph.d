@@ -96,17 +96,15 @@ class Graph {
             //    0);
         }
 
-        DebugRenderer.drawLines(points, color, 1.0, 4);
+        DebugRenderer.drawLines(points, color, 0, 1);
     }
 
     private void drawLine (vec2 p1, vec2 p2, Color color) {
-        DebugRenderer.drawLines([ p1, p2 ], color, 1.0, 4);
+        DebugRenderer.drawLines([ p1, p2 ], color, 0, 1);
     }
 
     void render () {
         float maxSample = 1 / 60.0;
-
-        
 
         float y = dim.y * 0.5;
         drawLine(pos + vec2(0, y), pos + vec2(dim.x, y), Color("#f0f000"));
@@ -119,13 +117,10 @@ class Graph {
         DebugRenderer.drawLines([ 
             pos,
             vec2(pos.x + dim.x, pos.y),
-            vec2(pos.x + dim.x, pos.y),
             pos + dim, 
-            pos + dim, 
-            pos + vec2(0, dim.y), 
             pos + vec2(0, dim.y), 
             pos 
-        ], color, 1, 1);
+        ], color, 0, 1);
 
         updateLabels();
     }

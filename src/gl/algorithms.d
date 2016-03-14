@@ -46,7 +46,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
 
     final void onFrameEnd () {
         if (vbo) {
-            log.write("Clearing vbo; reserving size %d", bufferSize);
+            //log.write("Clearing vbo; reserving size %d", bufferSize);
             //vbo.bind(GL_ARRAY_BUFFER);
             glBindBuffer(GL_ARRAY_BUFFER, vbo.get()); // need to force this, since not everything else uses glState.bindVbo yet...
             checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
@@ -78,7 +78,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             }
 
 
-            log.write("Orphaning vbo (%d + %d > %d); reserving size %d", neededLength, bufferOffset, bufferSize, bufferSize);
+            //log.write("Orphaning vbo (%d + %d > %d); reserving size %d", neededLength, bufferOffset, bufferSize, bufferSize);
             // Orphan buffer, reset cursor
             vbo.bind(GL_ARRAY_BUFFER);
             checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
@@ -101,19 +101,18 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
 
             auto size = nextPow2(component.length);
 
-            log.write("writing (length = %d, size = %d, offset = %d | %d / %d (%0.2f))", component.length, size, bufferOffset, 
-                size + bufferOffset, bufferSize, cast(float)(size + bufferOffset) / cast(float)bufferSize);
+            //log.write("writing (length = %d, size = %d, offset = %d | %d / %d (%0.2f))", component.length, size, bufferOffset, 
+            //    size + bufferOffset, bufferSize, cast(float)(size + bufferOffset) / cast(float)bufferSize);
 
             //void* ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY) + bufferOffset;
-            void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, bufferOffset, size, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
-            CHECK_CALL("glMapBufferRange");
-            import core.stdc.string: memcpy;
-            memcpy(ptr, component.data, component.length);
+            //void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, bufferOffset, size, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+            //CHECK_CALL("glMapBufferRange");
+            //import core.stdc.string: memcpy;
+            //memcpy(ptr, component.data, component.length);
+            //glUnmapBuffer(GL_ARRAY_BUFFER);
+            //CHECK_CALL("glUnmapBuffer");
 
-            glUnmapBuffer(GL_ARRAY_BUFFER);
-            CHECK_CALL("glUnmapBuffer");
-
-            //vbo.writeMappedRange!(GL_ARRAY_BUFFER)(bufferOffset, size, component.data, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+            vbo.writeMappedRange!(GL_ARRAY_BUFFER)(bufferOffset, size, component.data, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
             bufferOffset += size;
 
             foreach (attrib; component.attribs) {

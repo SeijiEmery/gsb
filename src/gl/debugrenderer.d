@@ -91,60 +91,23 @@ class DebugLineRenderer2D {
             glState.enableDepthTest(false);
             glState.enableTransparency(true);
 
-            foreach (i; 0 .. 100) {
+            glEnable(GL_BLEND);
+            glDisable(GL_DEPTH_TEST);
+
+            //foreach (i; 0 .. 1000) {
                 DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
                     VertexData(vbuffer.ptr, vbuffer.length * 4, [
                         VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
                     ])
                 ]);
-            }
+            //}
 
             glState.enableDepthTest(true);
             glState.enableTransparency(true);
         }
 
-        //protected void render (ref mat4 transform) {
-        //    if (!vbuffer.length)
-        //        return;
-
-        //    checked_glBindVertexArray(vao.get());
-        //    if (!buffers[0]) {
-        //        checked_glGenBuffers(1, buffers.ptr);
-
-        //        checked_glEnableVertexAttribArray(0);
-        //        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-        //        checked_glBufferData(GL_ARRAY_BUFFER, vbuffer.length * 4, vbuffer.ptr, GL_STREAM_DRAW);
-        //        checked_glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, null);
-        //    } else {
-        //        checked_glBindBuffer(GL_ARRAY_BUFFER, buffers[0]);
-        //        checked_glBufferData(GL_ARRAY_BUFFER, vbuffer.length * 4, vbuffer.ptr, GL_STREAM_DRAW);
-        //    }
-
-        //    glEnable(GL_BLEND);
-        //    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
-        //    glDisable(GL_DEPTH_TEST);
-        //    checked_glDrawArrays(GL_TRIANGLES, 0, cast(int)vbuffer.length / 4);
-        //    glEnable(GL_DEPTH_TEST);
-
-        //    //string s = "";
-        //    //for (uint i = 0; i < vbuffer.length; i += 4) {
-        //    //    auto v = vec4(vbuffer[i],vbuffer[i+1],vbuffer[i+2],1.0) * transform;
-        //    //    s ~= format("(%0.2f, %0.2f, %0.2f, color=%s), ", v.x, v.y, v.z, Color.unpack(vbuffer[i+3]));
-        //    //}
-        //    //log.write("Drawing stuff: %s", s);
-
-        //}
         protected void releaseResources () {
             vao.release();
-            //if (buffers[0]) {
-            //    checked_glDeleteBuffers(1, &buffers[0]);
-            //    buffers[0] = 0;
-            //}
-            //if (vao) {
-            //    checked_glDeleteVertexArrays(1, &vao);
-            //    checked_glDeleteBuffers(1, buffers.ptr);
-            //    vao = 0;
-            //}
         }
     }
     private State[2] states;
@@ -152,9 +115,9 @@ class DebugLineRenderer2D {
 
     private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color, float edgeFactor) {
         states[fstate].vbuffer ~= [
-            a.x, a.y, +edgeFactor, color,
-            b.x, b.y, -edgeFactor, color,
-            d.x, d.y, -edgeFactor, color,
+            a.x, a.y, +edgeFactor, color,// + 40.0 / 256.0,
+            b.x, b.y, -edgeFactor, color,// + 40.0 / 256.0,
+            d.x, d.y, -edgeFactor, color,// + 40.0 / 256.0,
 
             a.x, a.y, +edgeFactor, color,
             d.x, d.y, -edgeFactor, color,
@@ -171,8 +134,85 @@ class DebugLineRenderer2D {
         );
     }
 
+    struct Algorithms {
+        static vec2 invert (vec2 v) {
+            return vec2(-v.y, v.x);
+        }
+        static vec2 getMiterOffset (vec2 left, vec2 pt, vec2 right, float width, float cutoff) {
+            auto a = pt - left;  a.normalize();       // relative angles
+            auto b = right - pt; b.normalize();
+
+            if (dot(a, b) > cutoff) {
+                auto miter = (a + b); miter.normalize(); // miter vector (half-interp between a, b)
+                auto costheta = dot(a, miter);           // cos(half angle between a, b)
+
+                miter *= width / costheta;
+                return invert(miter);
+            
+            } else {
+                return dot(a, b) >= 0 ?
+                    a * width : 
+                    a * -width;
+            }
+        }
+
+        static void pushMiterPoints (ref vec2[] output, vec2 left, vec2 pt, vec2 right, float width, float cutoff) {
+            auto offset = getMiterOffset(left, pt, right, width, cutoff);
+
+            output ~= pt + offset;
+            output ~= pt - offset;
+        }
+
+        static void pushRegularLineCap (ref vec2[] output, vec2 a, vec2 b, float width) {
+            auto dir = invert(b - a).normalized();
+
+            output ~= a + dir * width;
+            output ~= a - dir * width;
+        }
+
+        // original algorithm (dunno what I was thinking when I wrote this, as it's _significantly_
+        // more complex than the geometrical approach (this one calculates line-line intersections),
+        // but it does work)
+        static vec2[2] getMiterOffsetUsingIntersects (vec2 left, vec2 pt, vec2 right, float width, float cutoff) {
+            vec2 v1 = invert(left  - pt) * width / distance(left, pt);
+            vec2 v2 = invert(right - pt) * width / distance(right, pt);
+
+            vec3 intersect (real a1, real b1, real c1, real a2, real b2, real c2) {
+                return vec3(
+                    cast(float)(b1 * c2 - b2 * c1),
+                    cast(float)(a2 * c1 - a1 * c2),
+                    cast(float)(a2 * b1 - a1 * b2));
+            }
+
+            float k1 = (left.x  - pt.x) / (pt.y - left.y);
+            float k2 = (right.x - pt.x) / (pt.y - right.y);
+
+            auto pt1 = intersect(1.0, k1, pt.x + v1.x + k1 * (pt.y + v1.y),
+                                 1.0, k2, pt.x - v2.x + k2 * (pt.y - v2.y));
+
+            auto pt2 = intersect(1.0, k1, pt.x - v1.x + k1 * (pt.y - v1.y),
+                                 1.0, k2, pt.x + v2.x + k2 * (pt.y + v2.y));
+
+            vec2 r1 = pt - left; r1.normalize();
+            vec2 r2 = right - pt; r2.normalize();
+
+            if (dot(r1, r2) > cutoff) {
+                return [
+                    vec2(pt1.x / pt1.z, pt1.x / pt1.z),
+                    vec2(pt2.x / pt2.z, pt2.x / pt2.z),
+                ];
+            } else {
+                auto dir = invert(pt - left);
+                dir *= width / dir.magnitude();
+                return dot(r1, r2) >= 0 ?
+                    [ pt + dir, pt - dir ] :
+                    [ pt - dir, pt + dir ];
+            }
+        }
+    }
+
     // temp buffer used by drawLines
-    private vec3[] tbuf;
+    private vec2[] tbuf;
 
     void drawLines (vec2[] points, Color color, float width, float edgeSamples = 2.0, float angle_cutoff = 15.0) {
         synchronized {
@@ -191,63 +231,29 @@ class DebugLineRenderer2D {
 
             tbuf.length = 0;
             if (points.length >= 2) {
-                vec2 dir;
+                {
+                    // Push front cap (find first non-duplicated point pair and push that)
+                    size_t i = 1;
+                    while (i < points.length && points[i] == points[0]) 
+                        ++i;
+                    if (i >= points.length)
+                        return;
 
-                // Push front cap
-                dir = points[1] != points[0] ?
-                    points[1] - points[0] : points[0] + vec2(1e-3, 0);
-                dir = points[1] - points[0];
-                dir *= width * 0.5 / dir.magnitude();
-                tbuf ~= vec3(points[0].x - dir.y, points[0].y + dir.x, 1.0);
-                tbuf ~= vec3(points[0].x + dir.y, points[0].y - dir.x, 1.0);    
+                    Algorithms.pushRegularLineCap(tbuf, points[0], points[i], width);
 
-                // Push intermediate points
-                for (auto i = 1; i < points.length-1; ++i) {
-                    if (points[i] == points[i-1])
-                        continue;
+                    // Push intermediate points
+                    for (; i < points.length-1; ++i) {
+                        if (points[i] == points[i-1])
+                            continue;
 
-                    vec2 v1 = vec2(points[i-1].y - points[i].y, points[i].x - points[i-1].x) * width * 0.5 / distance(points[i], points[i-1]);
-                    vec2 v2 = vec2(points[i+1].y - points[i].y, points[i].x - points[i+1].x) * width * 0.5 / distance(points[i], points[i+1]);
-
-                    vec3 intersect (real a1, real b1, real c1, real a2, real b2, real c2) {
-                        return vec3(
-                            cast(float)(b1 * c2 - b2 * c1),
-                            cast(float)(a2 * c1 - a1 * c2),
-                            cast(float)(a2 * b1 - a1 * b2));
+                        Algorithms.pushMiterPoints(tbuf, points[i-1], points[i], points[i+1], width, cutoff);
                     }
 
-                    float k1 = (points[i-1].x - points[i].x) / (points[i].y - points[i-1].y);
-                    float k2 = (points[i+1].x - points[i].x) / (points[i].y - points[i+1].y);
-
-                    auto pt1 = intersect(1.0, k1, points[i].x + v1.x + k1 * (points[i].y + v1.y),
-                                         1.0, k2, points[i].x - v2.x + k2 * (points[i].y - v2.y));
-
-                    auto pt2 = intersect(1.0, k1, points[i].x - v1.x + k1 * (points[i].y - v1.y),
-                                         1.0, k2, points[i].x + v2.x + k2 * (points[i].y + v2.y));
-                   
-                    vec2 r1 = points[i] - points[i-1]; r1 /= r1.magnitude();
-                    vec2 r2 = points[i+1] - points[i]; r2 /= r2.magnitude();
-
-                    if (dot(r1, r2) > cutoff) {
-                        tbuf ~= pt1;
-                        tbuf ~= pt2;
-                    } else {
-                        dir = points[i] - points[i-1];
-                        dir *= width * 0.5 / dir.magnitude();
-                        tbuf ~= vec3(points[i].x - dir.y, points[i].y + dir.x, 1.0); 
-                        tbuf ~= vec3(points[i].x + dir.y, points[i].y - dir.x, 1.0);
-                        if (dot(r1,r2) < 0) {
-                            tbuf ~= vec3(points[i].x + dir.y, points[i].y - dir.x, 1.0);
-                            tbuf ~= vec3(points[i].x - dir.y, points[i].y + dir.x, 1.0); 
-                        }
-                    }
+                    // Push end cap
+                    Algorithms.pushRegularLineCap(tbuf, points[i], points[i-1], width);
+                    import std.algorithm.mutation: swap;
+                    swap(tbuf[$-1], tbuf[$-2]);
                 }
-
-                // Push end cap
-                dir = points[$-1] - points[$-2];
-                dir *= width * 0.5 / dir.magnitude();
-                tbuf ~= vec3(points[$-1].x - dir.y, points[$-1].y + dir.x, 1.0);
-                tbuf ~= vec3(points[$-1].x + dir.y, points[$-1].y - dir.x, 1.0);
 
                 // Push quads
                 float edgeFactor = 1.0 + edgeSamples / (width - edgeSamples * 1.0);

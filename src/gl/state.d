@@ -19,11 +19,11 @@ struct GLState {
     void enableDepthTest (bool enabled) {
         if (depthTestEnabled != enabled) {
             if ((depthTestEnabled = enabled) == true) {
-                log.write("Enabling glDepthTest (GL_LESS)");
+                //log.write("Enabling glDepthTest (GL_LESS)");
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LESS);
             } else {
-                log.write("Disabling glDepthTest");
+                //log.write("Disabling glDepthTest");
                 glDisable(GL_DEPTH_TEST);
             }
         }
@@ -31,11 +31,11 @@ struct GLState {
     void enableTransparency (bool enabled) {
         if (transparencyEnabled != enabled) {
             if ((transparencyEnabled = enabled) == true) {
-                log.write("Enabling alpha transparency blending");
+                //log.write("Enabling alpha transparency blending");
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             } else {
-                log.write("Disabling alpha transparency");
+                //log.write("Disabling alpha transparency");
                 glDisable(GL_BLEND);
             }
         }
