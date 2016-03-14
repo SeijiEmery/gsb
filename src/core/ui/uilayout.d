@@ -17,12 +17,6 @@ interface IResource {
     void release ();
 }
 
-enum RelLayoutDirection : ubyte { HORIZONTAL, VERTICAL };
-enum RelLayoutPosition  : ubyte {
-    CENTER, CENTER_LEFT, CENTER_RIGHT, CENTER_TOP, CENTER_BTM,
-    TOP_LEFT, TOP_RIGHT, BTM_LEFT, BTM_RIGHT
-}
-
 
 
 

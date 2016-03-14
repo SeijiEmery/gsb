@@ -26,15 +26,41 @@ private class TestModule : UIComponent {
     float fontSize = 30.0;
 
     override void onComponentInit () {
-        root = new UIDecorators.Draggable!UITextElement(
-            vec2(300, 400), vec2(200, 100), "Hello World!", new Font(FONT, fontSize), Color("#affa10"), Color("#feefde"));
+        root = new UIDecorators.Draggable!UILayoutContainer(
+            RelLayoutDirection.VERTICAL, RelLayoutPosition.CENTER_TOP,
+            vec2(200, 300), vec2(400, 600), vec2(10, 12), [
+                cast(UIElement)(new UITextElement(
+                    vec2(300, 400), vec2(200, 100), "Hello World!", 
+                    new Font(FONT, fontSize), Color("#affa10"), Color("#feefde"))),
+                new UITextElement(
+                    vec2(300, 400), vec2(200, 100), "Foo", 
+                    new Font(FONT, fontSize), Color("#affa10"), Color("#feefde")),
+                new UITextElement(
+                    vec2(300, 400), vec2(200, 100), "bar", 
+                    new Font(FONT, fontSize), Color("#affa10"), Color("#feefde")),
+            ]);
     }
     override void onComponentShutdown () {}
     override void handleEvent (UIEvent event) {
         event.handle!(
             (FrameUpdateEvent ev) {
+                root.recalcDimensions();
                 root.doLayout();
                 root.render();
+            },
+            (MouseButtonEvent ev) {
+                if (ev.pressed && ev.isRMB) {
+                    auto x = cast(UIDecorators.Draggable!UILayoutContainer)root;
+                    if (ev.shift) {
+                        x.relPosition = cast(RelLayoutPosition)((x.relPosition + 1) % 9);
+                    } else {
+                        x.relDirection = cast(RelLayoutDirection)((x.relDirection + 1) % 2);
+                        x.dim = vec2(0, 0);
+                    }
+                    log.write("set to %s, %s", x.relDirection, x.relPosition);
+                } else {
+                    root.handleEvents(event);
+                }
             },
             () {
                 root.handleEvents(event);

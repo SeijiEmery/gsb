@@ -15,6 +15,12 @@ private bool inBounds (vec2 pos, vec2 p1, vec2 p2) {
     return !(pos.x < p1.x || pos.x > p2.x || pos.y < p1.y || pos.y > p2.y);
 }
 
+enum RelLayoutDirection : ubyte { HORIZONTAL, VERTICAL };
+enum RelLayoutPosition  : ubyte {
+    CENTER, CENTER_LEFT, CENTER_RIGHT, CENTER_TOP, CENTER_BTM,
+    TOP_LEFT, TOP_RIGHT, BTM_LEFT, BTM_RIGHT
+}
+
 class UIElement : IResource, IRenderable, ILayoutable {
     vec2 pos, dim;
 
@@ -89,7 +95,7 @@ struct UIDecorators {
 
         public bool isDraggable = true;
         public bool isResizable = true;
-        public float resizeWidth = 0.0;
+        public float resizeWidth = 5.0;
 
         this (Args...)(Args args) if (__traits(compiles, new T(args))) {
             super(args);
@@ -181,13 +187,142 @@ class UILayoutContainer : UIElement {
             } break;
         }
         dim = vec2(
-            min(dim.x, contentDim.x + padding.x),
-            min(dim.y, contentDim.y + padding.y));
+            max(dim.x, contentDim.x + padding.x),
+            max(dim.y, contentDim.y + padding.y));
     }
     override void doLayout () {
-        if (relPosition != RelLayoutPosition.CENTER)
-            throw new Exception(format("Unsupported layout: %s", relPosition));
+        if (!elements.length)
+            return;
 
+
+        immutable vec2[2] DIR = [ vec2(1, 0), vec2(0, 1) ];
+        auto dir = DIR[relDirection];
+
+        auto flex = dim - contentDim;
+
+        final switch (relPosition) {
+            case RelLayoutPosition.CENTER: {
+                auto center = pos + flex * 0.5 + elements[0].dim * 0.5;
+                foreach (elem; elements) {
+                    elem.pos = center - elem.dim * 0.5;
+                    center.y += elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.CENTER_TOP: {
+                auto center = pos + vec2(flex.x * 0.5, 0) + elements[0].dim * 0.5;
+                foreach (elem; elements) {
+                    elem.pos = center - elem.dim * 0.5;
+                    center.y += elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.CENTER_BTM: {
+                auto center = pos + vec2(flex.x * 0.5, dim.y - elements[$-1].dim.y) + elements[0].dim * 0.5;
+                foreach (elem; elements) {
+                    elem.pos = center - elem.dim * 0.5;
+                    center.y -= elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.CENTER_LEFT: {
+                auto center = pos + vec2(0, flex.y * 0.5);
+                foreach (elem; elements) {
+                    elem.pos = center;
+                    center.y += elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.CENTER_RIGHT: {
+                auto center = pos + vec2(dim.x, flex.y * 0.5);
+                foreach (elem; elements) {
+                    elem.pos = center - vec2(elem.dim.x, 0);
+                    center.y += elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.TOP_LEFT: {
+                auto center = pos;
+                foreach (elem; elements) {
+                    elem.pos = center;
+                    center.y += elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.TOP_RIGHT: {
+                auto center = pos + vec2(dim.x, 0);
+                foreach (elem; elements) {
+                    elem.pos = center - vec2(elem.dim.x, 0);
+                    center.y += elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.BTM_LEFT: {
+                auto center = pos + vec2(0, dim.y);
+                foreach (elem; elements) {
+                    elem.pos = center - vec2(0, elem.dim.y);
+                    center.y -= elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.BTM_RIGHT: {
+                auto center = pos + vec2(dim.x, dim.y);
+                foreach (elem; elements) {
+                    elem.pos = center - elem.dim;
+                    center.y -= elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+        }
+
+
+
+
+
+
+
+        // centered, vlayout behavior
+        //vec2 center, dir;
+        //immutable vec2[2] DIR = [ vec2(1, 0), vec2(0, 1) ];
+
+        //auto flex = dim - contentDim;
+
+        //switch (relPosition) {
+        //    case RelLayoutPosition.CENTER: {
+        //        center = pos + flex * 0.5 + elements[0].dim * 0.5;
+        //        dir = DIR[relDirection];
+        //    } break;
+
+        //    case RelLayoutPosition.CENTER_LEFT: {
+        //        center = pos + vec2(0, flex.x * 0.5) + elements[0].dim * 0.5;
+        //        dir = DIR[relDirection];
+        //    } break;
+
+        //    case RelLayoutPosition.CENTER_RIGHT: {
+        //        center = pos + vec2(flex.y, flex.x * 0.5) + elements[0].dim * 0.5;
+        //        dir = DIR[relDirection];
+        //    } break;
+
+            
+
+
+        //    //case RelLayoutPosition.CENTER_TOP:   center.x += flex.x * 0.5; dir = DIR[relDirection]; break;
+        //    //case RelLayoutPosition.CENTER_BTM:   center += vec2(flex.x * 0.5, dim.y); dir = -DIR[relDirection]; break;
+        
+        //    //case RelLayoutPosition.TOP_LEFT:      dir = DIR[relDirection]; break;
+        //    //case RelLayoutPosition.TOP_RIGHT:    center += (dim - contentDim) * 0.5; dir = DIR[relDirection]; break;
+        //    //case RelLayoutPosition.BTM_LEFT:     center += (dim - contentDim) * 0.5; dir = DIR[relDirection]; break;
+        //    //case RelLayoutPosition.BTM_RIGHT:    center += (dim - contentDim) * 0.5; dir = DIR[relDirection]; break;
+        //}
+        /+
         immutable vec2[9] REL_VECTOR = [
             vec2(0.5, 0.5), vec2(0.0, 0.5), vec2(1.0, 0.5), vec2(0.5, 1.0), vec2(0.5, 0.0),
             vec2(0.0, 1.0), vec2(1.0, 1.0), vec2(0.0, 0.0), vec2(1.0, 0.0)
@@ -196,19 +331,20 @@ class UILayoutContainer : UIElement {
             1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0
         ];
         immutable float[9] SIGN = [ +1, +1, -1, +1, -1, +1, +1, -1, -1 ];
-        immutable vec2[2] DIR = [ vec2(1, 0), vec2(0, 1) ];
+        immutable vec2[2] DIR = [ vec2(0, 1), vec2(1, 0) ];
 
         vec2 center = REL_VECTOR[relPosition];
         vec2 dir    = SIGN[relPosition] * DIR[relDirection];
         vec2 flex   = dim - contentDim;
 
         center = pos + vec2(dim.x * center.x, dim.y * center.y) + CENTERED_OFFSET[relPosition] * vec2(dir.x * flex.x, dir.y * flex.y);
+        +/
 
-        foreach (elem; elements) {
-            elem.pos = center + elem.dim * 0.5;
-            center += dir;
-            elem.doLayout();
-        }
+        //foreach (elem; elements) {
+        //    elem.pos = center - elem.dim * 0.5;
+        //    center += vec2(dir.x * elem.dim.x, dir.y * elem.dim.y);
+        //    elem.doLayout();
+        //}
     }
     override void release () {
         foreach (elem; elements)
@@ -223,6 +359,7 @@ class UILayoutContainer : UIElement {
         return handled;
     }
     override void render () {
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe2020"), 1);
         foreach (elem; elements)
             elem.render();
     }
