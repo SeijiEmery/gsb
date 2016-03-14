@@ -187,8 +187,8 @@ class UILayoutContainer : UIElement {
             } break;
         }
         dim = vec2(
-            max(dim.x, contentDim.x + padding.x),
-            max(dim.y, contentDim.y + padding.y));
+            max(dim.x, contentDim.x + padding.x * 2.0),
+            max(dim.y, contentDim.y + padding.y * 2.0));
     }
     override void doLayout () {
         if (!elements.length)
@@ -211,7 +211,7 @@ class UILayoutContainer : UIElement {
             } break;
 
             case RelLayoutPosition.CENTER_TOP: {
-                auto center = pos + vec2(flex.x * 0.5, 0) + elements[0].dim * 0.5;
+                auto center = pos + vec2(flex.x * 0.5, padding.y) + elements[0].dim * 0.5;
                 foreach (elem; elements) {
                     elem.pos = center - elem.dim * 0.5;
                     center.y += elem.dim.y;
@@ -219,17 +219,8 @@ class UILayoutContainer : UIElement {
                 }
             } break;
 
-            case RelLayoutPosition.CENTER_BTM: {
-                auto center = pos + vec2(flex.x * 0.5, dim.y - elements[$-1].dim.y) + elements[0].dim * 0.5;
-                foreach (elem; elements) {
-                    elem.pos = center - elem.dim * 0.5;
-                    center.y -= elem.dim.y;
-                    elem.doLayout();
-                }
-            } break;
-
             case RelLayoutPosition.CENTER_LEFT: {
-                auto center = pos + vec2(0, flex.y * 0.5);
+                auto center = pos + vec2(padding.x, flex.y * 0.5);
                 foreach (elem; elements) {
                     elem.pos = center;
                     center.y += elem.dim.y;
@@ -238,7 +229,7 @@ class UILayoutContainer : UIElement {
             } break;
 
             case RelLayoutPosition.CENTER_RIGHT: {
-                auto center = pos + vec2(dim.x, flex.y * 0.5);
+                auto center = pos + vec2(dim.x - padding.x, flex.y * 0.5);
                 foreach (elem; elements) {
                     elem.pos = center - vec2(elem.dim.x, 0);
                     center.y += elem.dim.y;
@@ -247,7 +238,7 @@ class UILayoutContainer : UIElement {
             } break;
 
             case RelLayoutPosition.TOP_LEFT: {
-                auto center = pos;
+                auto center = pos + padding;
                 foreach (elem; elements) {
                     elem.pos = center;
                     center.y += elem.dim.y;
@@ -256,7 +247,7 @@ class UILayoutContainer : UIElement {
             } break;
 
             case RelLayoutPosition.TOP_RIGHT: {
-                auto center = pos + vec2(dim.x, 0);
+                auto center = pos + vec2(dim.x - padding.x, padding.y);
                 foreach (elem; elements) {
                     elem.pos = center - vec2(elem.dim.x, 0);
                     center.y += elem.dim.y;
@@ -264,20 +255,29 @@ class UILayoutContainer : UIElement {
                 }
             } break;
 
-            case RelLayoutPosition.BTM_LEFT: {
-                auto center = pos + vec2(0, dim.y);
+            case RelLayoutPosition.CENTER_BTM: {
+                auto center = pos + vec2(flex.x * 0.5, flex.y - padding.y) + elements[0].dim * 0.5;
                 foreach (elem; elements) {
-                    elem.pos = center - vec2(0, elem.dim.y);
-                    center.y -= elem.dim.y;
+                    elem.pos = center - elem.dim * 0.5;
+                    center.y += elem.dim.y;
+                    elem.doLayout();
+                }
+            } break;
+
+            case RelLayoutPosition.BTM_LEFT: {
+                auto center = pos + vec2(padding.x, flex.y - padding.y);
+                foreach (elem; elements) {
+                    elem.pos = center;
+                    center.y += elem.dim.y;
                     elem.doLayout();
                 }
             } break;
 
             case RelLayoutPosition.BTM_RIGHT: {
-                auto center = pos + vec2(dim.x, dim.y);
+                auto center = pos + vec2(dim.x, flex.y) - padding;
                 foreach (elem; elements) {
-                    elem.pos = center - elem.dim;
-                    center.y -= elem.dim.y;
+                    elem.pos = center - vec2(elem.dim.x, 0);
+                    center.y += elem.dim.y;
                     elem.doLayout();
                 }
             } break;
