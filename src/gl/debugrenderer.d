@@ -138,7 +138,7 @@ class DebugLineRenderer2D {
         static vec2 invert (vec2 v) {
             return vec2(-v.y, v.x);
         }
-        static vec2 getMiterOffset (vec2 left, vec2 pt, vec2 right, float width, float cutoff) {
+        static void pushMiterPoints (ref vec2[] output, vec2 left, vec2 pt, vec2 right, float width, float cutoff) {
             auto a = pt - left;  a.normalize();       // relative angles
             auto b = right - pt; b.normalize();
 
@@ -146,21 +146,24 @@ class DebugLineRenderer2D {
                 auto miter = (a + b); miter.normalize(); // miter vector (half-interp between a, b)
                 auto costheta = dot(a, miter);           // cos(half angle between a, b)
 
+                miter = invert(miter);
                 miter *= width / costheta;
-                return invert(miter);
-            
+
+                output ~= pt + miter;
+                output ~= pt - miter;
+
             } else {
-                return dot(a, b) >= 0 ?
-                    a * width : 
-                    a * -width;
+                auto offset = invert(a) * width;
+
+                output ~= pt + offset;
+                output ~= pt - offset;
+
+                // bowtie fix
+                if (dot(a, b) < 0) {
+                    output ~= pt - offset;
+                    output ~= pt + offset;
+                }
             }
-        }
-
-        static void pushMiterPoints (ref vec2[] output, vec2 left, vec2 pt, vec2 right, float width, float cutoff) {
-            auto offset = getMiterOffset(left, pt, right, width, cutoff);
-
-            output ~= pt + offset;
-            output ~= pt - offset;
         }
 
         static void pushRegularLineCap (ref vec2[] output, vec2 a, vec2 b, float width) {
