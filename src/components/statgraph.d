@@ -64,8 +64,8 @@ class Graph {
         auto getVal (int i) {
             if (i < 0 || i >= c)
                 throw new Exception(format("Range error: %d (0, %d)", i, c));
-            return max(0.0, min(1.0, 
-                collection.samples[i].to!TickDuration.to!("msecs", float) * 1e-3 / maxSample));
+            return max(0.0, //min(1.0, 
+                collection.samples[i].to!TickDuration.to!("msecs", float) * 1e-3 / maxSample);//);
         }
 
         float[] values;
@@ -169,6 +169,13 @@ class Graph {
         }
     }
 
+    void teardown () {
+        foreach (k, v; labels) {
+            v.detatch();
+            labels.remove(k);
+        }
+    }
+
     void setFontSize (float size) {
         auto font = new Font(FONT, fontSize = size);
         foreach (k, v; labels) {
@@ -203,7 +210,7 @@ class StatGraphModule : UIComponent {
         //    Color("#fe0020"), vec2(graph.pos.x, graph.pos.y + graph.dim.y));
     }   
     override void onComponentShutdown () {
-
+        graph.teardown(); graph = null;
     } 
     override void handleEvent (UIEvent event) {
         event.handle!(

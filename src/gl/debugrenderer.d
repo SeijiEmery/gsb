@@ -91,19 +91,11 @@ class DebugLineRenderer2D {
             glState.enableDepthTest(false);
             glState.enableTransparency(true);
 
-            glEnable(GL_BLEND);
-            glDisable(GL_DEPTH_TEST);
-
-            //foreach (i; 0 .. 1000) {
-                DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
-                    VertexData(vbuffer.ptr, vbuffer.length * 4, [
-                        VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
-                    ])
-                ]);
-            //}
-
-            glState.enableDepthTest(true);
-            glState.enableTransparency(true);
+            DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
+                VertexData(vbuffer.ptr, vbuffer.length * float.sizeof, [
+                    VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
+                ])
+            ]);
         }
 
         protected void releaseResources () {
@@ -316,7 +308,8 @@ class DebugLineRenderer2D {
                 vs = new ColoredVertexShader(); vs.compile(); CHECK_CALL("compiling vertex shader");
                 program = makeProgram(vs, fs); CHECK_CALL("compiling/linking shader program");
             }
-            checked_glUseProgram(program.id);
+
+            glState.bindShader(program.id);
             auto inv_scale_x =  1.0 / g_mainWindow.screenDimensions.x * 2.0;
             auto inv_scale_y = -1.0 / g_mainWindow.screenDimensions.y * 2.0;
             auto transform = mat4.identity()
@@ -326,7 +319,7 @@ class DebugLineRenderer2D {
             program.transform = transform;
 
             states[gstate].render(transform);
-            checked_glUseProgram(0);
+            glState.bindShader(0);
         }
     }
 }
