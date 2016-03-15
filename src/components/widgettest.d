@@ -23,6 +23,8 @@ shared static this () {
 
 private class TestModule : UIComponent {
     UIElement root;
+    UILayoutContainer inner;
+
     float fontSize = 30.0;
 
     override void onComponentInit () {
@@ -32,12 +34,16 @@ private class TestModule : UIComponent {
                 cast(UIElement)(new UITextElement(
                     vec2(300, 400), vec2(200, 100), "Hello World!", 
                     new Font(FONT, fontSize), Color("#affa10"), Color("#feefde"))),
-                new UITextElement(
-                    vec2(300, 400), vec2(200, 100), "Foo", 
-                    new Font(FONT, fontSize), Color("#affa10"), Color("#feefde")),
-                new UITextElement(
-                    vec2(300, 400), vec2(200, 100), "bar", 
-                    new Font(FONT, fontSize), Color("#affa10"), Color("#feefde")),
+                inner = new UILayoutContainer(
+                    RelLayoutDirection.HORIZONTAL, RelLayoutPosition.CENTER_TOP,
+                    vec2(0, 0), vec2(0, 0), vec2(5, 5), [
+                        cast(UIElement)(new UITextElement(
+                            vec2(300, 400), vec2(200, 100), "Foo", 
+                            new Font(FONT, fontSize), Color("#affa10"), Color("#feefde"))),
+                        new UITextElement(
+                            vec2(300, 400), vec2(200, 100), "bar", 
+                            new Font(FONT, fontSize), Color("#affa10"), Color("#feefde")),
+                    ])
             ]);
     }
     override void onComponentShutdown () {}
@@ -53,9 +59,11 @@ private class TestModule : UIComponent {
                     auto x = cast(UIDecorators.Draggable!UILayoutContainer)root;
                     if (ev.shift) {
                         x.relPosition = cast(RelLayoutPosition)((x.relPosition + 1) % 9);
+                        inner.relPosition = cast(RelLayoutPosition)((inner.relPosition + 1) % 9);
                     } else {
                         x.relDirection = cast(RelLayoutDirection)((x.relDirection + 1) % 2);
-                        x.dim = vec2(0, 0);
+                        inner.relDirection = cast(RelLayoutDirection)((inner.relDirection + 1) % 2);
+                        x.dim = inner.dim = vec2(0, 0);
                     }
                     log.write("set to %s, %s", x.relDirection, x.relPosition);
                 } else {

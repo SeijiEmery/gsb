@@ -8,6 +8,8 @@ import gsb.core.window;
 import gsb.text.textrenderer;
 import gsb.text.font;
 
+import gsb.core.ui.uielements;
+
 import gsb.gl.algorithms: DynamicRenderer;
 
 import gl3n.linalg;
@@ -17,6 +19,7 @@ import core.time;
 shared static this () {
     UIComponentManager.runAtInit({
         UIComponentManager.registerComponent(new StatGraphModule(), "statgraph", true);
+        UIComponentManager.registerComponent(new WidgetStatGraphModule(), "statgraph2", true);
     });
 }
 
@@ -290,4 +293,69 @@ class StatGraphModule : UIComponent {
         );
     }
 }
+
+
+
+class WidgetStatGraphModule : UIComponent {
+    alias GraphView = UIDecorators.Draggable!UIGraphView;
+    alias Container = UIFixedContainer;
+
+    GraphView graph;
+    Container root;
+
+    //private float[2] RED_STATS    = [ 1 / 15.0f * 1e3, 1 / 15.0f * 1e3 ];
+    private float[2] ORANGE_STATS = [ 1 / 40.0f * 1e3, 1 / 40.0f * 1e3 ];
+    private float[2] YELLOW_STATS = [ 1 / 60.0f * 1e3, 1 / 60.0f * 1e3 ];
+    private float[2] GREEN_STATS  = [ 1 / 120.0f * 1e3, 1 / 120.0f * 1e3 ];
+
+    override void onComponentInit () {
+        import std.range;
+        import std.algorithm.iteration;
+
+        root = new Container(
+            //RelLayoutDirection.VERTICAL, RelLayoutPosition.CENTER,
+            vec2(100, 100), vec2(400, 400), vec2(10, 10), cast(UIElement[])[
+                graph = new GraphView(vec2(0, 0), vec2(300, 300), [
+                    UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
+                    UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
+                    UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
+                    //UIGraphView.DataSet(Color("#fefefe"), () { return [ 0.0f, 0.0f ]; }),
+                    UIGraphView.DataSet(Color("#fe2020"), () { return getStats(MAIN_THREAD); }),
+                    UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD); }),
+                ])
+            ]);
+    }
+    override void onComponentShutdown () {
+        root.release(); root = null; graph = null;
+    }
+    float[] getStats (string cat) {
+        import std.range;
+        import std.algorithm.iteration;
+
+        if (cat !in perThreadStats || "frame" !in perThreadStats[cat].collection) 
+            return [];
+
+        auto collection = perThreadStats[cat].collection["frame"];
+        if (collection.count < 2 || collection.samples.length < 2)
+            return [];
+
+        return collection.samples.cycle(collection.next).take(collection.count)
+            .map!((a) => a.to!TickDuration.to!("msecs", float)).array;
+    }
+    override void handleEvent (UIEvent event) {
+        event.handle!(
+            (FrameUpdateEvent frame) { root.render(); },
+            () {
+                root.handleEvents(event);
+            }
+        );
+    }
+
+
+
+}
+
+
+
+
 

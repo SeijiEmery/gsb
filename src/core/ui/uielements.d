@@ -2,6 +2,7 @@
 module gsb.core.ui.uielements;
 import gsb.core.ui.uilayout;
 
+import gsb.core.log;
 import gsb.core.uievents;
 import gsb.gl.debugrenderer;
 
@@ -147,6 +148,7 @@ struct UIDecorators {
     }
 }
 
+// Dynamic, autolayouted element container.
 class UILayoutContainer : UIElement {
     UIElement[] elements;
     private vec2 contentDim;
@@ -282,81 +284,6 @@ class UILayoutContainer : UIElement {
                 elem.doLayout();
             }
         }
-
-/+
-        final switch (relPosition) {
-            case RelLayoutPosition.CENTER: {
-                auto center = pos + flex * 0.5 + elements[0].dim * 0.5;
-                foreach (elem; elements) {
-                    elem.pos = center - elem.dim * 0.5;
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.CENTER_TOP: {
-                auto center = pos + vec2(flex.x * 0.5, padding.y) + elements[0].dim * 0.5;
-                foreach (elem; elements) {
-                    elem.pos = center - elem.dim * 0.5;
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.CENTER_LEFT: {
-                auto center = pos + vec2(padding.x, flex.y * 0.5);
-                foreach (elem; elements) {
-                    elem.pos = center;
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.CENTER_RIGHT: {
-                auto center = pos + vec2(dim.x - padding.x, flex.y * 0.5);
-                foreach (elem; elements) {
-                    elem.pos = center - vec2(elem.dim.x, 0);
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.TOP_LEFT: {
-                auto center = pos + padding;
-                foreach (elem; elements) {
-                    elem.pos = center;
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.TOP_RIGHT: {
-                auto center = pos + vec2(dim.x - padding.x, padding.y);
-                foreach (elem; elements) {
-                    elem.pos = center - vec2(elem.dim.x, 0);
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.CENTER_BTM: {
-                auto center = pos + vec2(flex.x * 0.5, flex.y - padding.y) + elements[0].dim * 0.5;
-                foreach (elem; elements) {
-                    elem.pos = center - elem.dim * 0.5;
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.BTM_LEFT: {
-                auto center = pos + vec2(padding.x, flex.y - padding.y);
-                foreach (elem; elements) {
-                    elem.pos = center;
-                    center.y += elem.dim.y;
-                }
-            } break;
-
-            case RelLayoutPosition.BTM_RIGHT: {
-                auto center = pos + vec2(dim.x, flex.y) - padding;
-                foreach (elem; elements) {
-                    elem.pos = center - vec2(elem.dim.x, 0);
-                    center.y += elem.dim.y;
-                }
-            } break;
-        }+/
     }
     override void release () {
         foreach (elem; elements)
@@ -377,8 +304,119 @@ class UILayoutContainer : UIElement {
     }
 }
 
+// Basic element container where items have fixed positions (and once moved, elements will _stay_ there).
+class UIFixedContainer : UIElement {
+    UIElement[] elements;
+    public  vec2 padding;
+    private vec2 lastPos;
 
+    this (vec2 pos, vec2 dim, vec2 padding, UIElement[] elements) {
+        super(pos, dim); 
+        this.lastPos = this.pos;
+        this.padding = padding;
+        this.elements = elements;
+    }
 
+    override void recalcDimensions () {
+        // reset bounds + grow to fit content
+        vec2 a = pos - padding, b = pos + padding;
+        foreach (elem; elements) {
+            elem.recalcDimensions();
+            a.x = min(a.x, elem.pos.x);
+            a.y = min(a.y, elem.pos.y);
+            b.x = max(b.x, elem.pos.x + elem.dim.x);
+            b.y = max(b.y, elem.pos.y + elem.dim.y);
+        }
+        // Only enforce as min bounds though -- user can resize dim if they want.
+        dim = vec2(
+            max(dim.x, b.x - a.x),
+            max(dim.y, b.y - a.y));
+    }
+
+    override void doLayout () {
+        auto rel = pos - lastPos;
+        foreach (elem; elements) {
+            elem.pos += rel;
+            elem.doLayout();
+        }
+    }
+
+    override void release () {
+        foreach (elem; elements)
+            elem.release();
+        elements.length = 0;
+    }
+
+    override bool handleEvents (UIEvent event) {
+        bool handled = false;
+        foreach (elem; elements)
+            if (elem.handleEvents(event))
+                handled = true;
+        return handled;
+    }
+
+    override void render () {
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe2020"), 1);
+        foreach (elem; elements)
+            elem.render();
+    }
+}
+
+class UIGraphView : UIElement {
+    struct DataSet {
+        Color color;
+        float[] delegate() getValues;
+    }
+    DataSet[] datasets;
+    float lineWidth = 0;
+    float lineSamples = 1;
+
+    this (vec2 pos, vec2 dim, DataSet[] datasets) {
+        super(pos, dim);
+        this.datasets = datasets;
+    }
+
+    private vec2[] tmp;
+    override void render () {
+        import std.algorithm.iteration;
+        import std.range: enumerate;
+
+        auto values = cache(datasets.map!"a.getValues()");
+        float minv, maxv; int start = 0;
+        foreach (xs; values) {
+            if (!xs.length)
+                continue;
+            if (!start++) {
+                minv = xs.reduce!"min(a,b)";
+                maxv = xs.reduce!"max(a,b)";
+            } else {
+                minv = min(minv, xs.reduce!"min(a,b)");
+                maxv = max(maxv, xs.reduce!"max(a,b)");
+            }
+        }
+        //log.write("max, min: %0.2f,%0.2f", maxv, minv);
+        //maxv *= 1.10;
+        //minv /= 1.5;
+
+        auto delta = maxv - minv;
+        maxv += delta * 0.1;
+        minv -= delta * 0.1;
+
+        foreach (i, xs; values.enumerate()) {
+            if (!xs.length)
+                continue;
+            tmp.length = 0;
+            foreach (j, x; xs.enumerate)
+                tmp ~= vec2(
+                    pos.x + dim.x * (1 - cast(float)j / cast(float)(xs.length-1)),
+                    pos.y + dim.y * (1 - (x - minv) / (maxv - minv)));
+            DebugRenderer.drawLines(tmp, datasets[i].color, lineWidth, lineSamples);
+        }
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#207f20"), 1);
+
+        // tbd: draw lines...
+    }
+}
 
 
 
