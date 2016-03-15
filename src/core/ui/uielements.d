@@ -24,13 +24,21 @@ enum RelLayoutPosition  : ubyte {
 
 class UIElement : IResource, IRenderable, ILayoutable {
     vec2 pos, dim;
+    bool mouseover = false;
 
     this (vec2 pos, vec2 dim) {
         this.pos = pos; this.dim = dim;
     }
 
     void render () {}
-    bool handleEvents (UIEvent event) { return false; }
+    bool handleEvents (UIEvent event) { 
+        return event.handle!(
+            (MouseMoveEvent ev) {
+                mouseover = inBounds(ev.position, pos, pos + dim);
+                return false;
+            },
+            () { return false; });
+    }
     void recalcDimensions () {}
     void doLayout () {}
     void release () {}
@@ -74,7 +82,7 @@ class UITextElement : UIElement {
     }
 
     override bool handleEvents (UIEvent event) {
-        return false;
+        return super.handleEvents(event);
     }
     override void recalcDimensions () {
         dim = fragment.bounds;
@@ -146,11 +154,65 @@ struct UIDecorators {
             ));
         }
     }
+
+    class ClampedRelativeTo (T) : T {
+        private UIElement target;
+        private vec2 offset;
+
+        this (Args...)(UIElement target, Args args) if (__traits(compiles, new T(args))) {
+            super(args);
+            this.target = target;
+            this.offset = target.pos - this.pos;
+            recalcDimensions();
+        }
+        override void recalcDimensions () {
+            this.dim = target.dim;
+            super.recalcDimensions();
+        }
+        override void doLayout () {
+            this.pos = target.pos + offset;
+            super.doLayout();
+        }
+    }
+}
+
+// Basic container w/ no bells and whistles.
+class UIContainer : UIElement {
+    UIElement[] elements;
+    bool displayBorder = false;
+
+    this (vec2 pos, vec2 dim, UIElement[] elements) {
+        super(pos, dim);
+        this.elements = elements;
+    }
+    override void recalcDimensions () {
+        foreach (elem; elements)
+            elem.recalcDimensions();
+    }
+    override void doLayout () {
+        foreach (elem; elements)
+            elem.doLayout();
+    }
+    override void render () {
+        foreach (elem; elements)
+            elem.render();
+    }
+    override bool handleEvents (UIEvent event) {
+        bool handled = super.handleEvents(event);
+        foreach (elem; elements)
+            if (elem.handleEvents(event))
+                handled = true;
+        return handled;
+    }
+    override void release () {
+        foreach (elem; elements)
+            elem.release();
+        elements.length = 0;
+    }
 }
 
 // Dynamic, autolayouted element container.
-class UILayoutContainer : UIElement {
-    UIElement[] elements;
+class UILayoutContainer : UIContainer {
     private vec2 contentDim;
     public  vec2 padding;
 
@@ -161,11 +223,10 @@ class UILayoutContainer : UIElement {
         vec2 pos, vec2 dim, vec2 padding,
         UIElement[] elements
     ) {
-        super(pos, dim);
+        super(pos, dim, elements);
         this.relDirection = relDirection;
         this.relPosition = relPosition;
         this.padding = padding;
-        this.elements = elements;
     }
 
     override void recalcDimensions () {
@@ -285,18 +346,6 @@ class UILayoutContainer : UIElement {
             }
         }
     }
-    override void release () {
-        foreach (elem; elements)
-            elem.release();
-        elements.length = 0;
-    }
-    override bool handleEvents (UIEvent event) {
-        bool handled = false;
-        foreach (elem; elements)
-            if (elem.handleEvents(event))
-                handled = true;
-        return handled;
-    }
     override void render () {
         DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe2020"), 1);
         foreach (elem; elements)
@@ -304,21 +353,22 @@ class UILayoutContainer : UIElement {
     }
 }
 
+
+
+
 // Basic element container where items have fixed positions (and once moved, elements will _stay_ there).
-class UIFixedContainer : UIElement {
-    UIElement[] elements;
+class UIFixedContainer : UIContainer {
     public  vec2 padding;
     private vec2 lastPos;
 
     this (vec2 pos, vec2 dim, vec2 padding, UIElement[] elements) {
-        super(pos, dim); 
+        super(pos, dim, elements); 
         this.lastPos = this.pos;
         this.padding = padding;
         this.elements = elements;
     }
 
     override void recalcDimensions () {
-
         // update position constraint
         auto rel = pos - lastPos;
         foreach (elem; elements)
@@ -337,9 +387,6 @@ class UIFixedContainer : UIElement {
 
         lastPos = pos = a - padding;
         dim = b - a + padding * 2.0;
-
-
-
         // Only enforce as min bounds though -- user can resize dim if they want.
         //dim = vec2(
         //    max(dim.x, b.x - a.x),
@@ -350,21 +397,6 @@ class UIFixedContainer : UIElement {
         foreach (elem; elements)
             elem.doLayout();
     }
-
-    override void release () {
-        foreach (elem; elements)
-            elem.release();
-        elements.length = 0;
-    }
-
-    override bool handleEvents (UIEvent event) {
-        bool handled = false;
-        foreach (elem; elements)
-            if (elem.handleEvents(event))
-                handled = true;
-        return handled;
-    }
-
     override void render () {
         DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe2020"), 1);
         foreach (elem; elements)

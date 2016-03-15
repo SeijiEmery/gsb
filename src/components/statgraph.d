@@ -302,6 +302,8 @@ class WidgetStatGraphModule : UIComponent {
 
     GraphView graph;
     UIElement root;
+    UILayoutContainer labels;
+    float fontSize = 30.0;
 
     //private float[2] RED_STATS    = [ 1 / 15.0f * 1e3, 1 / 15.0f * 1e3 ];
     private float[2] ORANGE_STATS = [ 1 / 40.0f * 1e3, 1 / 40.0f * 1e3 ];
@@ -312,19 +314,30 @@ class WidgetStatGraphModule : UIComponent {
         import std.range;
         import std.algorithm.iteration;
 
-        root = graph = new GraphView(vec2(0, 0), vec2(300, 300), [
-            UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
-            UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
-            UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
-            //UIGraphView.DataSet(Color("#fefefe"), () { return [ 0.0f, 0.0f ]; }),
-            UIGraphView.DataSet(Color("#fe2020"), () { return getStats(MAIN_THREAD); }),
-            UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD); }),
+        root = new UIContainer(vec2(), vec2(), cast(UIElement[])[
+            graph = new GraphView(vec2(0, 0), vec2(300, 300), [
+                UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
+                UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
+                UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
+                //UIGraphView.DataSet(Color("#fefefe"), () { return [ 0.0f, 0.0f ]; }),
+                UIGraphView.DataSet(Color("#fe2020"), () { return getStats(MAIN_THREAD, cast(size_t)(30 / 100.0 * graph.dim.x)); }),
+                UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD,     cast(size_t)(30 / 100.0 * graph.dim.x)); }),
+            ]),
+            labels = new UIDecorators.ClampedRelativeTo!UILayoutContainer(graph,
+                RelLayoutDirection.VERTICAL, RelLayoutPosition.TOP_LEFT,
+                vec2(0,0), vec2(0,0), vec2(10,10), cast(UIElement[])[
+                    new UITextElement(vec2(500,500),vec2(0,0), "Hello World!", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe")) 
+                ])
         ]);
+
+
+        
+
     }
     override void onComponentShutdown () {
         root.release(); root = null; graph = null;
     }
-    float[] getStats (string cat) {
+    float[] getStats (string cat, size_t count) {
         import std.range;
         import std.algorithm.iteration;
 
@@ -335,12 +348,24 @@ class WidgetStatGraphModule : UIComponent {
         if (collection.count < 2 || collection.samples.length < 2)
             return [];
 
-        return collection.samples.cycle(collection.next).take(collection.count)
+        return collection.samples.cycle(collection.next).take(min(collection.count, count))
             .map!((a) => a.to!TickDuration.to!("msecs", float)).array;
     }
     override void handleEvent (UIEvent event) {
         event.handle!(
-            (FrameUpdateEvent frame) { root.render(); },
+            (FrameUpdateEvent frame) { 
+                root.render(); 
+            },
+            (ScrollEvent scroll) {
+                if (labels.mouseover) {
+                    fontSize += scroll.dir.y;
+                    foreach (elem; labels.elements) {
+                        (cast(UITextElement)elem).fontSize = fontSize;
+                        elem.recalcDimensions();
+                    }
+                }
+                root.handleEvents(event);
+            },
             () {
                 root.recalcDimensions();
                 root.doLayout();
