@@ -301,7 +301,7 @@ class WidgetStatGraphModule : UIComponent {
     alias Container = UIFixedContainer;
 
     GraphView graph;
-    Container root;
+    UIElement root;
 
     //private float[2] RED_STATS    = [ 1 / 15.0f * 1e3, 1 / 15.0f * 1e3 ];
     private float[2] ORANGE_STATS = [ 1 / 40.0f * 1e3, 1 / 40.0f * 1e3 ];
@@ -312,18 +312,14 @@ class WidgetStatGraphModule : UIComponent {
         import std.range;
         import std.algorithm.iteration;
 
-        root = new Container(
-            //RelLayoutDirection.VERTICAL, RelLayoutPosition.CENTER,
-            vec2(100, 100), vec2(400, 400), vec2(10, 10), cast(UIElement[])[
-                graph = new GraphView(vec2(0, 0), vec2(300, 300), [
-                    UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
-                    UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
-                    UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
-                    //UIGraphView.DataSet(Color("#fefefe"), () { return [ 0.0f, 0.0f ]; }),
-                    UIGraphView.DataSet(Color("#fe2020"), () { return getStats(MAIN_THREAD); }),
-                    UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD); }),
-                ])
-            ]);
+        root = graph = new GraphView(vec2(0, 0), vec2(300, 300), [
+            UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
+            UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
+            UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
+            //UIGraphView.DataSet(Color("#fefefe"), () { return [ 0.0f, 0.0f ]; }),
+            UIGraphView.DataSet(Color("#fe2020"), () { return getStats(MAIN_THREAD); }),
+            UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD); }),
+        ]);
     }
     override void onComponentShutdown () {
         root.release(); root = null; graph = null;
@@ -346,6 +342,8 @@ class WidgetStatGraphModule : UIComponent {
         event.handle!(
             (FrameUpdateEvent frame) { root.render(); },
             () {
+                root.recalcDimensions();
+                root.doLayout();
                 root.handleEvents(event);
             }
         );

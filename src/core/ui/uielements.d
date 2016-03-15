@@ -318,6 +318,13 @@ class UIFixedContainer : UIElement {
     }
 
     override void recalcDimensions () {
+
+        // update position constraint
+        auto rel = pos - lastPos;
+        foreach (elem; elements)
+            elem.pos += rel;
+        lastPos = pos;
+
         // reset bounds + grow to fit content
         vec2 a = pos - padding, b = pos + padding;
         foreach (elem; elements) {
@@ -327,18 +334,21 @@ class UIFixedContainer : UIElement {
             b.x = max(b.x, elem.pos.x + elem.dim.x);
             b.y = max(b.y, elem.pos.y + elem.dim.y);
         }
+
+        lastPos = pos = a - padding;
+        dim = b - a + padding * 2.0;
+
+
+
         // Only enforce as min bounds though -- user can resize dim if they want.
-        dim = vec2(
-            max(dim.x, b.x - a.x),
-            max(dim.y, b.y - a.y));
+        //dim = vec2(
+        //    max(dim.x, b.x - a.x),
+        //    max(dim.y, b.y - a.y));
     }
 
     override void doLayout () {
-        auto rel = pos - lastPos;
-        foreach (elem; elements) {
-            elem.pos += rel;
+        foreach (elem; elements)
             elem.doLayout();
-        }
     }
 
     override void release () {
