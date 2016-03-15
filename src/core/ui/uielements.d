@@ -46,15 +46,16 @@ class UIElement : IResource, IRenderable, ILayoutable {
 
 class UITextElement : UIElement {
     private TextFragment fragment;
+    private vec2 padding;
 
-    this (vec2 pos, vec2 dim, string text, Font font, Color color, Color backgroundColor) {
+    this (vec2 pos, vec2 dim, vec2 padding, string text, Font font, Color color, Color backgroundColor) {
         super(pos, dim);
-        fragment = new TextFragment(text, font, color, this.pos * 2.0);
+        this.padding = padding;
+        this.fragment = new TextFragment(text, font, color, this.pos * 2.0);
         this.backgroundColor = backgroundColor;
         recalcDimensions();
         doLayout();
     }
-
     override void release () {
         if (fragment) {
             fragment.detatch();
@@ -85,10 +86,10 @@ class UITextElement : UIElement {
         return super.handleEvents(event);
     }
     override void recalcDimensions () {
-        dim = fragment.bounds;
+        dim = fragment.bounds + padding * 2.0;
     }
     override void doLayout () {
-        fragment.position = pos;
+        fragment.position = pos + padding;
     }
 }
 
@@ -162,8 +163,9 @@ struct UIDecorators {
         this (Args...)(UIElement target, Args args) if (__traits(compiles, new T(args))) {
             super(args);
             this.target = target;
-            this.offset = target.pos - this.pos;
+            this.offset = pos;
             recalcDimensions();
+            doLayout();
         }
         override void recalcDimensions () {
             this.dim = target.dim;

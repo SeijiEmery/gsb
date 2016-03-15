@@ -303,6 +303,10 @@ class WidgetStatGraphModule : UIComponent {
     GraphView graph;
     UIElement root;
     UILayoutContainer labels;
+
+    UITextElement mainThreadLabel;
+    UITextElement graphicsThreadLabel;
+
     float fontSize = 18.0;
 
     //private float[2] RED_STATS    = [ 1 / 15.0f * 1e3, 1 / 15.0f * 1e3 ];
@@ -315,7 +319,7 @@ class WidgetStatGraphModule : UIComponent {
         import std.algorithm.iteration;
 
         root = new UIContainer(vec2(), vec2(), cast(UIElement[])[
-            graph = new GraphView(vec2(0, 0), vec2(300, 300), [
+            graph = new GraphView(vec2(0, 400), vec2(400, 300), [
                 UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
                 UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
                 UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
@@ -324,15 +328,12 @@ class WidgetStatGraphModule : UIComponent {
                 UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD,     cast(size_t)(30 / 100.0 * graph.dim.x)); }),
             ]),
             labels = new UIDecorators.ClampedRelativeTo!UILayoutContainer(graph,
-                RelLayoutDirection.VERTICAL, RelLayoutPosition.TOP_LEFT,
+                RelLayoutDirection.HORIZONTAL, RelLayoutPosition.TOP_LEFT,
                 vec2(0,0), vec2(0,0), vec2(10,10), cast(UIElement[])[
-                    new UITextElement(vec2(500,500),vec2(0,0), "Hello World!", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe")) 
+                    mainThreadLabel     = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe")), 
+                    graphicsThreadLabel = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe")), 
                 ])
         ]);
-
-
-        
-
     }
     override void onComponentShutdown () {
         root.release(); root = null; graph = null;
@@ -351,9 +352,57 @@ class WidgetStatGraphModule : UIComponent {
         return collection.samples.cycle(collection.next).take(min(collection.count, count))
             .map!((a) => a.to!TickDuration.to!("msecs", float)).array;
     }
+    string getLabelText (string label, string cat) {
+        if (cat !in perThreadStats)
+            return label ~ "\n<None>";
+        auto stats = perThreadStats[cat];
+
+        struct CallStat { string name; float avg, max_; }
+        CallStat[] callstats;
+
+        foreach (k, v; stats.collection) {
+            float total = 0.0, max_ = 0.0;
+            foreach (x; v.samples) {
+                float t = x.to!TickDuration.to!("msecs", float);
+                total += t;
+                max_  = max(max_, t);
+            }
+            callstats ~= CallStat(k, total / v.count, max_);
+        }
+
+        import std.algorithm.sorting;
+        callstats.sort!"a.max_ > b.max_"();
+
+        foreach (s; callstats) {
+            label ~= format("\n%0.2f %0.2f %s", s.avg, s.max_, s.name);
+        }
+        return label;
+    }
+
+
     override void handleEvent (UIEvent event) {
         event.handle!(
-            (FrameUpdateEvent frame) { 
+            (FrameUpdateEvent frame) {
+                mainThreadLabel.text = getLabelText("main-thread", MAIN_THREAD);
+                graphicsThreadLabel.text = getLabelText("graphics-thread", GTHREAD);
+                root.recalcDimensions();
+                root.doLayout();
+
+                // automatically switch labels between vertical + horizontal layouts depending on graph size
+                auto maxwidth = labels.elements.map!"a.dim.x".reduce!"a+b" + labels.padding.x;
+                if (labels.relDirection == RelLayoutDirection.HORIZONTAL && graph.dim.x < maxwidth) {
+                    labels.relDirection = RelLayoutDirection.VERTICAL;
+                    labels.recalcDimensions();
+                    labels.doLayout();
+                } else if (labels.relDirection == RelLayoutDirection.VERTICAL && graph.dim.x >= maxwidth) {
+                    labels.relDirection = RelLayoutDirection.HORIZONTAL;
+                    labels.recalcDimensions();
+                    labels.doLayout();
+                }
+                // Lock graph dimensions to final label dimensions
+                graph.dim.x = max(graph.dim.x, labels.dim.x);
+                graph.dim.y = max(graph.dim.y, labels.dim.y);
+
                 root.render(); 
             },
             (ScrollEvent scroll) {
@@ -367,8 +416,6 @@ class WidgetStatGraphModule : UIComponent {
                 root.handleEvents(event);
             },
             () {
-                root.recalcDimensions();
-                root.doLayout();
                 root.handleEvents(event);
             }
         );

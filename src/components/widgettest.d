@@ -32,16 +32,16 @@ private class TestModule : UIComponent {
             RelLayoutDirection.VERTICAL, RelLayoutPosition.CENTER_TOP,
             vec2(200, 300), vec2(400, 600), vec2(10, 12), [
                 cast(UIElement)(new UITextElement(
-                    vec2(300, 400), vec2(200, 100), "Hello World!", 
+                    vec2(300, 400), vec2(200, 100), vec2(5,5), "Hello World!", 
                     new Font(FONT, fontSize), Color("#affa10"), Color("#feefde"))),
                 inner = new UILayoutContainer(
                     RelLayoutDirection.HORIZONTAL, RelLayoutPosition.CENTER_TOP,
                     vec2(0, 0), vec2(0, 0), vec2(5, 5), [
                         cast(UIElement)(new UITextElement(
-                            vec2(300, 400), vec2(200, 100), "Foo", 
+                            vec2(300, 400), vec2(200, 100), vec2(5,5), "Foo", 
                             new Font(FONT, fontSize), Color("#affa10"), Color("#feefde"))),
                         new UITextElement(
-                            vec2(300, 400), vec2(200, 100), "bar", 
+                            vec2(300, 400), vec2(200, 100), vec2(5,5), "bar", 
                             new Font(FONT, fontSize), Color("#affa10"), Color("#feefde")),
                     ])
             ]);
@@ -55,7 +55,7 @@ private class TestModule : UIComponent {
                 root.render();
             },
             (MouseButtonEvent ev) {
-                if (ev.pressed && ev.isRMB) {
+                if (root.mouseover && ev.pressed && ev.isRMB) {
                     auto x = cast(UIDecorators.Draggable!UILayoutContainer)root;
                     if (ev.shift) {
                         x.relPosition = cast(RelLayoutPosition)((x.relPosition + 1) % 9);

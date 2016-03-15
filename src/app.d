@@ -90,12 +90,12 @@ void graphicsThread (Tid mainThreadId) {
 
 					//utfTest.render();
 					//textRenderer.render();
-					threadStats.timedCall("TextRenderer.renderFragments", {
-						TextRenderer.instance.renderFragments();
-					});
-
 					threadStats.timedCall("DebugRenderer.render", {
 						DebugRenderer.renderFromGraphicsThread();
+					});
+
+					threadStats.timedCall("TextRenderer.renderFragments", {
+						TextRenderer.instance.renderFragments();
 					});
 
 					DynamicRenderer.signalFrameEnd();
