@@ -397,8 +397,8 @@ class TextRenderer {
 
                 textShader.bind();
 
-                auto inv_scale_x = 1.0 / g_mainWindow.screenDimensions.x;
-                auto inv_scale_y = 1.0 / g_mainWindow.screenDimensions.y;
+                auto inv_scale_x = 1.0 / g_mainWindow.screenDimensions.x * 2.0;
+                auto inv_scale_y = 1.0 / g_mainWindow.screenDimensions.y * 2.0;
                 auto transform = mat4.identity()
                     .scale(inv_scale_x, inv_scale_y, 1.0)
                     .translate(-1.0, 1.0, 0.0);

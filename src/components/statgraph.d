@@ -40,7 +40,7 @@ class Graph {
     vec2[] points;
     TextFragment[string] labels;
 
-    float fontSize = 22.0;
+    float fontSize = 12.0;
     Color fontColor;
 
     this (vec2 pos, vec2 dim) {
@@ -48,8 +48,8 @@ class Graph {
         this.dim = dim;
 
         fontColor = Color("#fe0020");
-        labels[MAIN_THREAD] = new TextFragment(MAIN_THREAD ~ "\n stuff", new Font(FONT, fontSize), fontColor, this.pos * 2.0);
-        labels[GTHREAD]     = new TextFragment(GTHREAD ~ "\nmore stuff", new Font(FONT, fontSize), fontColor, this.pos * 2.0);
+        labels[MAIN_THREAD] = new TextFragment(MAIN_THREAD ~ "\n stuff", new Font(FONT, fontSize), fontColor, this.pos);
+        labels[GTHREAD]     = new TextFragment(GTHREAD ~ "\nmore stuff", new Font(FONT, fontSize), fontColor, this.pos);
     }
 
     private void drawGraph (StatsCollector stats, Color color, float maxSample) {
@@ -67,8 +67,8 @@ class Graph {
         auto getVal (int i) {
             if (i < 0 || i >= c)
                 throw new Exception(format("Range error: %d (0, %d)", i, c));
-            return max(0.0, //min(1.0, 
-                collection.samples[i].to!TickDuration.to!("msecs", float) * 1e-3 / maxSample);//);
+            return max(0.0,
+                collection.samples[i].to!TickDuration.to!("msecs", float) * 1e-3 / maxSample);
         }
 
         float[] values;
@@ -157,7 +157,7 @@ class Graph {
     }
 
     void updateLabels () {
-        auto nextPos = pos * 2.0;
+        auto nextPos = pos;
         immutable float LABEL_SPACING = 10.0;
 
         foreach (k, v; labels) {
@@ -303,7 +303,7 @@ class WidgetStatGraphModule : UIComponent {
     GraphView graph;
     UIElement root;
     UILayoutContainer labels;
-    float fontSize = 30.0;
+    float fontSize = 18.0;
 
     //private float[2] RED_STATS    = [ 1 / 15.0f * 1e3, 1 / 15.0f * 1e3 ];
     private float[2] ORANGE_STATS = [ 1 / 40.0f * 1e3, 1 / 40.0f * 1e3 ];

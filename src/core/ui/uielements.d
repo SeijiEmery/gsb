@@ -88,7 +88,7 @@ class UITextElement : UIElement {
         dim = fragment.bounds;
     }
     override void doLayout () {
-        fragment.position = pos * 2.0;
+        fragment.position = pos;
     }
 }
 

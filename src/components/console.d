@@ -34,13 +34,13 @@ private class TextInputField {
     vec2 padding = vec2(0, 0);
     float minWidth = 500.0;
 
-    @property auto pos () { return tf.position / 2.0 - padding; }
-    @property void pos (vec2 p) { tf.position = p * 2.0; }
+    @property auto pos () { return tf.position - padding; }
+    @property void pos (vec2 p) { tf.position = p; }
     @property auto dim () { 
         vec2 bounds = tf.bounds;
         if (bounds.x < minWidth)
             bounds.x = minWidth;
-        return bounds + padding * 2.0; 
+        return bounds + padding; 
     }
 
     @property auto fontSize () { return tf.font.size; }
@@ -49,7 +49,7 @@ private class TextInputField {
     }
 
     this (string text, Font font, vec2 pos) {
-        this.tf = new TextFragment(text, font, Color("#82fe7f"), pos * 2.0);
+        this.tf = new TextFragment(text, font, Color("#82fe7f"), pos);
         this.textContent = text.byDchar.array;
     }
 

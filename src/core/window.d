@@ -44,12 +44,15 @@ public:
     @property auto screenDimensions () { return m_screenSize; }
     @property auto screenScale () { return m_screenScale; }
 
-    @property mat4 screenSpaceTransform () {
-        auto inv_scale_x = 1.0 / g_mainWindow.pixelDimensions.x;
-        auto inv_scale_y = 1.0 / g_mainWindow.pixelDimensions.y;
-        return mat4.identity()
+    @property mat4 screenSpaceTransform (bool transposed = true) {
+        auto inv_scale_x = +1.0 / g_mainWindow.screenDimensions.x * 2.0;
+        auto inv_scale_y = -1.0 / g_mainWindow.screenDimensions.y * 2.0;
+        auto matrix = mat4.identity()
             .scale(inv_scale_x, inv_scale_y, 1.0)
             .translate(-1.0, 1.0, 0.0);
+        if (transposed)
+            matrix.transpose();
+        return matrix;
     }
 
     // Event signals:
