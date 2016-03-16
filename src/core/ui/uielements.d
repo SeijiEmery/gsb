@@ -456,7 +456,7 @@ class UIGraphView : UIElement {
                     pos.y + dim.y * (1 - (x - minv) / (maxv - minv)));
             DebugRenderer.drawLines(tmp, datasets[i].color, lineWidth, lineSamples);
         }
-        DebugRenderer.drawLineRect(pos, pos + dim, Color("#207f2050"), 1);
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#207f20"), 1);
 
         // tbd: draw lines...
     }

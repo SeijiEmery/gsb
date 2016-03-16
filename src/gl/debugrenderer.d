@@ -466,7 +466,7 @@ class DebugLineRenderer2D {
     // temp buffer used by drawLines
     private vec2[] tbuf;
 
-    void drawLines (vec2[] points, Color color, float width, float edgeSamples = 2.0, float angle_cutoff = 15.0) {
+    void drawLines (vec2[] points, Color color, float width, float edgeSamples = 1.0, float angle_cutoff = 15.0) {
         synchronized {
             //float packedColor = color.toPackedFloat();
 
@@ -516,6 +516,32 @@ class DebugLineRenderer2D {
             }
         }
     }
+    void drawPolygon (vec2[] points, Color color, float width, float edgeSamples = 1.0, float angle_cutoff = 15.0) {
+        synchronized {
+            import std.math: PI, cos;
+            float cutoff = -cos(angle_cutoff * PI / 180.0);
+            width = abs(width) + sqrt(edgeSamples) * 2.0;
+            tbuf.length = 0;
+            if (points.length >= 3) {
+                // Note: no duplicate filtering
+                Algorithms.pushMiterPoints(tbuf, points[$-2], points[$-1], points[0], width, cutoff);
+                Algorithms.pushMiterPoints(tbuf, points[$-1], points[0], points[1], width, cutoff);
+                for (size_t i = 0; i < points.length - 2; ++i) {
+                    Algorithms.pushMiterPoints(tbuf, points[i], points[i+1], points[i+2], width, cutoff);
+                }
+                assert(tbuf.length == 2 * points.length);
+
+                // Push geometry
+                for (auto i = tbuf.length; i >= 4; i -= 2) {
+                    pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], color);
+                }
+                pushQuad(tbuf[$-2], tbuf[$-1], tbuf[0], tbuf[1], color);
+            } else {
+                throw new Exception(format("drawPolygon requires > 3 points (not %d: %s)", points.length, points));
+            }
+        }
+    }
+
     void drawTri (vec2 pt, Color color, float size, float edgeSamples = 2.0) {
         import std.math: sqrt;
         immutable float k = 1 / sqrt(3.0);
@@ -553,9 +579,9 @@ class DebugLineRenderer2D {
         //pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color.toPackedFloat(), 1.0);
         pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color);
     }
-    void drawLineRect (vec2 a, vec2 b, Color color, float width) {
-        drawLines([ vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), vec2(a.x, a.y) ],
-            color, width);
+    void drawLineRect (vec2 a, vec2 b, Color color, float width, float samples = 1.0, float cutoff = 15.0) {
+        drawPolygon([ vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y) ],
+            color, width, samples, cutoff);
     }
 
     struct Shader(Fragment, Vertex) {
