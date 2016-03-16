@@ -12,7 +12,7 @@ private auto clamp (T) (T x, T m, T n) {
 }
 
 struct Color {
-    float r = 0, g = 0, b = 0, a = 1.0;
+    float r = 1, g = 1, b = 1, a = 1;
 
     this (float r, float g, float b, float a) {
         this.r = r; this.g = g; this.b = b; this.a = a;

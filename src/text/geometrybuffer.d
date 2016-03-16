@@ -3,6 +3,7 @@ module gsb.text.geometrybuffer;
 import gsb.gl.state;
 import gsb.gl.algorithms;
 import gsb.gl.drawcalls;
+import gsb.core.color;
 
 import gsb.core.log;
 import stb.truetype;
@@ -44,50 +45,27 @@ class TextGeometryBuffer {
         return _backend;
     }
 
-    void pushQuad (ref stbtt_aligned_quad q) {
+    void pushQuad (ref stbtt_aligned_quad q, Color color) {
+
+        //color.a = 1.0;
+
         synchronized (read) {
             packedData ~= [
-                q.x0, -q.y1, 0.0, 0.0, q.s0, q.t1,   // flip y-axis
-                q.x1, -q.y0, 0.0, 0.0, q.s1, q.t0,
-                q.x1, -q.y1, 0.0, 0.0, q.s1, q.t1,
+                q.x0, -q.y1, 0.0, q.s0, q.t1, color.r, color.g, color.b, color.a,   // flip y-axis
+                q.x1, -q.y0, 0.0, q.s1, q.t0, color.r, color.g, color.b, color.a,
+                q.x1, -q.y1, 0.0, q.s1, q.t1, color.r, color.g, color.b, color.a,
 
-                q.x0, -q.y1, 0.0, 0.0, q.s0, q.t1,
-                q.x0, -q.y0, 0.0, 0.0, q.s0, q.t0,
-                q.x1, -q.y0, 0.0, 0.0, q.s1, q.t0,
+                q.x0, -q.y1, 0.0, q.s0, q.t1, color.r, color.g, color.b, color.a,
+                q.x0, -q.y0, 0.0, q.s0, q.t0, color.r, color.g, color.b, color.a,
+                q.x1, -q.y0, 0.0, q.s1, q.t0, color.r, color.g, color.b, color.a,
             ];
         }
-        //positionData ~= [
-        //    q.x0, -q.y1, 0.0,   // flip y-axis
-        //    q.x1, -q.y0, 0.0,
-        //    q.x1, -q.y1, 0.0,
-
-        //    q.x0, -q.y1, 0.0,
-        //    q.x0, -q.y0, 0.0,
-        //    q.x1, -q.y0, 0.0,
-        //];
-        //uvData ~= [
-        //    q.s0, q.t1,
-        //    q.s1, q.t0,
-        //    q.s1, q.t1,
-
-        //    q.s0, q.t1,
-        //    q.s0, q.t0,
-        //    q.s1, q.t0
-        //];
         needsUpdate = true;
     }
     void clear () {
         synchronized (write) {
-            //import std.algorithm.mutation: swap;
-            //swap(packedData, nextData);
-            //nextData.length = 0;
             packedData.length = 0;
         }
-        //packedData.length = 0;
-        //nextData.length = 0;
-        //positionData.length = 0;
-        //uvData.length = 0;
-        //needsUpdate = true;
     }
     void releaseResources () {
         shouldRelease = true;
@@ -101,38 +79,19 @@ class TextGeometryBuffer {
         VAO vao;
 
         override void update () {
-            //if (needsUpdate) {
-            //    synchronized (read) {
-            //        auto numQuadTriangles = cast(int)(positionData.length / 9);
-            //        auto numUvTriangles = cast(int)(uvData.length / 6);
-            //        if (numQuadTriangles != numUvTriangles)
-            //            log.write("WARNING: TextGeometryBuffer has mismatching triangle count: %s, %s", numQuadTriangles, numUvTriangles);
-            //        numTriangles = numQuadTriangles;
-            //        log.write("TextGeometryBuffer.GraphicsBackend: set triangles = %d", numTriangles);
-            //    }
-            //}
         }
 
         override void draw () {
             if (!packedData.length)
                 return;
             if (!vao) vao = new VAO();
-            //synchronized (read) {
-                DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)(packedData.length / 6) * 3, [
+                DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)(packedData.length / 9) * 3, [
                     VertexData(packedData.ptr, packedData.length * float.sizeof, [
-                        VertexAttrib(0, 3, GL_FLOAT, GL_FALSE, float.sizeof * 6, cast(void*)(0)),
-                        VertexAttrib(1, 2, GL_FLOAT, GL_FALSE, float.sizeof * 6, cast(void*)(float.sizeof * 4)),
+                        VertexAttrib(0, 3, GL_FLOAT, GL_FALSE, float.sizeof * 9, cast(void*)(0)),
+                        VertexAttrib(1, 2, GL_FLOAT, GL_FALSE, float.sizeof * 9, cast(void*)(float.sizeof * 3)),
+                        VertexAttrib(2, 4, GL_FLOAT, GL_FALSE, float.sizeof * 9, cast(void*)(float.sizeof * 7)),
                     ])
                 ]);
-            //}
-            //DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, numTriangles * 3, [
-            //    VertexData(positionData.ptr, positionData.length * float.sizeof, [
-            //        VertexAttrib(0, 3, GL_FLOAT, GL_FALSE, 0, null)
-            //    ]),
-            //    VertexData(uvData.ptr, uvData.length * float.sizeof, [
-            //        VertexAttrib(1, 2, GL_FLOAT, GL_FALSE, 0, null)
-            //    ])
-            //]);
         }
 
         override void releaseResources () {

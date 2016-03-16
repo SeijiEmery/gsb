@@ -577,7 +577,7 @@ class DebugLineRenderer2D {
     }
     void drawRect (vec2 a, vec2 b, Color color) {
         //pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color.toPackedFloat(), 1.0);
-        pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color);
+        pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(a.x, b.y), vec2(b.x, b.y), color);
     }
     void drawLineRect (vec2 a, vec2 b, Color color, float width, float samples = 1.0, float cutoff = 15.0) {
         drawPolygon([ vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y) ],
@@ -608,7 +608,7 @@ class DebugLineRenderer2D {
     //ColoredVertexShader   vs = null;
     //Program!(ColoredVertexShader,ColoredFragmentShader) program = null;
     void renderFromGraphicsThread () {
-        log.write("rendering!");
+        //log.write("rendering!");
 
         synchronized {
             if (fstate) fstate = 0, gstate = 1;

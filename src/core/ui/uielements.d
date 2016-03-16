@@ -15,6 +15,9 @@ import gl3n.linalg;
 private bool inBounds (vec2 pos, vec2 p1, vec2 p2) {
     return !(pos.x < p1.x || pos.x > p2.x || pos.y < p1.y || pos.y > p2.y);
 }
+private auto clamp (T) (T x, T minv, T maxv) {
+    return min(max(x, minv), maxv);
+}
 
 enum RelLayoutDirection : ubyte { HORIZONTAL, VERTICAL };
 enum RelLayoutPosition  : ubyte {
@@ -461,6 +464,92 @@ class UIGraphView : UIElement {
         // tbd: draw lines...
     }
 }
+
+class UIBox : UIElement {
+    Color color;
+    this (vec2 pos, vec2 dim, Color color) {
+        super(pos, dim);
+        this.color = color;
+    }
+    override void render () {
+        DebugRenderer.drawRect(pos, pos + dim, color);
+    }
+}
+
+class UISlider : UIElement {
+    Color sliderColor;
+    Color backgroundColor;
+    vec2 padding, sdim;
+    float value, minValue, maxValue;
+    bool dragging = false;
+    float scrollspeed = 1.0;
+
+    private vec2 lastpos;
+
+    this (vec2 pos, vec2 dim, vec2 padding, vec2 sliderdim, float value, float minValue, float maxValue, Color sliderColor, Color backgroundColor) {
+        super(pos, dim);
+        this.padding = padding;
+        this.sdim = sliderdim;
+        this.value = value;
+        this.minValue = minValue;
+        this.maxValue = maxValue;
+        this.sliderColor = sliderColor;
+        this.backgroundColor = backgroundColor;
+        assert(maxValue > minValue);
+    }
+
+    override void render () {
+        DebugRenderer.drawRect(pos + padding, pos + dim - padding * 2, backgroundColor);
+
+        auto spos = pos + vec2(
+            (dim.x - sdim.x) * (value - minValue) / (maxValue - minValue),
+            0);
+            //(sdim.y - dim.y) * 0.5);
+        DebugRenderer.drawRect(spos, spos + sdim, sliderColor);
+    }
+
+    private final void updateDrag (vec2 pt) {
+        value = clamp(minValue + (pt.x - pos.x) * (maxValue - minValue) / (dim.x - sdim.x), minValue, maxValue);
+    }
+
+    override bool handleEvents (UIEvent evt) {
+        return super.handleEvents(evt) || evt.handle!(
+            (MouseButtonEvent ev) {
+                if (mouseover && ev.pressed && ev.isLMB) {
+                    dragging = true; updateDrag(lastpos);
+                    return true;
+                } else if (dragging && ev.released) {
+                    dragging = false;
+                    return true;
+                }
+                return false;
+            },
+            (MouseMoveEvent ev) {
+                if (dragging) {
+                    updateDrag(ev.position);
+                    return true;
+                } else {
+                    lastpos = ev.position;
+                    return false;
+                }
+            },
+            (ScrollEvent ev) {
+                if (mouseover) {
+                    value = clamp(value + ev.dir.y * scrollspeed * (maxValue - minValue) / (dim.x - sdim.x), minValue, maxValue);
+                    return true;
+                }
+                return false;
+            },
+            () { return false; }
+        );
+    }
+
+
+}
+
+
+
+
 
 
 

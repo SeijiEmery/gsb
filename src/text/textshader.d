@@ -6,25 +6,36 @@ import gsb.glutils;
 import derelict.opengl3.gl3;
 import dglsl;
 
+import gl3n.linalg;
+
+
+
+
 class TextVertexShader: Shader!Vertex {
     @layout(location=0)
-    @input vec3 textPosition;
+    @input vec3 inPos;
 
     @layout(location=1)
-    @input vec2 bitmapCoords;
+    @input vec2 inCoords;
+
+    @layout(location=2)
+    @input vec4 inColor;
 
     @output vec2 texCoord;
+    @output vec4 shadingColor;
 
     @uniform mat4 transform;
     @uniform vec3 backgroundColor;
 
     void main () {
-        gl_Position = transform * vec4(textPosition, 1.0);
-        texCoord = bitmapCoords;
+        gl_Position = transform * vec4(inPos, 1.0);
+        texCoord = inCoords;
+        shadingColor = inColor;
     }
 }
 class TextFragmentShader: Shader!Fragment {
     @input vec2 texCoord;
+    @input vec4 shadingColor;
     @output vec4 fragColor;
 
     @uniform sampler2D textureSampler;
@@ -32,12 +43,14 @@ class TextFragmentShader: Shader!Fragment {
 
     void main () {
         vec4 color = texture(textureSampler, texCoord);
-        fragColor = vec4(color.r) + vec4(0.5, 0, 0, 0.5);
-
-
-        //fragColor = color.r > 0.02 ?
-        //    vec4(color.r) :
-        //    vec4(backgroundColor + vec3(texCoord, 0.0), 1.0) * 0.5;
+        //fragColor = vec4(color.r) * shadingColor;
+        // have to do this component-wise, b/c the fuckwad who wrote gl3n
+        // DIDN'T IMPLEMENT COMPONENTWISE VECTOR MULTIPLICATION. Seriously, WTF.
+        // (and if this library doesn't even use sse... -_-)
+        fragColor.r = shadingColor.r;
+        fragColor.g = shadingColor.g;    
+        fragColor.b = shadingColor.b;    
+        fragColor.a = color.r;// 1.0 - (1.0 - color.r) * shadingColor.a;//(1.0 - color.r) * (1.0 - shadingColor.a);
     }
 }
 

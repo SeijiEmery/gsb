@@ -362,7 +362,7 @@ class TextRenderer {
                 foreach (line; fragment.bstate.text.splitter('\n')) {
                     layout.x = x0; layout.y += lineHeight;
                     foreach (quad; atlas.getQuads(fragment.font, line.byDchar, layout.x, layout.y, false)) {
-                        buffer.pushQuad(quad);
+                        buffer.pushQuad(quad, fragment.color);
                     }
                     DEBUG_LOG(log.write("wrote line; cursor = %0.2f, %0.2f (atlas %d, buffer %d))", 
                         layout.x, layout.y, curAtlas, curBuffer));

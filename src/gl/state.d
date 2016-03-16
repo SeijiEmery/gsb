@@ -46,7 +46,7 @@ struct GLState {
 
     void bindShader (GLuint shader) {
 
-        log.write("glState: binding shader %s", shader);
+        //log.write("glState: binding shader %s", shader);
 
         //if (shader != lastBoundShader) {
             checked_glUseProgram(shader);
@@ -55,7 +55,7 @@ struct GLState {
     }
     void bindVao (GLuint vao) {
 
-        log.write("glState: binding vao %s", vao);
+        //log.write("glState: binding vao %s", vao);
         //if (vao != lastBoundVao) {
             checked_glBindVertexArray(vao);
             lastBoundVao = vao;
@@ -63,7 +63,7 @@ struct GLState {
     }
     void bindBuffer (GLenum type, GLuint vbo) {
 
-        log.write("glState: binding vbo %s", vbo);
+        //log.write("glState: binding vbo %s", vbo);
         //if (vbo != lastBoundBuffer) {
             checked_glBindBuffer(type, vbo);
             lastBoundBuffer = vbo;
@@ -71,7 +71,7 @@ struct GLState {
     }
     void bindTexture (GLenum type, GLuint texture) {
 
-        log.write("glState: binding texture %s", texture);
+        //log.write("glState: binding texture %s", texture);
 
         //if (texture != lastBoundTexture) {
             checked_glBindTexture(type, texture);
@@ -80,7 +80,7 @@ struct GLState {
     }
     void activeTexture (uint textureUnit) {
 
-        log.write("glState: activating texture %d", textureUnit - GL_TEXTURE0);
+        //log.write("glState: activating texture %d", textureUnit - GL_TEXTURE0);
 
         if (textureUnit != lastActiveTexture)
             checked_glActiveTexture(lastActiveTexture = textureUnit);
