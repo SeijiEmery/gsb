@@ -22,7 +22,7 @@ mixin Color.fract;
 
 alias uivec4 = Vector!(uint, 4);
 
-class PalettedVertexShader : Shader!Vertex {
+private class PalettedVertexShader : Shader!Vertex {
     @layout(location = 0)
     @input vec3 position;
 
@@ -38,7 +38,7 @@ class PalettedVertexShader : Shader!Vertex {
         gl_Position = transform * vec4(position.xyz, 1.0);
     }
 }
-class PalettedFragmentShader : Shader!Fragment {
+private class PalettedFragmentShader : Shader!Fragment {
     @input  vec4 color;
     @output vec4 fragColor;
 
@@ -47,7 +47,32 @@ class PalettedFragmentShader : Shader!Fragment {
     }
 }
 
-class ColoredVertexShader: Shader!Vertex {
+private class BasicVertexShader : Shader!Vertex {
+    @layout(location = 0)
+    @input vec4 inPos;
+
+    @layout(location = 1)
+    @input vec4 inColor;
+
+    @output vec4 color;
+    @uniform mat4 transform;
+    @uniform samplerBuffer paletteSampler;
+
+    void main () {
+        color = inColor;
+        gl_Position = transform * inPos;
+    }
+}
+private class BasicFragmentShader : Shader!Fragment {
+    @input  vec4 color;
+    @output vec4 fragColor;
+
+    void main () {
+        fragColor = color;
+    }
+}
+
+private class ColoredVertexShader: Shader!Vertex {
     @layout(location=0)
     @input vec4   pcv;     // packed vertex position + color
 
@@ -76,7 +101,7 @@ class ColoredVertexShader: Shader!Vertex {
 }
 
 import std.math: abs;
-class ColoredFragmentShader: Shader!Fragment {
+private class ColoredFragmentShader: Shader!Fragment {
     @input vec4 color;
     @input float edgeDist;
     @input float edgeBorder;
@@ -170,11 +195,18 @@ struct ColorPaletteCache {
         auto nextState = gthreadCurrent = (gthreadCurrent + 1) % NUM_STATES;
         assert(gthreadCurrent != mthreadCurrent);
 
+        import std.algorithm.iteration;
+
         if (!equal(palettes[nextState].getColorData, palettes[lastState].getColorData) || !texture) {
             if (!texture)
                 texture = new BufferTexture();
-            texture.setData(textureUnit, GL_RGBA8, palettes[nextState].getColorData);
-        }
+            texture.setData(textureUnit, GL_RGBA32F, palettes[nextState].getColorData());
+            //log.write("using %d colors: %s", palettes[nextState].getColorData().length,
+                //palettes[nextState].getColorData().map!((v) => format("%s", v)).join(", "));
+        }//} else {
+            log.write("using %d colors: %s", palettes[nextState].getColorData().length,
+                palettes[nextState].getColorData().map!((v) => format("%s", v)).join(", "));
+        //}
     }
     void release () {
         if (texture) {
@@ -242,9 +274,23 @@ class DebugLineRenderer2D {
         protected void drawPaletted () {
             palettedTris.draw([
                 VertexAttrib(0, 3, GL_FLOAT, GL_FALSE, PackedVertex_palettedColor.sizeof, cast(void*)(0)),
-                VertexAttrib(1, 1, GL_UNSIGNED_SHORT, GL_FALSE, PackedVertex_palettedColor.sizeof, cast(void*)(float.sizeof * 3)),
+                VertexAttrib(1, 1, GL_INT,   GL_FALSE, PackedVertex_palettedColor.sizeof, cast(void*)(float.sizeof * 3)),
             ]);
         }
+
+        VArray!(GL_TRIANGLES, PackedVertex_attribColor) attribTris;
+        protected void drawAttribTris () {
+            attribTris.draw([
+                VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, PackedVertex_attribColor.sizeof, cast(void*)(0)),
+                VertexAttrib(1, 4, GL_FLOAT, GL_FALSE, PackedVertex_attribColor.sizeof, cast(void*)(float.sizeof * 4)),
+            ]);
+        }
+
+        protected void clearForNextFrame () {
+            attribTris.data.length = 0;
+            palettedTris.data.length = 0;
+        }
+
         //protected void render (ref mat4 transform) {
         //    if (!vbuffer.length)
         //        return;
@@ -278,25 +324,43 @@ class DebugLineRenderer2D {
     private auto paletteTexture = new BufferTexture();
 
     struct PackedVertex_palettedColor {
-        float x, y, z; uint colorIndex;
+        float x, y, z; int colorIndex;
     }
 
+    struct PackedVertex_attribColor {
+        float x, y, z, w, r, g, b, a;
+    }
+
+
     void mainThread_onFrameEnd () {
-        palette.swapState();
+        //palette.swapState();
     }
 
     private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, Color color) {
-        auto index = palette.getCoord(color);
-        states[fstate].palettedTris.data ~= [
-            PackedVertex_palettedColor(a.x, a.y, 0, index),
-            PackedVertex_palettedColor(b.x, b.y, 0, index),
-            PackedVertex_palettedColor(d.x, d.y, 0, index),
+        // super inefficient, but hopefully this works...
+        states[fstate].attribTris.data ~= [
+            PackedVertex_attribColor(a.x, a.y, 0, 1, color.r, color.g, color.b, color.a),
+            PackedVertex_attribColor(b.x, b.y, 0, 1, color.r, color.g, color.b, color.a),
+            PackedVertex_attribColor(d.x, d.y, 0, 1, color.r, color.g, color.b, color.a),
 
-            PackedVertex_palettedColor(a.x, a.y, 0, index),
-            PackedVertex_palettedColor(d.x, d.y, 0, index),
-            PackedVertex_palettedColor(c.x, c.y, 0, index),
+            PackedVertex_attribColor(a.x, a.y, 0, 1, color.r, color.g, color.b, color.a),
+            PackedVertex_attribColor(d.x, d.y, 0, 1, color.r, color.g, color.b, color.a),
+            PackedVertex_attribColor(c.x, c.y, 0, 1, color.r, color.g, color.b, color.a),
         ];
     }
+
+    //private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, Color color) {
+    //    auto index = cast(int)palette.getCoord(color);
+    //    states[fstate].palettedTris.data ~= [
+    //        PackedVertex_palettedColor(a.x, a.y, 0, index),
+    //        PackedVertex_palettedColor(b.x, b.y, 0, index),
+    //        PackedVertex_palettedColor(d.x, d.y, 0, index),
+
+    //        PackedVertex_palettedColor(a.x, a.y, 0, index),
+    //        PackedVertex_palettedColor(d.x, d.y, 0, index),
+    //        PackedVertex_palettedColor(c.x, c.y, 0, index),
+    //    ];
+    //}
 
     private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color, float edgeFactor) {
         states[fstate].vbuffer ~= [
@@ -512,26 +576,33 @@ class DebugLineRenderer2D {
 
     Shader!(ColoredFragmentShader, ColoredVertexShader) oldShader;
     Shader!(PalettedFragmentShader, PalettedVertexShader) paletteShader;
+    Shader!(BasicFragmentShader, BasicVertexShader) basicShader;
 
     //ColoredFragmentShader fs = null;
     //ColoredVertexShader   vs = null;
     //Program!(ColoredVertexShader,ColoredFragmentShader) program = null;
     void renderFromGraphicsThread () {
+        log.write("rendering!");
+
         synchronized {
             if (fstate) fstate = 0, gstate = 1;
             else        fstate = 1, gstate = 0;
-            states[fstate].vbuffer.length = 0;
+
+            states[fstate].clearForNextFrame();
+            //states[fstate].vbuffer.length = 0;
         }
 
+        //paletteTexture.bind(GL_TEXTURE0);
+        //palette.updateTextureAndSwapState(GL_TEXTURE0, paletteTexture);
 
-        paletteShader.bind();
+        //paletteShader.bind();
+        //paletteShader.transform = g_mainWindow.screenSpaceTransform(true);
+        //paletteShader.paletteSampler   = GL_TEXTURE0;
+        //states[gstate].drawPaletted();
 
-        paletteTexture.bind(GL_TEXTURE0);
-        palette.updateTextureAndSwapState(GL_TEXTURE0, paletteTexture);
-
-        paletteShader.transform = g_mainWindow.screenSpaceTransform(true);
-        paletteShader.paletteSampler   = GL_TEXTURE0;
-        states[gstate].drawPaletted();
+        basicShader.bind();
+        basicShader.transform = g_mainWindow.screenSpaceTransform(true);
+        states[gstate].drawAttribTris();
 
         glState.bindShader(0);
 
