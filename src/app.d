@@ -194,6 +194,7 @@ void mainThread (Tid graphicsThreadId) {
 			// This effectively drives the entire application.
 			threadStats.timedCall("UIComponents.update", {
 				UIComponentManager.updateFromMainThread();
+				DebugRenderer.mainThread_onFrameEnd();
 			});
 
 			// Run textrenderer updates on any modified state. Does stuff like re-rasterize + repack

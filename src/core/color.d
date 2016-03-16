@@ -45,6 +45,14 @@ struct Color {
     float toPackedFloat () {
         return toVec.dot(vec4(1.0, 1/255.0, 1/65025.0, 1/160581375.0));
     }
+    uint getRGBA () {
+        return 
+            (cast(uint)(r * 256.0) << 0)  |
+            (cast(uint)(g * 256.0) << 8)  |
+            (cast(uint)(b * 256.0) << 16) |
+            (cast(uint)(a * 256.0) << 24);
+    }
+
     // Add this to shaders to unpack packed color values
     mixin template unpackRGBA () {
         vec4 unpackRGBA (float packed) {

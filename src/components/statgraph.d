@@ -18,7 +18,7 @@ import core.time;
 
 shared static this () {
     UIComponentManager.runAtInit({
-        UIComponentManager.registerComponent(new StatGraphModule(), "statgraph", true);
+        //UIComponentManager.registerComponent(new StatGraphModule(), "statgraph", true);
         UIComponentManager.registerComponent(new WidgetStatGraphModule(), "statgraph2", true);
     });
 }
@@ -298,13 +298,12 @@ class StatGraphModule : UIComponent {
 
 class WidgetStatGraphModule : UIComponent {
     alias GraphView = UIDecorators.Draggable!UIGraphView;
-    alias Container = UIFixedContainer;
 
-    GraphView graph;
-    UIElement root;
-    UILayoutContainer labels;
+    UIElement root;    // container that holds everything else
+    GraphView graph;   // direct reference to the graph element
+    UILayoutContainer labels;  // container holding the graph labels (can be iterated over, etc)
 
-    UITextElement mainThreadLabel;
+    UITextElement mainThreadLabel;   // graph labels for main + graphics thread
     UITextElement graphicsThreadLabel;
 
     float fontSize = 18.0;
@@ -323,7 +322,7 @@ class WidgetStatGraphModule : UIComponent {
                 UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
                 UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
                 UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
-                //UIGraphView.DataSet(Color("#fefefe"), () { return [ 0.0f, 0.0f ]; }),
+                UIGraphView.DataSet(Color("#a0a0a0"), () { return [ 0.0f, 0.0f ]; }),
                 UIGraphView.DataSet(Color("#fe2020"), () { return getStats(MAIN_THREAD, cast(size_t)(30 / 100.0 * graph.dim.x)); }),
                 UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD,     cast(size_t)(30 / 100.0 * graph.dim.x)); }),
             ]),

@@ -13,10 +13,39 @@ import derelict.opengl3.gl3;
 import dglsl;
 import gl3n.linalg;
 
+import std.algorithm.comparison;
+
 import core.sync.mutex;
 import std.traits;
 
 mixin Color.fract;
+
+alias uivec4 = Vector!(uint, 4);
+
+class PalettedVertexShader : Shader!Vertex {
+    @layout(location = 0)
+    @input vec3 position;
+
+    @layout(location = 1)
+    @input int index;
+
+    @output vec4 color;
+    @uniform mat4 transform;
+    @uniform samplerBuffer paletteSampler;
+
+    void main () {
+        color = texelFetch(paletteSampler, index);
+        gl_Position = transform * vec4(position.xyz, 1.0);
+    }
+}
+class PalettedFragmentShader : Shader!Fragment {
+    @input  vec4 color;
+    @output vec4 fragColor;
+
+    void main () {
+        fragColor = color;
+    }
+}
 
 class ColoredVertexShader: Shader!Vertex {
     @layout(location=0)
@@ -73,6 +102,120 @@ class ColoredFragmentShader: Shader!Fragment {
     }
 }
 
+struct ColorPaletteCache {
+    // Two algorithms for this; dunno which is faster. 
+    // (linear lookup on dozens to _maybe_ several hundred elements vs hashing)
+
+    alias ColorRGBA = vec4;
+    protected struct Palette_linearLookup {
+        ColorRGBA[] palette;
+
+        uint getIndex (ColorRGBA color) {
+            foreach (i, v; palette)
+                if (v == color)
+                    return cast(uint)i;
+            palette ~= color;
+            return cast(uint)palette.length - 1;
+        }
+        ColorRGBA[] getColorData () { 
+            return palette; 
+        }
+        void clear () { palette.length = 0; }
+    }
+    //protected struct Palette_hashedLookup {
+    //    ColorRGBA[] palette;
+    //    uint[ColorRGBA] lookup;
+
+    //    uint getIndex (ColorRGBA color) { 
+    //        if (color !in lookup) {
+    //            lookup[color] = cast(uint)palette.length;
+    //            palette ~= color;
+    //        }
+    //        return lookup[color];
+    //    }
+    //    ColorRGBA[] getColorData () {
+    //        return palette;
+    //    }
+    //    void clear () { 
+    //        palette.length = 0; 
+    //        foreach (key; lookup.keys())
+    //            lookup.remove(key);
+    //    }
+    //}
+    alias Palette = Palette_linearLookup;
+
+    private immutable uint NUM_STATES = 3;
+
+    private Palette[NUM_STATES] palettes; 
+    private uint gthreadCurrent = 0, mthreadCurrent = 1;
+    public BufferTexture texture = null;
+
+    //private uint textureWidth = 256; // changed iff texture size gets really large; usually only the v dimension changes.
+    // Main thread functions
+    ushort getCoord (Color color) {
+        return cast(ushort)palettes[mthreadCurrent].getIndex(color.toVec());
+    }
+    //{
+    //    auto index = palettes[mthreadCurrent].getIndex(color.getBGRA());
+    //    return vec2i(index % textureWidth, index / textureWidth);
+    //}
+    void swapState () {
+        mthreadCurrent = (mthreadCurrent + 1) % NUM_STATES;
+        assert(mthreadCurrent != gthreadCurrent);
+    }
+
+    // Graphics thread functions
+    void updateTextureAndSwapState (uint textureUnit, BufferTexture texture) {
+        auto lastState = gthreadCurrent;
+        auto nextState = gthreadCurrent = (gthreadCurrent + 1) % NUM_STATES;
+        assert(gthreadCurrent != mthreadCurrent);
+
+        if (!equal(palettes[nextState].getColorData, palettes[lastState].getColorData) || !texture) {
+            if (!texture)
+                texture = new BufferTexture();
+            texture.setData(textureUnit, GL_RGBA8, palettes[nextState].getColorData);
+        }
+    }
+    void release () {
+        if (texture) {
+            texture.release();
+            texture = null;
+        }
+    }
+
+    //void updateTextureAndSwapState (BufferTexture texture) {
+    //    auto lastState = gthreadCurrent;
+    //    auto nextState = gthreadCurrent = (gthreadCurrent + 1) % NUM_STATES;
+
+    //    if (!equal(palettes[nextState].getColorData(), palettes[lastState].getColorData())) {
+
+    //        auto textureData = palettes[nextState].getColorData();
+    //        immutable ColorRGBA[1] emptyValue;
+
+    //        // Calculate texture height. Note: as a special case, if palette is empty we'll set height to 1
+    //        // and fill using filler values (since even if pallete is empty, not creating / uploading texture
+    //        // would be a bug).
+    //        auto textureHeight = textureData.length ?
+    //            (textureData.length - 1) / textureWidth + 1 : 1;
+
+    //        // Append values to texture data to fill full W x H array.
+    //        auto filler = textureWidth - textureData.length % textureWidth;
+    //        if (filler)
+    //            textureData ~= cycle(emptyValue).take(filler).array;
+
+    //        // set texture values (they're cached by the texture object, so they don't really get reset 
+    //        // every frame; this state effectively only gets set _once_), and upload palette data to the gpu.
+    //        texture.bind(GL_TEXTURE_2D, GL_TEXTURE0);
+    //        texture.setFiltering(GL_NEAREST);
+    //        texture.setSampling(GL_CLAMP_TO_BORDER);
+    //        //texture.setBorderColor([ 1.0f, 0.0f, 1.0f, 1.0f ]);
+    //        texture.setData(0, 0, textureWidth, textureHeight, textureData);
+    //    } else {
+    //        log.write("Retaining last state (gthread current = %d, last = %d, mt = %d)",
+    //            nextState, lastState, current);
+    //    }
+    //}
+}
 
 @property auto DebugRenderer () { return DebugLineRenderer2D.instance; }
 class DebugLineRenderer2D {
@@ -84,19 +227,46 @@ class DebugLineRenderer2D {
         float[]   vbuffer;
         auto vao = new VAO();
 
-        protected void render (ref mat4 transform) {
-            if (!vbuffer.length)
-                return;
-
-            glState.enableDepthTest(false);
-            glState.enableTransparency(true);
-
-            DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
-                VertexData(vbuffer.ptr, vbuffer.length * float.sizeof, [
-                    VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
-                ])
+        struct VArray (GLenum prim, T) {
+            T[] data;
+            auto vao = new VAO();
+            void draw (VertexAttrib[] attribs) {
+                if (data.length) {
+                    DynamicRenderer.drawArrays(vao, prim, 0, cast(int)data.length, [
+                        VertexData(data.ptr, data.length * T.sizeof, attribs)
+                    ]);
+                }
+            }
+        }
+        VArray!(GL_TRIANGLES, PackedVertex_palettedColor) palettedTris;
+        protected void drawPaletted () {
+            palettedTris.draw([
+                VertexAttrib(0, 3, GL_FLOAT, GL_FALSE, PackedVertex_palettedColor.sizeof, cast(void*)(0)),
+                VertexAttrib(1, 1, GL_UNSIGNED_SHORT, GL_FALSE, PackedVertex_palettedColor.sizeof, cast(void*)(float.sizeof * 3)),
             ]);
         }
+        //protected void render (ref mat4 transform) {
+        //    if (!vbuffer.length)
+        //        return;
+
+        //    glState.enableDepthTest(false);
+        //    glState.enableTransparency(true);
+
+        //    //DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
+        //    //    VertexData(vbuffer.ptr, vbuffer.length * float.sizeof, [
+        //    //        VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
+        //    //    ])
+        //    //]);
+
+        //    //if (tris) {
+        //    //    DynamicRenderer.drawArrays(triVao, GL_TRIANGLES, 0, cast(int)tris.length, [
+        //    //        VertexData(tris.ptr, tris.length * PackedVertexData.sizeof, [
+        //    //            VertexAttrib(0, 3, GL_FLOAT,        GL_FALSE, PackedVertexData.sizeof, cast(void*)(0)),
+        //    //            VertexAttrib(1, 1, GL_UNSIGNED_INT, GL_FALSE, PackedVertexData.sizeof, cast(void*)(float.sizeof * 3)),
+        //    //        ])
+        //    //    ]);
+        //    //}
+        //}
 
         protected void releaseResources () {
             vao.release();
@@ -104,6 +274,29 @@ class DebugLineRenderer2D {
     }
     private State[2] states;
     private int fstate = 0, gstate = 1;
+    private auto palette = new ColorPaletteCache();
+    private auto paletteTexture = new BufferTexture();
+
+    struct PackedVertex_palettedColor {
+        float x, y, z; uint colorIndex;
+    }
+
+    void mainThread_onFrameEnd () {
+        palette.swapState();
+    }
+
+    private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, Color color) {
+        auto index = palette.getCoord(color);
+        states[fstate].palettedTris.data ~= [
+            PackedVertex_palettedColor(a.x, a.y, 0, index),
+            PackedVertex_palettedColor(b.x, b.y, 0, index),
+            PackedVertex_palettedColor(d.x, d.y, 0, index),
+
+            PackedVertex_palettedColor(a.x, a.y, 0, index),
+            PackedVertex_palettedColor(d.x, d.y, 0, index),
+            PackedVertex_palettedColor(c.x, c.y, 0, index),
+        ];
+    }
 
     private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color, float edgeFactor) {
         states[fstate].vbuffer ~= [
@@ -211,7 +404,7 @@ class DebugLineRenderer2D {
 
     void drawLines (vec2[] points, Color color, float width, float edgeSamples = 2.0, float angle_cutoff = 15.0) {
         synchronized {
-            float packedColor = color.toPackedFloat();
+            //float packedColor = color.toPackedFloat();
 
             import std.math: PI, cos;
             float cutoff = -cos(angle_cutoff * PI / 180.0);
@@ -251,9 +444,10 @@ class DebugLineRenderer2D {
                 }
 
                 // Push quads
-                float edgeFactor = 1.0 + edgeSamples / (width - edgeSamples * 1.0);
+                //float edgeFactor = 1.0 + edgeSamples / (width - edgeSamples * 1.0);
                 for (auto i = tbuf.length; i >= 4; i -= 2) {
-                    pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], packedColor, edgeFactor);
+                    //pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], packedColor, edgeFactor);
+                    pushQuad(tbuf[i-4], tbuf[i-3], tbuf[i-2], tbuf[i-1], color);
                 }
             }
         }
@@ -276,32 +470,52 @@ class DebugLineRenderer2D {
                 pt.x + 0.5 * size, pt.y - k * size * 0.5,
                 pt.x - 0.5 * size, pt.y - k * size * 0.5,
             ];
-            states[fstate].vbuffer ~= [
-                verts[0], verts[1], edgeFactor, packedColor + 40 / 255.0,
-                verts[2], verts[3], edgeFactor, packedColor + 40 / 255.0,
-                pt.x,     pt.y,    0, packedColor + 40 / 255.0,
+            //states[fstate].vbuffer ~= [
+            //    verts[0], verts[1], edgeFactor, packedColor + 40 / 255.0,
+            //    verts[2], verts[3], edgeFactor, packedColor + 40 / 255.0,
+            //    pt.x,     pt.y,    0, packedColor + 40 / 255.0,
 
-                verts[2], verts[3], edgeFactor, packedColor + 40 / (255.0 * 255.0),
-                verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0),
-                pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0),
+            //    verts[2], verts[3], edgeFactor, packedColor + 40 / (255.0 * 255.0),
+            //    verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0),
+            //    pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0),
 
-                verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
-                verts[0], verts[1], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
-                pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0 * 255.0),
-            ];
+            //    verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
+            //    verts[0], verts[1], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
+            //    pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0 * 255.0),
+            //];
         }
     }
     void drawRect (vec2 a, vec2 b, Color color) {
-        pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color.toPackedFloat(), 1.0);
+        //pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color.toPackedFloat(), 1.0);
+        pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color);
     }
     void drawLineRect (vec2 a, vec2 b, Color color, float width) {
         drawLines([ vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), vec2(a.x, a.y) ],
             color, width);
     }
 
-    ColoredFragmentShader fs = null;
-    ColoredVertexShader   vs = null;
-    Program!(ColoredVertexShader,ColoredFragmentShader) program = null;
+    struct Shader(Fragment, Vertex) {
+        Vertex   vertex   = null;
+        Fragment fragment = null;
+        Program!(Vertex, Fragment) program = null;
+
+        void bind () {
+            if (!program) {
+                vertex   = new Vertex(); vertex.compile(); CHECK_CALL(format("compiling %s", fullyQualifiedName!Vertex));
+                fragment = new Fragment(); fragment.compile(); CHECK_CALL(format("compiling %s", fullyQualifiedName!Fragment));
+                program = makeProgram(vertex, fragment); CHECK_CALL(format("compling / linking %s, %s", fullyQualifiedName!Vertex, fullyQualifiedName!Fragment));
+            }
+            glState.bindShader(program.id);
+        }
+        alias program this;
+    }
+
+    Shader!(ColoredFragmentShader, ColoredVertexShader) oldShader;
+    Shader!(PalettedFragmentShader, PalettedVertexShader) paletteShader;
+
+    //ColoredFragmentShader fs = null;
+    //ColoredVertexShader   vs = null;
+    //Program!(ColoredVertexShader,ColoredFragmentShader) program = null;
     void renderFromGraphicsThread () {
         synchronized {
             if (fstate) fstate = 0, gstate = 1;
@@ -309,20 +523,33 @@ class DebugLineRenderer2D {
             states[fstate].vbuffer.length = 0;
         }
 
-        if (states[gstate].vbuffer.length) {
-            if (!program) {
-                fs = new ColoredFragmentShader(); fs.compile(); CHECK_CALL("compiling fragment shader");
-                vs = new ColoredVertexShader(); vs.compile(); CHECK_CALL("compiling vertex shader");
-                program = makeProgram(vs, fs); CHECK_CALL("compiling/linking shader program");
-            }
 
-            glState.bindShader(program.id);
+        paletteShader.bind();
 
-            program.transform = g_mainWindow.screenSpaceTransform(true);
-            auto transform = g_mainWindow.screenSpaceTransform(false); // non-transposed
-            states[gstate].render(transform);
-            glState.bindShader(0);
-        }
+        paletteTexture.bind(GL_TEXTURE0);
+        palette.updateTextureAndSwapState(GL_TEXTURE0, paletteTexture);
+
+        paletteShader.transform = g_mainWindow.screenSpaceTransform(true);
+        paletteShader.paletteSampler   = GL_TEXTURE0;
+        states[gstate].drawPaletted();
+
+        glState.bindShader(0);
+
+
+        //if (states[gstate].vbuffer.length) {
+        //    //if (!program) {
+        //    //    fs = new ColoredFragmentShader(); fs.compile(); CHECK_CALL("compiling fragment shader");
+        //    //    vs = new ColoredVertexShader(); vs.compile(); CHECK_CALL("compiling vertex shader");
+        //    //    program = makeProgram(vs, fs); CHECK_CALL("compiling/linking shader program");
+        //    //}
+        //    //glState.bindShader(program.id);
+
+        //    oldShader.bind();
+        //    oldShader.transform = g_mainWindow.screenSpaceTransform(true);
+        //    auto transform = g_mainWindow.screenSpaceTransform(false); // non-transposed
+        //    states[gstate].render(transform);
+        //    glState.bindShader(0);
+        //}
     }
 }
 
