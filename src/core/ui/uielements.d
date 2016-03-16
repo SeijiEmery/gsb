@@ -349,7 +349,7 @@ class UILayoutContainer : UIContainer {
         }
     }
     override void render () {
-        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe2020"), 1);
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe202050"), 1);
         foreach (elem; elements)
             elem.render();
     }
@@ -400,7 +400,7 @@ class UIFixedContainer : UIContainer {
             elem.doLayout();
     }
     override void render () {
-        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe2020"), 1);
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe202050"), 1);
         foreach (elem; elements)
             elem.render();
     }
@@ -456,7 +456,7 @@ class UIGraphView : UIElement {
                     pos.y + dim.y * (1 - (x - minv) / (maxv - minv)));
             DebugRenderer.drawLines(tmp, datasets[i].color, lineWidth, lineSamples);
         }
-        DebugRenderer.drawLineRect(pos, pos + dim, Color("#207f20"), 1);
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#207f2050"), 1);
 
         // tbd: draw lines...
     }

@@ -600,6 +600,9 @@ class DebugLineRenderer2D {
         //paletteShader.paletteSampler   = GL_TEXTURE0;
         //states[gstate].drawPaletted();
 
+        glState.enableTransparency(true);
+        glState.enableDepthTest(true, GL_LEQUAL);
+
         basicShader.bind();
         basicShader.transform = g_mainWindow.screenSpaceTransform(true);
         states[gstate].drawAttribTris();

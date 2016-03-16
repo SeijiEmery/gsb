@@ -10,6 +10,7 @@ import gl3n.linalg;
 public __gshared GLState glState;
 struct GLState {
     private bool depthTestEnabled = false;
+    private GLenum depthTestFunc  = GL_LESS;
     private bool transparencyEnabled = false;
     private GLuint lastBoundBuffer = 0;
     private GLuint lastBoundShader = 0;
@@ -17,12 +18,13 @@ struct GLState {
     private GLuint lastBoundTexture = 0;
     private uint lastActiveTexture = 0;
 
-    void enableDepthTest (bool enabled) {
-        if (depthTestEnabled != enabled) {
+    void enableDepthTest (bool enabled, GLenum depthTest = GL_LESS) {
+        if (depthTestEnabled != enabled || depthTestFunc != depthTest) {
             if ((depthTestEnabled = enabled) == true) {
+                depthTestFunc = depthTest;
                 //log.write("Enabling glDepthTest (GL_LESS)");
                 glEnable(GL_DEPTH_TEST);
-                glDepthFunc(GL_LESS);
+                glDepthFunc(depthTest);
             } else {
                 //log.write("Disabling glDepthTest");
                 glDisable(GL_DEPTH_TEST);

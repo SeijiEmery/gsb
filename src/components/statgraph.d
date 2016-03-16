@@ -319,18 +319,18 @@ class WidgetStatGraphModule : UIComponent {
 
         root = new UIContainer(vec2(), vec2(), cast(UIElement[])[
             graph = new GraphView(vec2(0, 400), vec2(400, 300), [
-                UIGraphView.DataSet(Color("#fe9e20"), () { return ORANGE_STATS; }),
-                UIGraphView.DataSet(Color("#dede20"), () { return YELLOW_STATS; }),
-                UIGraphView.DataSet(Color("#7efe7e"), () { return GREEN_STATS; }),
-                UIGraphView.DataSet(Color("#a0a0a0"), () { return [ 0.0f, 0.0f ]; }),
-                UIGraphView.DataSet(Color("#fe2020"), () { return getStats(MAIN_THREAD, cast(size_t)(30 / 100.0 * graph.dim.x)); }),
-                UIGraphView.DataSet(Color("#20fe20"), () { return getStats(GTHREAD,     cast(size_t)(30 / 100.0 * graph.dim.x)); }),
+                UIGraphView.DataSet(Color("#fe9e2040"), () { return ORANGE_STATS; }),
+                UIGraphView.DataSet(Color("#dede2040"), () { return YELLOW_STATS; }),
+                UIGraphView.DataSet(Color("#7efe7e40"), () { return GREEN_STATS; }),
+                UIGraphView.DataSet(Color("#a0a0a040"), () { return [ 0.0f, 0.0f ]; }),
+                UIGraphView.DataSet(Color("#fe202040"), () { return getStats(MAIN_THREAD, cast(size_t)(30 / 100.0 * graph.dim.x)); }),
+                UIGraphView.DataSet(Color("#20fe2040"), () { return getStats(GTHREAD,     cast(size_t)(30 / 100.0 * graph.dim.x)); }),
             ]),
             labels = new UIDecorators.ClampedRelativeTo!UILayoutContainer(graph,
                 RelLayoutDirection.HORIZONTAL, RelLayoutPosition.TOP_LEFT,
                 vec2(0,0), vec2(0,0), vec2(10,10), cast(UIElement[])[
-                    mainThreadLabel     = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe")), 
-                    graphicsThreadLabel = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe")), 
+                    mainThreadLabel     = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe70")), 
+                    graphicsThreadLabel = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe70")), 
                 ])
         ]);
     }
