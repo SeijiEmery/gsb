@@ -535,7 +535,12 @@ class UISlider : UIElement {
             },
             (ScrollEvent ev) {
                 if (mouseover) {
-                    value = clamp(value + ev.dir.y * scrollspeed * (maxValue - minValue) / (dim.x - sdim.x), minValue, maxValue);
+                    // For nicer scrolling on mac trackpads, we support both vertical scrolling (default) and horizontal scrolling
+                    // (for a horizontal slider, this feels much more natural; we _do_ need to invert horizontal scrolling though 
+                    //  (ie. apple's "natural" scrolling), since it actually makes sense here (slider should follow finger movements)).
+                    float delta = abs(ev.dir.y) > abs(ev.dir.x) ? ev.dir.y : -ev.dir.x;
+                    
+                    value = clamp(value + delta * scrollspeed * (maxValue - minValue) / (dim.x - sdim.x), minValue, maxValue);
                     return true;
                 }
                 return false;
