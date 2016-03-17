@@ -64,8 +64,8 @@ private class ModuleController : UIComponent {
                 return event.handle!(
                     (MouseButtonEvent evt) {
                         if (mouseover && evt.pressed && evt.isLMB) {
-                            if (component.active) UIComponentManager.deleteComponent(component.name);
-                            else UIComponentManager.createComponent(component.name);
+                            if (component.active && component.name != MODULE_NAME) UIComponentManager.deleteComponent(component.name);
+                            else if (!component.active) UIComponentManager.createComponent(component.name);
                             updateStuff();
                             return true;
                         }
