@@ -14,7 +14,7 @@ public  ThreadLocalTagTracker tagTracker;
 // id, allowing us to store the id instead of the tag itself. We also store this in
 // thread-local data structures (lock-free), but we also need a global, shared structure 
 // to ensure uniqueness and consistency of tag ids across all threads.
-private struct TagDb {
+struct TagDb {
     private Mutex mutex;
     private TagIdType[string] tagIds;
     private string[TagIdType] registeredTags;
@@ -61,7 +61,7 @@ private struct TagDb {
 // Finally, it's worth noting that this structure has no mutexes / locks whatsoever, as it's
 // intended to be used purely in a thread-local context (hence the name).
 //
-private struct ThreadLocalTagTracker {
+struct ThreadLocalTagTracker {
     struct TagInfo {
         TagIdType id;
         short level = 0;

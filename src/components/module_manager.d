@@ -39,17 +39,9 @@ private class ModuleController : UIComponent {
     UIElement createUIForModule (UIComponent component_) {
 
         auto font = new Font(FONT, fontSize);
-
-
         class Foo : UITextElement {
             this (UIComponent component) {
-
-                log.write("in ctor");
-
                 super(vec2(0,0), vec2(0,0), vec2(5,5), "", font, INACTIVE_COLOR, BACKGROUND_COLOR);
-                
-                log.write("that went well...");
-
                 this.component = component;
                 updateStuff();
                 recalcDimensions();
