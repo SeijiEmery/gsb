@@ -52,9 +52,16 @@ private class TestModule : UIComponent {
                     ])
             ]);
     }
-    override void onComponentShutdown () {}
+    override void onComponentShutdown () {
+        if (root) {
+            root.release();
+            root = null;
+        }
+    }
 
     override void handleEvent (UIEvent event) {
+        if (!root)
+            return;
         event.handle!(
             (FrameUpdateEvent ev) {
                 root.recalcDimensions();

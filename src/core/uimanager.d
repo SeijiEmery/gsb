@@ -84,6 +84,11 @@ private class UIComponentManagerInstance {
         deferredInitCode ~= deferredCallback;
     }
 
+    // use for introspection, etc; used by module_manager.d
+    auto getComponentList () {
+        return registeredComponents;
+    }
+
     // Register component instance. Components are created once
     void registerComponent (UIComponent component, string name, bool active = true) {
         if (name in registeredComponents)
@@ -147,7 +152,7 @@ private class UIComponentManagerInstance {
                     return;
                 }
             }
-            assert(0);
+            //assert(0);
         }
     }
 }

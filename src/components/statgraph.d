@@ -335,7 +335,11 @@ class WidgetStatGraphModule : UIComponent {
         ]);
     }
     override void onComponentShutdown () {
-        root.release(); root = null; graph = null;
+        if (root) {
+            root.release();
+            root = null;
+            graph = null;
+        }
     }
     float[] getStats (string cat, size_t count) {
         import std.range;
@@ -380,6 +384,8 @@ class WidgetStatGraphModule : UIComponent {
 
 
     override void handleEvent (UIEvent event) {
+        if (!root)
+            return;
         event.handle!(
             (FrameUpdateEvent frame) {
                 mainThreadLabel.text = getLabelText("main-thread", MAIN_THREAD);
