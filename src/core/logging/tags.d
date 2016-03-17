@@ -1,9 +1,14 @@
 
 module gsb.core.logging.tags;
-
-
+import core.sync.mutex: Mutex;
+import std.format: format;
+import std.algorithm.iteration: map;
+import std.array;
 
 private alias TagIdType = ushort;
+
+private __gshared TagDb globalTagDb;
+public  ThreadLocalTagTracker tagTracker;
 
 // Global tag db / registry. Associates each unique string tag w/ a unique integer
 // id, allowing us to store the id instead of the tag itself. We also store this in
@@ -13,6 +18,7 @@ private struct TagDb {
     private Mutex mutex;
     private TagIdType[string] tagIds;
     private string[TagIdType] registeredTags;
+    private TagIdType nextId = 1;
 
     TagIdType getTagId (string tag) {
         synchronized (mutex) {
@@ -29,10 +35,10 @@ private struct TagDb {
             if (id in registeredTags)
                 return registeredTags[id];
         }
-        throw new Exception("No matching id store for %d! (internal error; fixme!)", id);
+        throw new Exception(format("No matching id store for %d! (internal error; fixme!)", id));
+        assert(0);
     }
 }
-
 
 
 // Thread-local tag storage + retrieval. Provides two functions:
@@ -80,7 +86,7 @@ private struct ThreadLocalTagTracker {
     }
     void pop (string tag) {
         assert(tag in trackedTagInfo);
-        if (--trackedTagInfo[tag] == 0)
+        if (--trackedTagInfo[tag].level == 0)
             dirtyTagList = true;
     }
 
@@ -97,10 +103,10 @@ private struct ThreadLocalTagTracker {
 
         cachedTagList.length = 0;
         cachedTagIdList.length = 0;
-        foreach (info, tag; trackedTagInfo) {
+        foreach (tag, info; trackedTagInfo) {
             if (info.level > 1) {
                 cachedTagList ~= tag;
-                cachedTagIdList ~= tag.id;
+                cachedTagIdList ~= info.id;
             }
         }
     }
@@ -121,7 +127,7 @@ private struct ThreadLocalTagTracker {
             cachedTagString;
     }
     string getTagStringFromIds (TagIdType[] tagIds) {
-        return formatTags(tagIds.map!((id) => registeredTags[id]; ));
+        return formatTagString(tagIds.map!((id) => registeredTags[id]).array);
     }
     private string formatTagString (string[] tags) {
         return tags.map!((t) => format("[%s]", t)).join("");
