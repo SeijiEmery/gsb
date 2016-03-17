@@ -51,13 +51,13 @@ class TextGeometryBuffer {
 
         synchronized (read) {
             packedData ~= [
-                q.x0, -q.y1, 0.0, q.s0, q.t1, color.r, color.g, color.b, color.a,   // flip y-axis
-                q.x1, -q.y0, 0.0, q.s1, q.t0, color.r, color.g, color.b, color.a,
-                q.x1, -q.y1, 0.0, q.s1, q.t1, color.r, color.g, color.b, color.a,
+                q.x0, -q.y1, 0.0, 1.0, q.s0, q.t1, color.r, color.g, color.b, color.a,   // flip y-axis
+                q.x1, -q.y0, 0.0, 1.0, q.s1, q.t0, color.r, color.g, color.b, color.a,
+                q.x1, -q.y1, 0.0, 1.0, q.s1, q.t1, color.r, color.g, color.b, color.a,
 
-                q.x0, -q.y1, 0.0, q.s0, q.t1, color.r, color.g, color.b, color.a,
-                q.x0, -q.y0, 0.0, q.s0, q.t0, color.r, color.g, color.b, color.a,
-                q.x1, -q.y0, 0.0, q.s1, q.t0, color.r, color.g, color.b, color.a,
+                q.x0, -q.y1, 0.0, 1.0, q.s0, q.t1, color.r, color.g, color.b, color.a,
+                q.x0, -q.y0, 0.0, 1.0, q.s0, q.t0, color.r, color.g, color.b, color.a,
+                q.x1, -q.y0, 0.0, 1.0, q.s1, q.t0, color.r, color.g, color.b, color.a,
             ];
         }
         needsUpdate = true;
@@ -87,9 +87,9 @@ class TextGeometryBuffer {
             if (!vao) vao = new VAO();
                 DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)(packedData.length / 9) * 3, [
                     VertexData(packedData.ptr, packedData.length * float.sizeof, [
-                        VertexAttrib(0, 3, GL_FLOAT, GL_FALSE, float.sizeof * 9, cast(void*)(0)),
-                        VertexAttrib(1, 2, GL_FLOAT, GL_FALSE, float.sizeof * 9, cast(void*)(float.sizeof * 3)),
-                        VertexAttrib(2, 4, GL_FLOAT, GL_FALSE, float.sizeof * 9, cast(void*)(float.sizeof * 7)),
+                        VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, float.sizeof * 10, cast(void*)(0)),
+                        VertexAttrib(1, 2, GL_FLOAT, GL_FALSE, float.sizeof * 10, cast(void*)(float.sizeof * 4)),
+                        VertexAttrib(2, 4, GL_FLOAT, GL_FALSE, float.sizeof * 10, cast(void*)(float.sizeof * 6)),
                     ])
                 ]);
         }

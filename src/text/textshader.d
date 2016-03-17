@@ -47,10 +47,16 @@ class TextFragmentShader: Shader!Fragment {
         // have to do this component-wise, b/c the fuckwad who wrote gl3n
         // DIDN'T IMPLEMENT COMPONENTWISE VECTOR MULTIPLICATION. Seriously, WTF.
         // (and if this library doesn't even use sse... -_-)
+
+        //fragColor = vec4(color.r, 0, 0, shadingColor.a);
+
         fragColor.r = shadingColor.r;
         fragColor.g = shadingColor.g;    
-        fragColor.b = shadingColor.b;    
-        fragColor.a = color.r;// 1.0 - (1.0 - color.r) * shadingColor.a;//(1.0 - color.r) * (1.0 - shadingColor.a);
+        fragColor.b = shadingColor.b;
+        fragColor.a = color.r * shadingColor.a;
+
+        //fragColor.a = 1.0;//shadingColor.a;    
+        //fragColor.a = color.r;// 1.0 - (1.0 - color.r) * shadingColor.a;//(1.0 - color.r) * (1.0 - shadingColor.a);
     }
 }
 
