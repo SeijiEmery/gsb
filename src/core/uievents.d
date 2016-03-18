@@ -15,7 +15,8 @@ import std.variant;
 // Events are ADTs (sum types). See std.variant and/or haskell.
 alias UIEvent = Algebraic!(
     FrameUpdateEvent, WindowResizeEvent, KeyboardEvent, TextEvent, MouseButtonEvent, 
-    MouseMoveEvent, ScrollEvent, GamepadButtonEvent, GamepadAxisEvent
+    MouseMoveEvent, ScrollEvent, GamepadButtonEvent, GamepadAxisEvent,
+    GamepadConnectedEvent, GamepadDisconnectedEvent
 );
 
 auto handle (Handler...)(UIEvent event) {
@@ -236,6 +237,11 @@ struct GamepadButtonEvent {
 struct GamepadAxisEvent {
     float[NUM_GAMEPAD_AXES] axes;
 
+    this (float[] axes) nothrow {
+        this.axes[0..NUM_GAMEPAD_AXES] = axes[0..NUM_GAMEPAD_AXES];
+    }
+
+
     @property auto AXIS_LX () { return axes[GamepadAxis.AXIS_LX]; }
     @property auto AXIS_LY () { return axes[GamepadAxis.AXIS_LY]; }
     @property auto AXIS_RX () { return axes[GamepadAxis.AXIS_RX]; }
@@ -248,6 +254,19 @@ struct GamepadAxisEvent {
     static UIEvent create (T...)(T args) nothrow { return UIEvent(GamepadAxisEvent(args)); }
 }
 
+struct GamepadConnectedEvent {
+    GamepadProfile profile;
+    string name;
+    uint numAxes, numButtons;
+
+    static UIEvent create (T...)(T args) nothrow { return UIEvent(GamepadConnectedEvent(args)); }
+}
+struct GamepadDisconnectedEvent {
+    GamepadProfile profile;
+    string name;
+    uint numAxes, numButtons;
+    static UIEvent create (T...)(T args) nothrow { return UIEvent(GamepadDisconnectedEvent(args)); }
+}
 
 
 

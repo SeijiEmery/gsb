@@ -2,7 +2,60 @@
 module gsb.core.gamepad;
 import gsb.core.log;
 import gsb.core.pseudosignals;
+import gsb.core.uimanager;
+import gsb.core.uievents;
+
 import Derelict.glfw3.glfw3;
+
+private class GamepadInputManager : IEventCollector {
+    GamepadManager!(GLFW_JOYSTICK_LAST+1) mgr;
+    UIEvent[] localEvents;
+    ISlot[] slots;
+    uint sinceLastPoll = 0;
+    immutable uint POLL_EVERY = 300;
+
+    this () {
+        mgr.onDeviceDetected.connect((const(GamepadState)* state) {
+            localEvents ~= GamepadConnectedEvent.create(state.profile, state.name, state.naxes, state.nbuttons);
+        });
+        mgr.onDeviceRemoved.connect((const(GamepadState)* state) {
+            localEvents ~= GamepadDisconnectedEvent.create(state.profile, state.name, state.naxes, state.nbuttons);
+        });
+        mgr.onGamepadButtonPressed.connect((GamepadButton button) {
+            localEvents ~= GamepadButtonEvent.create(button, true);
+        });
+        mgr.onGamepadButtonReleased.connect((GamepadButton button) {
+            localEvents ~= GamepadButtonEvent.create(button, false);
+        });
+        mgr.onGamepadAxesUpdate.connect((float[] axes) {
+            localEvents ~= GamepadAxisEvent.create(axes[0..NUM_GAMEPAD_AXES]);
+        });
+    }
+
+    UIEvent[] getEvents () {
+        localEvents.length = 0;
+        if (sinceLastPoll == 0) {
+            sinceLastPoll = POLL_EVERY - 1;
+            mgr.updateDeviceList();
+        } else {
+            --sinceLastPoll;
+        }
+        mgr.update();
+        return localEvents;
+    }
+}
+static this () {
+    UIComponentManager.runAtInit({
+        UIComponentManager.registerEventSource(
+            new GamepadInputManager());
+    });
+}
+
+
+
+
+
+
 
 // Directly ported from GLSandbox (c++ version)
 enum : ubyte {

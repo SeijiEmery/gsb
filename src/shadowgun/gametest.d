@@ -28,51 +28,127 @@ auto immutable INACTIVE_COLOR = Color(0.21, 0.22, 0.23, 0.79);
 private float numCirclePoints = 25;
 private float circleWidth = 0.04;
 
-class Player {
-    vec2 position;
+float GAME_UNITS_PER_SCREEN = 100.0;
+float DEFAULT_AGENT_MOVE_SPEED = 20.0;
+float AGENT_SIZE = 1.0;
 
-    this () {
-        position = vec2(g_mainWindow.screenDimensions) * 0.5;
-    }
 
-    bool handleEvent (UIEvent event) {
-        return false;
+float CURRENT_SCALE_FACTOR = 1.0;
+
+private mat3 gameToScreenSpaceTransform (float zoom = 1.0) {
+    float s = CURRENT_SCALE_FACTOR = zoom / GAME_UNITS_PER_SCREEN * g_mainWindow.screenDimensions.x;
+    return mat3.identity()
+        .scale(s, s, 1.0)
+        .translate(vec3(vec2(g_mainWindow.screenDimensions) * 0.5, 0.0));
+
+}
+
+
+
+
+
+interface IGameController { void handleEvent (UIEvent event); }
+interface IGameSystem     { void run (GameState state); }
+interface IGameRenderable { void draw (mat3 transform); }
+
+private class Agent : IGameRenderable {
+    Color color = ENEMY_COLOR;
+
+    vec2 position = vec2(0, 0);
+    vec2 dir;
+
+    void update (float speed) {
+        //log.write("update: %s + %s * %0.2f (%s) = %s", position, dir, speed * DEFAULT_AGENT_MOVE_SPEED, dir * speed * DEFAULT_AGENT_MOVE_SPEED, 
+        //    position + dir * speed * DEFAULT_AGENT_MOVE_SPEED);
+        position += dir * speed * DEFAULT_AGENT_MOVE_SPEED;
     }
-    void draw () {
-        DebugRenderer.drawCircle(position, 20.0, PLAYER_COLOR, circleWidth, 
+    void draw (mat3 transform) {
+        auto tpos = transform * vec3(position, 1.0);
+        DebugRenderer.drawCircle(tpos.xy, AGENT_SIZE * CURRENT_SCALE_FACTOR, PLAYER_COLOR, circleWidth, 
             cast(uint)numCirclePoints, 2.0);
+
+        log.write("draw: %s * transform = %s, size: %s * %0.2f = %s", position, tpos, AGENT_SIZE, CURRENT_SCALE_FACTOR, AGENT_SIZE * CURRENT_SCALE_FACTOR);
+    }
+}
+
+
+
+private class GameState {
+    IGameSystem[] systems;
+    Agent   player;
+    Agent[] agents;
+    float simSpeed = 1.0;
+    float zoom = 1.0;
+
+    this (IGameSystem[] systems, Agent player, Agent[] agents) {
+        this.systems = systems;
+        this.agents = [ player ] ~ agents;
+        this.player = player;
+    }
+
+    void update (float dt = 1 / 60.0) {
+        foreach (system; systems)
+            system.run(this);
+        foreach (agent; agents)
+            agent.update(simSpeed * dt);
+    }
+
+    void draw () {
+        auto transform = gameToScreenSpaceTransform(zoom);
+        foreach (agent; agents)
+            agent.draw(transform);
+    }
+}
+
+private class PlayerController : IGameController {
+    Agent player;
+    this (Agent agent) {
+        agent.color = PLAYER_COLOR;
+        this.player = agent;
+    }
+
+    void handleEvent (UIEvent event) {
+        event.handle!(
+            (GamepadAxisEvent ev) {
+                player.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
+            },
+            () {});
     }
 }
 
 private class GameModule : UIComponent {
-
-    Player player;
+    IGameController[] controllers;
+    GameState gameState;
 
     override void onComponentInit () {
-        player = new Player();
+        auto player = new Agent();
+        controllers ~= new PlayerController(player);
+
+        gameState = new GameState([], player, []);
     }
     override void onComponentShutdown () {
-        player = null;
+        controllers.length = 0;
+        gameState = null;
     }
     override void handleEvent (UIEvent event) {
-        if (!player)
-            return;
-
-        event.handle!(
-            (FrameUpdateEvent ev) {
-                player.draw();
-            },
-            (ScrollEvent ev) {
-                //numCirclePoints = max(3, numCirclePoints + ev.dir.y);
-                //log.write("set circle points = %d", cast(uint)numCirclePoints);
-                log.write("set circle width = %0.2f", circleWidth = max(0.0, circleWidth + ev.dir.y * 0.05));
-
-                player.handleEvent(event);
-            },
-            () {
-                player.handleEvent(event);
-            }
-        );
+        if (controllers.length) {
+            event.handle!(
+                (FrameUpdateEvent ev) {
+                    gameState.update();
+                    gameState.draw();
+                    return true;
+                },
+                (ScrollEvent ev) {
+                    log.write("set zoom = %0.2f", gameState.zoom += ev.dir.y * 0.05);
+                    return false;
+                },
+                () { return false; }
+            ) || fireControllerEvents(event);
+        }
+    }
+    void fireControllerEvents (UIEvent event) {
+        foreach (controller; controllers)
+            controller.handleEvent(event);
     }
 }
 
