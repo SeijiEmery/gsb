@@ -16,7 +16,7 @@ import Derelict.glfw3.glfw3;
 
 shared static this () {
     UIComponentManager.runAtInit({
-        UIComponentManager.registerComponent(new UITestModule(), "uiTestModule", false);
+        UIComponentManager.registerComponent(new UITestModule(), "line-test", false);
     });
 }
 
@@ -24,7 +24,7 @@ class UITestModule : UIComponent {
     vec2 lastPos;
     float size;
     vec2[] points;
-    int lineSamples = 1;
+    int lineSamples;
     Color triangleColor;
 
     override void onComponentInit () {
@@ -32,7 +32,7 @@ class UITestModule : UIComponent {
         lastPos = vec2(0, 0);
         size = 50.0;
         points.length = 0;
-        lineSamples = 1;
+        lineSamples = 2;
     }
     override void onComponentShutdown () {}
 
@@ -81,13 +81,13 @@ class UITestModule : UIComponent {
                 triangleColor.r += frame.dt * 0.5;
                 if (triangleColor.r > 1.0) triangleColor.r -= 1.0;
 
-                DebugRenderer.drawTri(lastPos, triangleColor, size, cast(float)lineSamples);
+                //DebugRenderer.drawTri(lastPos, triangleColor, size, cast(float)lineSamples);
 
                 if (points.length) {
                     if (points[$-1] != lastPos)
-                        DebugRenderer.drawLines(points ~ [lastPos], Color("#e37f2d"), 0.1 * size, lineSamples);
+                        DebugRenderer.drawLines(points ~ [lastPos], Color("#e37f2d20"), 0.1 * size, lineSamples);
                     else
-                        DebugRenderer.drawLines(points, Color("#e37f2d"), 0.1 * size, cast(float)lineSamples);
+                        DebugRenderer.drawLines(points, Color("#e37f2d20"), 0.1 * size, cast(float)lineSamples);
                 }
                 return false;
             },

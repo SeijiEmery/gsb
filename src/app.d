@@ -164,11 +164,11 @@ void mainThread (Tid graphicsThreadId) {
 
 	registerDefaultFonts();
 
-	auto text2 = new TextFragment(
-		"Hello world!\nü@asdlfj;\n",
-		new Font("menlo", 32),
-		Color("#ffaaff"),
-		vec2(0,0));
+	//auto text2 = new TextFragment(
+	//	"Hello world!\nü@asdlfj;\n",
+	//	new Font("menlo", 32),
+	//	Color("#ffaaff"),
+	//	vec2(0,0));
 
 	UIComponentManager.init();
 

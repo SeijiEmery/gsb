@@ -14,6 +14,7 @@ import dglsl;
 import gl3n.linalg;
 
 import std.algorithm.comparison;
+import std.math;
 
 import core.sync.mutex;
 import std.traits;
@@ -540,6 +541,17 @@ class DebugLineRenderer2D {
                 throw new Exception(format("drawPolygon requires > 3 points (not %d: %s)", points.length, points));
             }
         }
+    }
+
+    void drawCircle (vec2 center, float radius, Color color, float width, uint numPoints = 80, float samples = 1.0) {
+        vec2[] points;
+        foreach (i; 0 .. numPoints) {
+            points ~= vec2(
+                center.x + radius * cos(PI * 2 * cast(float)i / cast(float)numPoints),
+                center.y + radius * sin(PI * 2 * cast(float)i / cast(float)numPoints));
+        }
+        drawPolygon(points, color, width, samples);
+        //drawLineRect(center - vec2(radius, radius), center + vec2(radius, radius), color, width, samples);
     }
 
     void drawTri (vec2 pt, Color color, float size, float edgeSamples = 2.0) {
