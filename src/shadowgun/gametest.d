@@ -29,11 +29,20 @@ private float numCirclePoints = 25;
 private float circleWidth = 0.04;
 
 float GAME_UNITS_PER_SCREEN = 100.0;
-float DEFAULT_AGENT_MOVE_SPEED = 20.0;
+float DEFAULT_AGENT_MOVE_SPEED = 30.0;
 float AGENT_SIZE = 1.0;
-
+float AGENT_FIRE_INTERVAL = 0.12;
 
 float CURRENT_SCALE_FACTOR = 1.0;
+
+float FIRE_OFFSET = 0.01;
+float FIRE_LINE_LENGTH = 100.0;  // game units
+float FIRE_LINE_WIDTH  = 0.01;    // game units
+float FIRE_LINE_CHARGE_DURATION = 0.16;  // seconds
+float FIRE_LINE_STATIC_DURATION = 0.035;  // seconds; should equal 3 frames @60 hz
+
+
+float AGENT_ALIGNMENT_DISTANCE = 40.0;
 
 private mat3 gameToScreenSpaceTransform (float zoom = 1.0) {
     float s = CURRENT_SCALE_FACTOR = zoom / GAME_UNITS_PER_SCREEN * g_mainWindow.screenDimensions.x;
@@ -43,19 +52,19 @@ private mat3 gameToScreenSpaceTransform (float zoom = 1.0) {
 
 }
 
-
-
-
-
 interface IGameController { void handleEvent (UIEvent event); }
-interface IGameSystem     { void run (GameState state); }
+interface IGameSystem     { void run (GameState state, float dt); }
 interface IGameRenderable { void draw (mat3 transform); }
 
 private class Agent : IGameRenderable {
     Color color = ENEMY_COLOR;
 
     vec2 position = vec2(0, 0);
-    vec2 dir;
+    vec2 dir      = vec2(0, 0);
+
+    vec2 fireDir;
+    bool wantsToFire = false;
+    float timeSinceLastFired = 0.0;
 
     void update (float speed) {
         //log.write("update: %s + %s * %0.2f (%s) = %s", position, dir, speed * DEFAULT_AGENT_MOVE_SPEED, dir * speed * DEFAULT_AGENT_MOVE_SPEED, 
@@ -64,14 +73,108 @@ private class Agent : IGameRenderable {
     }
     void draw (mat3 transform) {
         auto tpos = transform * vec3(position, 1.0);
-        DebugRenderer.drawCircle(tpos.xy, AGENT_SIZE * CURRENT_SCALE_FACTOR, PLAYER_COLOR, circleWidth, 
+        DebugRenderer.drawCircle(tpos.xy, AGENT_SIZE * CURRENT_SCALE_FACTOR, color, circleWidth, 
             cast(uint)numCirclePoints, 2.0);
 
-        log.write("draw: %s * transform = %s, size: %s * %0.2f = %s", position, tpos, AGENT_SIZE, CURRENT_SCALE_FACTOR, AGENT_SIZE * CURRENT_SCALE_FACTOR);
+        //log.write("draw: %s * transform = %s, size: %s * %0.2f = %s", position, tpos, AGENT_SIZE, CURRENT_SCALE_FACTOR, AGENT_SIZE * CURRENT_SCALE_FACTOR);
     }
 }
 
+private class FiringSystem : IGameSystem {
+    void run (GameState state, float dt) {
+        foreach (agent; state.agents) {
+            if (agent.wantsToFire && (agent.timeSinceLastFired -= dt) < 0) {
+                agent.timeSinceLastFired = AGENT_FIRE_INTERVAL;
+                state.fireBurst(agent.position, agent.fireDir, agent.color);
+            }
+        }
+    }
+}
 
+private class EnemyPursuitSystem : IGameSystem {
+    void run (GameState state, float dt) {
+        auto futurePlayerDir = state.player.position + state.player.dir * DEFAULT_AGENT_MOVE_SPEED * 1.0;
+        auto futurePlayerTarget = state.player.position + state.player.dir * (FIRE_LINE_CHARGE_DURATION) * DEFAULT_AGENT_MOVE_SPEED; // this is evil, lol
+
+        foreach (agent; state.agents) {
+            if (agent == state.player)
+                continue;
+            if (distance(agent.position, state.player.position) > 20.0) {
+                agent.dir = (futurePlayerDir - agent.position).normalized();
+            }
+            //agent.fireDir = (state.player.position - agent.position).normalized();
+            agent.fireDir = (futurePlayerTarget - agent.position).normalized();
+            agent.wantsToFire = true;
+        }
+    }
+}
+
+//private class FlockingEnemyController : IGameSystem {
+//    Agent target;
+//    Agent[] agents;
+
+//    this (Agent target) {
+//        this.target = target;
+//    }
+//    void add (Agent agent) {
+//        agents ~= agent;
+//    }
+//    void run (GameState state, float dt) {
+//        auto center = vec2(0, 0);
+//        foreach (agent; agents)
+//            center += agent.position;
+//        center /= cast(float)agents.length;
+
+//        foreach (i; 0 .. agents.length) {
+//            foreach (j; i+1 .. agents.length) {
+
+//            }
+//        }
+//    }
+//}
+
+
+private class FireLine {
+    Color color;
+    vec2 start, dir;
+    float t, chargeDuration, staticDuration;
+
+    this (Color color, vec2 start, vec2 dir, float chargeDuration, float staticDuration) {
+        this.color = color;
+        this.start = start;
+        this.dir = dir;
+
+        this.t = chargeDuration;
+        this.chargeDuration = chargeDuration;
+        this.staticDuration = staticDuration;
+    }
+    bool update (float dt) {
+        return !((t -= dt) < 0 && abs(t) > staticDuration);
+    }
+    void draw (mat3 transform) {
+
+
+        //vec3 p1 = transform * vec3(start + dir * FIRE_OFFSET * CURRENT_SCALE_FACTOR, 1.0);
+        vec3 p1 = transform * vec3(start + dir * FIRE_OFFSET, 1.0);
+        vec3 p2 = transform * vec3(start + dir * FIRE_LINE_LENGTH, 1.0);
+
+        //log.write("Drawing: %s, %s (t = %s)", p1, p2, t);
+
+        auto colorInterp = t > 0 ?
+            (chargeDuration - t) / chargeDuration * 0.5 :
+            1.0 + 0.2 * t / staticDuration;
+
+        colorInterp = colorInterp * colorInterp;
+
+        auto c = Color(
+            color.r * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.g * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.b * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.a * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+        );
+        DebugRenderer.drawLines([ p1.xy, p2.xy ], c, FIRE_LINE_WIDTH * CURRENT_SCALE_FACTOR);
+    }
+}
 
 private class GameState {
     IGameSystem[] systems;
@@ -80,37 +183,73 @@ private class GameState {
     float simSpeed = 1.0;
     float zoom = 1.0;
 
-    this (IGameSystem[] systems, Agent player, Agent[] agents) {
-        this.systems = systems;
-        this.agents = [ player ] ~ agents;
+    FireLine[] fireLines;
+
+    this (Agent player) {
+        this.systems = [
+            cast(IGameSystem)new FiringSystem(),
+            cast(IGameSystem)new EnemyPursuitSystem(),
+        ];
+        this.agents = [ player ];
         this.player = player;
     }
 
     void update (float dt = 1 / 60.0) {
         foreach (system; systems)
-            system.run(this);
+            system.run(this, simSpeed * dt);
         foreach (agent; agents)
             agent.update(simSpeed * dt);
+
+        for (auto i = fireLines.length; i --> 0; ) {
+            if (!fireLines[i].update(simSpeed * dt)) {
+                fireLines[i] = fireLines[$-1];
+                fireLines.length -= 1;
+            }
+        }
     }
 
     void draw () {
         auto transform = gameToScreenSpaceTransform(zoom);
+        foreach (thing; fireLines)
+            thing.draw(transform);
         foreach (agent; agents)
             agent.draw(transform);
+    }
+
+    void fireBurst (vec2 pos, vec2 dir, Color color) {
+        fireLines ~= new FireLine(color, pos, dir, FIRE_LINE_CHARGE_DURATION, FIRE_LINE_STATIC_DURATION);
+    }
+
+    void createEnemy (vec2 pos) {
+        auto enemy = new Agent(); 
+        enemy.position = pos;        
+        agents      ~= enemy;
     }
 }
 
 private class PlayerController : IGameController {
     Agent player;
-    this (Agent agent) {
+    GameState gameState;
+
+    this (Agent agent, GameState gameState) {
         agent.color = PLAYER_COLOR;
         this.player = agent;
+        this.gameState = gameState;
     }
 
     void handleEvent (UIEvent event) {
         event.handle!(
             (GamepadAxisEvent ev) {
                 player.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
+                gameState.simSpeed = 1.0 - ev.AXIS_RT;
+
+                player.fireDir = player.dir;
+            },
+            (GamepadButtonEvent ev) {
+                if (ev.button == BUTTON_X)
+                    player.wantsToFire = ev.pressed;
+                else if (ev.button == BUTTON_Y && ev.pressed)
+                    gameState.createEnemy(vec2(0, 0));
             },
             () {});
     }
@@ -122,9 +261,9 @@ private class GameModule : UIComponent {
 
     override void onComponentInit () {
         auto player = new Agent();
-        controllers ~= new PlayerController(player);
+        gameState = new GameState(player);
 
-        gameState = new GameState([], player, []);
+        controllers ~= new PlayerController(player, gameState);
     }
     override void onComponentShutdown () {
         controllers.length = 0;
