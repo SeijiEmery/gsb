@@ -13,6 +13,8 @@ import gsb.core.color;
 import gsb.core.window;
 import gl3n.linalg;
 
+import std.random;
+
 
 
 shared static this () {
@@ -30,8 +32,11 @@ private float circleWidth = 0.04;
 
 float GAME_UNITS_PER_SCREEN = 100.0;
 float DEFAULT_AGENT_MOVE_SPEED = 30.0;
+float AGENT_JUMP_LENGTH = 4.0;
+float AGENT_JUMP_INTERVAL = 0.16;
+
 float AGENT_SIZE = 1.0;
-float AGENT_FIRE_INTERVAL = 0.12;
+float AGENT_FIRE_INTERVAL = 0.08;
 
 float CURRENT_SCALE_FACTOR = 1.0;
 
@@ -40,7 +45,6 @@ float FIRE_LINE_LENGTH = 100.0;  // game units
 float FIRE_LINE_WIDTH  = 0.01;    // game units
 float FIRE_LINE_CHARGE_DURATION = 0.16;  // seconds
 float FIRE_LINE_STATIC_DURATION = 0.035;  // seconds; should equal 3 frames @60 hz
-
 
 float AGENT_ALIGNMENT_DISTANCE = 40.0;
 
@@ -56,15 +60,39 @@ interface IGameController { void handleEvent (UIEvent event); }
 interface IGameSystem     { void run (GameState state, float dt); }
 interface IGameRenderable { void draw (mat3 transform); }
 
+enum AgentId : ubyte {
+    ENEMY = 0,
+    PLAYER_1 = 1,
+    PLAYER_2 = 2,
+    PLAYER_3 = 3,
+    PLAYER_4 = 4,
+    INACTIVE = 5,
+    WALL     = 6,
+}
+immutable Color[] AGENT_COLORS = [
+    Color(0.93, 0.07, 0.05, 0.86), // ENEMY
+    Color(0.28, 0.69, 0.72, 0.63), // PLAYER 1
+    Color(1.00, 0.71, 0.00, 0.67), // ...
+    Color(1.00, 0.14, 0.19, 0.67), 
+    Color(0.28, 0.75, 0.26, 0.63), // PLAYER 4
+    Color(0.44, 0.44, 0.44, 0.63), // INACTIVE
+    Color(0.21, 0.22, 0.23, 0.79), // WALL
+];
+
+
+
+
 private class Agent : IGameRenderable {
     Color color = ENEMY_COLOR;
 
     vec2 position = vec2(0, 0);
     vec2 dir      = vec2(0, 0);
 
-    vec2 fireDir;
+    vec2 fireDir = vec2(0, 0);
     bool wantsToFire = false;
+    bool wantsToJump = false;
     float timeSinceLastFired = 0.0;
+    float timeSinceLastJumped = 0.0;
 
     void update (float speed) {
         //log.write("update: %s + %s * %0.2f (%s) = %s", position, dir, speed * DEFAULT_AGENT_MOVE_SPEED, dir * speed * DEFAULT_AGENT_MOVE_SPEED, 
@@ -83,9 +111,13 @@ private class Agent : IGameRenderable {
 private class FiringSystem : IGameSystem {
     void run (GameState state, float dt) {
         foreach (agent; state.agents) {
-            if (agent.wantsToFire && (agent.timeSinceLastFired -= dt) < 0) {
+            if ((agent.timeSinceLastFired -= dt) < 0 && agent.wantsToFire) {
                 agent.timeSinceLastFired = AGENT_FIRE_INTERVAL;
                 state.fireBurst(agent.position, agent.fireDir, agent.color);
+            }
+            if ((agent.timeSinceLastJumped -= dt) < 0 && agent.wantsToJump) {
+                agent.timeSinceLastJumped = AGENT_JUMP_INTERVAL;
+                agent.position += agent.dir * AGENT_JUMP_LENGTH;
             }
         }
     }
@@ -96,15 +128,43 @@ private class EnemyPursuitSystem : IGameSystem {
         auto futurePlayerDir = state.player.position + state.player.dir * DEFAULT_AGENT_MOVE_SPEED * 1.0;
         auto futurePlayerTarget = state.player.position + state.player.dir * (FIRE_LINE_CHARGE_DURATION) * DEFAULT_AGENT_MOVE_SPEED; // this is evil, lol
 
+        //log.write("%s", state.agents.map!("a.position.toString()").join(", "));
         foreach (agent; state.agents) {
             if (agent == state.player)
                 continue;
-            if (distance(agent.position, state.player.position) > 20.0) {
+
+            if (distance(agent.position, state.player.position) > 40.0 || (!agent.dir.x && !agent.dir.y)) {
                 agent.dir = (futurePlayerDir - agent.position).normalized();
             }
+
+            auto sep_force = vec2(0,0);
+            foreach (neighbor; state.agents)
+                if (neighbor != state.player && neighbor.position != agent.position)
+                    sep_force += (neighbor.position - agent.position);
+            //log.write("%s", sep_force);
+
+            immutable float WEIGHT = 1.0;
+
+            //agent.dir += sep_force * 1e-2;
+
+            if (sep_force.x != 0 && sep_force.y != 0) {
+                sep_force.x = WEIGHT / (sep_force.x * sep_force.x);
+                sep_force.y = WEIGHT / (sep_force.y * sep_force.y);
+
+                //auto MAX_FORCE = WEIGHT * 2;
+                //sep_force.x = min(MAX_FORCE, max(-MAX_FORCE, sep_force.x));
+                //sep_force.y = min(MAX_FORCE, max(-MAX_FORCE, sep_force.y));
+
+                agent.dir += sep_force * 1.5;
+            }
+            agent.dir.normalize();
+
+            //log.write("%s, %s", sep_force, agent.dir);
+            //agent.dir += sep_force * -1.0e-3;
+
             //agent.fireDir = (state.player.position - agent.position).normalized();
             agent.fireDir = (futurePlayerTarget - agent.position).normalized();
-            agent.wantsToFire = true;
+            agent.wantsToFire = false;
         }
     }
 }
@@ -242,12 +302,16 @@ private class PlayerController : IGameController {
             (GamepadAxisEvent ev) {
                 player.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
                 gameState.simSpeed = 1.0 - ev.AXIS_RT;
+                //log.write("%0.2f", gameState.simSpeed);
 
-                player.fireDir = player.dir;
+                if (player.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
+                    player.fireDir = vec2(ev.AXIS_LX, ev.AXIS_LY).normalized();
             },
             (GamepadButtonEvent ev) {
                 if (ev.button == BUTTON_X)
                     player.wantsToFire = ev.pressed;
+                else if (ev.button == BUTTON_A)
+                    player.wantsToJump = ev.pressed;
                 else if (ev.button == BUTTON_Y && ev.pressed)
                     gameState.createEnemy(vec2(0, 0));
             },
