@@ -247,6 +247,15 @@ private enum LayoutBitmask : ubyte {
     Y_LAYOUT_SHIFT = 3, // shift to put TOP,BTM,YCENTER into range (0,4]
 }
 
+private vec2 get_layout_scalars (ubyte layout) {
+    immutable float[4] x_layout_scalars = [ float.nan, 0, 1, 0.5 ]; // UNDEFINED, LEFT, RIGHT, XCENTER
+    immutable float[4] y_layout_scalars = [ float.nan, 0, 1, 0.5 ]; // UNDEFINED, TOP,  BTM,   YCENTER
+
+    return vec2(
+        x_layout_scalars[(layout & LayoutBitmask.X_LAYOUT_MASK) >> LayoutBitmask.X_LAYOUT_SHIFT],
+        y_layout_scalars[(layout & LayoutBitmask.Y_LAYOUT_MASK) >> LayoutBitmask.Y_LAYOUT_SHIFT]);
+}
+
 // Dynamic, autolayouted element container.
 class UILayoutContainer : UIContainer {
     private vec2 contentDim = vec2(0,0);
@@ -301,35 +310,25 @@ class UILayoutContainer : UIContainer {
         auto ylayout = layout & LayoutBitmask.Y_LAYOUT_MASK;
         assert(xlayout != 0 && ylayout != 0);
 
-        vec2 inner;
-        switch (xlayout) {
-            case LayoutBitmask.LEFT: inner.x = 0; break;
-            case LayoutBitmask.RIGHT: inner.x = dim.x - padding.x * 2 - contentDim.x; break;
-            case LayoutBitmask.CENTER: inner.x = 0.5 * (dim.x - padding.x * 2 - contentDim.x); break;
-            default: assert(0, "invalid layout value");
+        // Why the hell doesn't gl3n have this?!
+        vec2 component_mul (vec2 a, vec2 b) {
+            return a.x *= b.x, a.y *= b.y, a;
         }
-        switch (ylayout) {
-            case LayoutBitmask.TOP: inner.y = 0; break;
-            case LayoutBitmask.BTM: inner.y = dim.x - padding.y * 2 - contentDim.x; break;
-            case LayoutBitmask.CENTER: inner.y = 0.5 * (dim.x - padding.y * 2 - contentDim.x); break;
-            default: assert(0, "invalid layout value");
-        }
+
+        // layout scalars: LEFT/TOP = 0.0, RIGHT/BTM = 1.0, CENTER = 0.5
+        auto layoutScalars = get_layout_scalars(layout);
+        auto inner = component_mul(layoutScalars, dim - padding * 2 - contentDim);
 
         auto next = inner + pos + pad;
         if (dir == LayoutBitmask.HORIZONTAL) {
-            assert((dir >> Layout.Y_LAYOUT_SHIFT) <= 3);
-            immutable float [3] offset_scalars = [ 0, 1, 0.5 ]; // TOP, BTM, CENTER
-            auto koffs = offset_scalars[dir >> LayoutBitmask.Y_LAYOUT_SHIFT];
-
+            auto koffs = layoutScalars.y;
             foreach (elem; elements) {
                 elem.pos = next + vec2(0, koffs * (contentDim.y - elem.dim.y));
                 next.x += elem.dim.x + spacing;
             }
         } else {
             assert((dir >> Layout.X_LAYOUT_SHIFT) <= 3);
-            immutable float [3] offset_scalars = [ 0, 1, 0.5 ]; // LEFT, RIGHT, CENTER
-            auto koffs = offset_scalars[dir >> LayoutBitmask.X_LAYOUT_SHIFT];
-
+            auto koffs = layoutScalars.x;
             foreach (elem; elements) {
                 elem.pos = next + vec2(koffs * (contentDim.x - elem.dim.x), 0);
                 next.y += elem.dim.y + spacing;
