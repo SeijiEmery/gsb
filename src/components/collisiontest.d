@@ -80,9 +80,8 @@ private class TestModule : UIComponent {
         contents ~= buttons.values();
 
 
-        root = new UIDecorators.Draggable!UILayoutContainer(
-            RelLayoutDirection.VERTICAL, RelLayoutPosition.TOP_LEFT,
-            vec2(20, 20), vec2(0, 0), vec2(10, 10), cast(UIElement[])contents);
+        root = new UIDecorators.Draggable!UILayoutContainer(LayoutDir.VERTICAL, Layout.TOP_LEFT,
+            vec2(20, 20), vec2(0, 0), vec2(10, 10), 0.0, cast(UIElement[])contents);
     }
     override void onComponentShutdown () {
         if (root) {

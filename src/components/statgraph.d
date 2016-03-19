@@ -327,8 +327,8 @@ class WidgetStatGraphModule : UIComponent {
                 UIGraphView.DataSet(Color("#20fe2040"), () { return getStats(GTHREAD,     cast(size_t)(30 / 100.0 * graph.dim.x)); }),
             ]),
             labels = new UIDecorators.ClampedRelativeTo!UILayoutContainer(graph,
-                RelLayoutDirection.HORIZONTAL, RelLayoutPosition.TOP_LEFT,
-                vec2(0,0), vec2(0,0), vec2(10,10), cast(UIElement[])[
+                LayoutDir.HORIZONTAL, Layout.TOP_LEFT,
+                vec2(0,0), vec2(0,0), vec2(10,10), 0.0, cast(UIElement[])[
                     mainThreadLabel     = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe70")), 
                     graphicsThreadLabel = new UITextElement(vec2(),vec2(), vec2(5,5), "", new Font(FONT, fontSize), Color("#fe7efe"), Color("#7e7efe70")), 
                 ])
@@ -395,12 +395,12 @@ class WidgetStatGraphModule : UIComponent {
 
                 // automatically switch labels between vertical + horizontal layouts depending on graph size
                 auto maxwidth = labels.elements.map!"a.dim.x".reduce!"a+b" + labels.padding.x;
-                if (labels.relDirection == RelLayoutDirection.HORIZONTAL && graph.dim.x < maxwidth) {
-                    labels.relDirection = RelLayoutDirection.VERTICAL;
+                if (labels.direction == LayoutDir.HORIZONTAL && graph.dim.x < maxwidth) {
+                    labels.direction = LayoutDir.VERTICAL;
                     labels.recalcDimensions();
                     labels.doLayout();
-                } else if (labels.relDirection == RelLayoutDirection.VERTICAL && graph.dim.x >= maxwidth) {
-                    labels.relDirection = RelLayoutDirection.HORIZONTAL;
+                } else if (labels.direction == LayoutDir.VERTICAL && graph.dim.x >= maxwidth) {
+                    labels.direction = LayoutDir.HORIZONTAL;
                     labels.recalcDimensions();
                     labels.doLayout();
                 }

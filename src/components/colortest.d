@@ -45,17 +45,15 @@ private class TestModule : UIComponent {
         auto SLIDER_COLOR     = Color(0.8, 0.6, 0.6, 0.5);
         auto BACKGROUND_COLOR = Color(0.5, 0.7, 0.5, 0.5);
 
-        root = new UIDecorators.Draggable!UILayoutContainer(
-            RelLayoutDirection.HORIZONTAL, RelLayoutPosition.CENTER,
-            vec2(200, 100), vec2(0, 0), vec2(10, 12), cast(UIElement[])[
-                //new UILayoutContainer(RelLayoutDirection.VERTICAL, RelLayoutPosition.CENTER, vec2(), vec2(), vec2(10, 10), cast(UIElement[])[
+        root = new UIDecorators.Draggable!UILayoutContainer(LayoutDir.HORIZONTAL, Layout.CENTER,
+            vec2(200, 100), vec2(0, 0), vec2(10, 12), 0.0, cast(UIElement[])[
+                //new UILayoutContainer(LayoutDir.VERTICAL, Layout.CENTER, vec2(), vec2(), vec2(10, 10), 0.0, cast(UIElement[])[
                     cbox = new UIBox(vec2(0,0), vec2(200,180), Color(1,0,0,1)),
                     ctext = new UITextElement(vec2(), vec2(), vec2(10,10), "Color Demo", new Font(FONT, fontSize), Color(1,0,0,1), Color(1,0,0,1)),
                 //]),
-                new UILayoutContainer(
-                    RelLayoutDirection.VERTICAL, RelLayoutPosition.CENTER,
-                    vec2(0,0), vec2(0,0), vec2(10,10), cast(UIElement[])[
-                        //new UILayoutContainer(RelLayoutDirection.HORIZONTAL, RelLayoutPosition.CENTER, vec2(), vec2(), vec2(10,10), cast(UIElement[])[
+                new UILayoutContainer(LayoutDir.VERTICAL, Layout.CENTER,
+                    vec2(0,0), vec2(0,0), vec2(10,10), 0.0, cast(UIElement[])[
+                        //new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.TOP_LEFT, vec2(), vec2(), vec2(10,10), 0.0, cast(UIElement[])[
                             buttons[ColorType.RGB] = new UITextElement(vec2(),vec2(),vec2(3,3), "RGB", new Font(FONT,fontSize), ACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
                             buttons[ColorType.HSV] = new UITextElement(vec2(),vec2(),vec2(3,3), "HSV", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
                             buttons[ColorType.HSL] = new UITextElement(vec2(),vec2(),vec2(3,3), "HSL", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),

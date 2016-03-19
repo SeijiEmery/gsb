@@ -212,42 +212,46 @@ class UIContainer : UIElement {
 
 enum LayoutDir : ubyte { HORIZONTAL = 0, VERTICAL = 1 };
 enum Layout : ubyte {
-    HORIZONTAL = LayoutBitmask.HORIZONTAL,
-    VERTICAL   = LayoutBitmask.VERTICAL,
+    TOP_LEFT, TOP_CENTER, TOP_RIGHT,
+    CENTER_LEFT, CENTER, CENTER_RIGHT,
+    BTM_LEFT, BTM_CENTER, BTM_RIGHT
+}
+Layout nextLayout (Layout layout) { return cast(Layout)((layout + 1) % 9); }
+Layout prevLayout (Layout layout) { return cast(Layout)((layout - 1) % 9); }
 
-    TOP_LEFT   = LayoutBitmask.TOP | LayoutBitmask.LEFT,
-    TOP_RIGHT  = LayoutBitmask.TOP | LayoutBitmask.LEFT,
-    TOP_CENTER = LayoutBitmask.TOP | LayoutBitmask.XCENTER,
+private LayoutBitmask toBitmask (Layout layout) {
+    immutable ubyte[9] bitmasks = [
+        LayoutBitmask.TOP | LayoutBitmask.LEFT,
+        LayoutBitmask.TOP | LayoutBitmask.XCENTER,
+        LayoutBitmask.TOP | LayoutBitmask.RIGHT,
+        
+        LayoutBitmask.YCENTER | LayoutBitmask.LEFT,
+        LayoutBitmask.YCENTER | LayoutBitmask.XCENTER,
+        LayoutBitmask.YCENTER | LayoutBitmask.RIGHT,
 
-    CENTER_LEFT   = LayoutBitmask.YCENTER | LayoutBitmask.LEFT,
-    CENTER_RIGHT  = LayoutBitmask.YCENTER | LayoutBitmask.LEFT,
-    CENTER        = LayoutBitmask.YCENTER | LayoutBitmask.XCENTER,
-
-    BTM_LEFT   = LayoutBitmask.BTM | LayoutBitmask.LEFT,
-    BTM_RIGHT  = LayoutBitmask.BTM | LayoutBitmask.LEFT,
-    BTM_CENTER = LayoutBitmask.BTM | LayoutBitmask.XCENTER,
+        LayoutBitmask.BTM | LayoutBitmask.LEFT,
+        LayoutBitmask.BTM | LayoutBitmask.XCENTER,
+        LayoutBitmask.BTM | LayoutBitmask.RIGHT,
+    ];
+    assert(layout >= 0 && layout <= 9, format("Invalid layout %d", layout));
+    return cast(LayoutBitmask)bitmasks[layout];
 }
 
 private enum LayoutBitmask : ubyte {
-    HORIZONTAL = 0x0,
-    VERTICAL   = 0x1,
-    LAYOUT_DIR_MASK = 0x1,
-    LAYOUT_DIR_SHIFT = 0,
-    
-    LEFT       = 0x2,
-    RIGHT      = 0x4,
-    XCENTER    = 0x6,
-    X_LAYOUT_MASK = 0x6,
-    X_LAYOUT_SHIFT = 1,  // shift to put LEFT,RIGHT,XCENTER into range (0,4]
+    LEFT       = 0x1,
+    RIGHT      = 0x2,
+    XCENTER    = 0x3,
+    X_LAYOUT_MASK = 0x3,
+    X_LAYOUT_SHIFT = 0,  // shift to put LEFT,RIGHT,XCENTER into range (0,4]
 
-    TOP        = 0x8,
-    BTM        = 0x10,
-    YCENTER    = 0x18,
-    Y_LAYOUT_MASK = 0x18,
-    Y_LAYOUT_SHIFT = 3, // shift to put TOP,BTM,YCENTER into range (0,4]
+    TOP        = 0x4,
+    BTM        = 0x8,
+    YCENTER    = 0xC,
+    Y_LAYOUT_MASK = 0xC,
+    Y_LAYOUT_SHIFT = 2, // shift to put TOP,BTM,YCENTER into range (0,4]
 }
 
-private vec2 get_layout_scalars (ubyte layout) {
+private vec2 get_layout_scalars (LayoutBitmask layout) {
     immutable float[4] x_layout_scalars = [ float.nan, 0, 1, 0.5 ]; // UNDEFINED, LEFT, RIGHT, XCENTER
     immutable float[4] y_layout_scalars = [ float.nan, 0, 1, 0.5 ]; // UNDEFINED, TOP,  BTM,   YCENTER
 
@@ -262,25 +266,25 @@ class UILayoutContainer : UIContainer {
     public  vec2 padding;
     public  float spacing;
 
-    public Layout layout;
+    public Layout    layout;
+    public LayoutDir direction;
 
-    this (Layout layout, 
+    this (LayoutDir layoutDir, Layout layout, 
         vec2 pos, vec2 dim, 
         vec2 padding, 
         float spacing, 
         UIElement[] elements
     ) {
         super(pos, dim, elements);
-        this.layout = layout;
+        this.layout    = layout;
+        this.direction = layoutDir;
         this.padding = padding;
         this.spacing = spacing;
     }
 
     override void recalcDimensions () {
-        auto dir = layout & LayoutBitmask.LAYOUT_DIR_MASK;
-
         contentDim = vec2(0, 0);
-        if (dir == LayoutBitmask.HORIZONTAL) {
+        if (direction == LayoutDir.HORIZONTAL) {
             if (elements.length)
                 contentDim.x += spacing * (elements.length - 1);
             foreach (elem; elements) {
@@ -293,7 +297,7 @@ class UILayoutContainer : UIContainer {
                 contentDim.y += spacing * (elements.length - 1);
             foreach (elem; elements) {
                 elem.recalcDimensions();
-                contentDim.x = mac(contentDim.x, elem.dim.x);
+                contentDim.x = max(contentDim.x, elem.dim.x);
                 contentDim.y += elem.dim.y;
             }
         }
@@ -305,33 +309,29 @@ class UILayoutContainer : UIContainer {
         if (!elements.length)
             return;
 
-        auto dir = layout & LayoutBitmask.LAYOUT_DIR_MASK;
-        auto xlayout = layout & LayoutBitmask.X_LAYOUT_MASK;
-        auto ylayout = layout & LayoutBitmask.Y_LAYOUT_MASK;
-        assert(xlayout != 0 && ylayout != 0);
-
         // Why the hell doesn't gl3n have this?!
         vec2 component_mul (vec2 a, vec2 b) {
             return a.x *= b.x, a.y *= b.y, a;
         }
 
         // layout scalars: LEFT/TOP = 0.0, RIGHT/BTM = 1.0, CENTER = 0.5
-        auto layoutScalars = get_layout_scalars(layout);
+        auto layoutScalars = get_layout_scalars(layout.toBitmask);
         auto inner = component_mul(layoutScalars, dim - padding * 2 - contentDim);
 
-        auto next = inner + pos + pad;
-        if (dir == LayoutBitmask.HORIZONTAL) {
+        auto next = inner + pos + padding;
+        if (direction == LayoutDir.HORIZONTAL) {
             auto koffs = layoutScalars.y;
             foreach (elem; elements) {
                 elem.pos = next + vec2(0, koffs * (contentDim.y - elem.dim.y));
                 next.x += elem.dim.x + spacing;
+                elem.doLayout();
             }
         } else {
-            assert((dir >> Layout.X_LAYOUT_SHIFT) <= 3);
             auto koffs = layoutScalars.x;
             foreach (elem; elements) {
                 elem.pos = next + vec2(koffs * (contentDim.x - elem.dim.x), 0);
                 next.y += elem.dim.y + spacing;
+                elem.doLayout();
             }
         }
     }

@@ -92,8 +92,8 @@ private class ModuleController : UIComponent {
             label.recalcDimensions();
 
         root = container = new UIDecorators.Draggable!UILayoutContainer(
-            RelLayoutDirection.VERTICAL, RelLayoutPosition.TOP_LEFT,
-            vec2(5, 700), vec2(0,0), vec2(10,10), labels
+            LayoutDir.VERTICAL, Layout.TOP_LEFT,
+            vec2(5, 700), vec2(0,0), vec2(10,10), 0.0, labels
         );
     }
     override void onComponentShutdown () {

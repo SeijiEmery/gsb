@@ -32,14 +32,14 @@ private class TestModule : UIComponent {
 
     override void onComponentInit () {
         root = new UIDecorators.Draggable!UILayoutContainer(
-            RelLayoutDirection.VERTICAL, RelLayoutPosition.CENTER_TOP,
-            vec2(200, 300), vec2(400, 600), vec2(10, 12), cast(UIElement[])[
+            LayoutDir.VERTICAL, Layout.TOP_CENTER,
+            vec2(200, 300), vec2(400, 600), vec2(10, 12), 0.0, cast(UIElement[])[
                 text1 = new UITextElement(
                     vec2(300, 400), vec2(200, 100), vec2(5,5), "Hello World!", 
                     new Font(FONT, fontSize), Color(1f,1f,0f,1f), Color("#feefde")),
                 inner = new UILayoutContainer(
-                    RelLayoutDirection.HORIZONTAL, RelLayoutPosition.CENTER_TOP,
-                    vec2(0, 0), vec2(0, 0), vec2(5, 5), cast(UIElement[])[
+                    LayoutDir.HORIZONTAL, Layout.TOP_CENTER,
+                    vec2(0, 0), vec2(0, 0), vec2(5, 5), 0.0, cast(UIElement[])[
                         text2 = new UITextElement(
                             vec2(300, 400), vec2(200, 100), vec2(5,5), "Foo", 
                             new Font(FONT, fontSize), Color("#00fe00fe"), Color("#feefde")),
@@ -65,14 +65,14 @@ private class TestModule : UIComponent {
                 if (root.mouseover && ev.pressed && ev.isRMB) {
                     auto x = cast(UIDecorators.Draggable!UILayoutContainer)root;
                     if (!ev.shift) {
-                        x.relPosition = cast(RelLayoutPosition)((x.relPosition + 1) % 9);
-                        inner.relPosition = cast(RelLayoutPosition)((inner.relPosition + 1) % 9);
+                        x.layout     = nextLayout(x.layout);
+                        inner.layout = nextLayout(inner.layout);
                     } else {
-                        x.relDirection = cast(RelLayoutDirection)((x.relDirection + 1) % 2);
-                        inner.relDirection = cast(RelLayoutDirection)((inner.relDirection + 1) % 2);
+                        x.direction = cast(LayoutDir)((x.direction + 1) % 2);
+                        inner.direction = cast(LayoutDir)((inner.direction + 1) % 2);
                         x.dim = inner.dim = vec2(0, 0);
                     }
-                    log.write("set to %s, %s", x.relDirection, x.relPosition);
+                    log.write("set to %s, %s", x.direction, x.layout);
                 } else if (root.mouseover && ev.pressed && ev.isLMB) {
                     cc = (cc + 1) % 4;
                     root.handleEvents(event);
