@@ -85,6 +85,9 @@ class Font {
     @property auto lineHeight () {
         return _data.lineHeight * getScale(1.0);
     }
+    @property auto lineOffsetY () {
+        return _data.lineOffsetY * getScale(1.0);
+    }
 
 
     @property int pixelSize () { return cast(int)_size; }
@@ -110,6 +113,7 @@ class Font {
         }
         return max(maxWidth, lineWidth);
     }
+
 
     // temp stuff for integrating w/ old textrenderer
     private float _stbFontScale;
@@ -153,15 +157,26 @@ class FontData {
 
     protected this () {}
 
-    private float cachedLineHeight;
+    private float cachedLineHeight, cachedLineOffsetY;
+
+    private void recalcVMetrics () {
+        int ascent, descent, linegap;
+        stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &linegap);
+        cachedLineHeight = ascent - descent + linegap;
+        cachedLineOffsetY = descent;
+    }
+
     @property float lineHeight () {
-        if (isNaN(cachedLineHeight)) {
-            int ascent, descent, linegap;
-            stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &linegap);
-            cachedLineHeight = ascent - descent + linegap;
-        }
+        if (isNaN(cachedLineHeight))
+            recalcVMetrics();
         return cachedLineHeight;
     }
+    @property float lineOffsetY () {
+        if (isNaN(cachedLineOffsetY))
+            recalcVMetrics();
+        return cachedLineOffsetY;
+    }
+
     private float[dchar] cachedAdvMetrics;
     float getAdvanceWidth (dchar chr) {
         if (chr !in cachedAdvMetrics) {

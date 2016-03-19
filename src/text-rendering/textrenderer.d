@@ -59,7 +59,7 @@ class TextFragment {
         fstate.text = text;
         fstate.font = font;
         fstate.color = color;
-        fstate.position = position;
+        fstate.position = position + offset;
         id = _nextId++;
         attach();
     }
@@ -97,9 +97,9 @@ class TextFragment {
     @property void color (Color v) {
         synchronized { fstate.color = v; dirtyState = true; }
     }
-    @property auto position () { return fstate.position; }
+    @property auto position () { return fstate.position - offset; }
     @property void position (vec2 v) {
-        synchronized { fstate.position = v; dirtyState = true; }
+        synchronized { fstate.position = v + offset; dirtyState = true; }
     }
     @property auto bounds () {
         synchronized { return dirtyBounds ? calcBounds() : cachedBounds; }
@@ -107,6 +107,10 @@ class TextFragment {
     private auto calcBounds () {
         dirtyBounds = false;
         return cachedBounds = fstate.font.calcPixelBounds(fstate.text);
+    }
+    // represents v-offset that text should be rendered at
+    private @property auto offset () {
+        return vec2(0, fstate.font.lineOffsetY);
     }
 
     protected int currentAtlas = -1;
