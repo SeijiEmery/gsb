@@ -19,12 +19,6 @@ private auto clamp (T) (T x, T minv, T maxv) {
     return min(max(x, minv), maxv);
 }
 
-enum RelLayoutDirection : ubyte { HORIZONTAL, VERTICAL };
-enum RelLayoutPosition  : ubyte {
-    CENTER, CENTER_LEFT, CENTER_RIGHT, CENTER_TOP, CENTER_BTM,
-    TOP_LEFT, TOP_RIGHT, BTM_LEFT, BTM_RIGHT
-}
-
 class UIElement : IResource, IRenderable, ILayoutable {
     vec2 pos, dim;
     bool mouseover = false;
@@ -216,43 +210,83 @@ class UIContainer : UIElement {
     }
 }
 
+enum LayoutDir : ubyte { HORIZONTAL = 0, VERTICAL = 1 };
+enum Layout : ubyte {
+    HORIZONTAL = LayoutBitmask.HORIZONTAL,
+    VERTICAL   = LayoutBitmask.VERTICAL,
+
+    TOP_LEFT   = LayoutBitmask.TOP | LayoutBitmask.LEFT,
+    TOP_RIGHT  = LayoutBitmask.TOP | LayoutBitmask.LEFT,
+    TOP_CENTER = LayoutBitmask.TOP | LayoutBitmask.XCENTER,
+
+    CENTER_LEFT   = LayoutBitmask.YCENTER | LayoutBitmask.LEFT,
+    CENTER_RIGHT  = LayoutBitmask.YCENTER | LayoutBitmask.LEFT,
+    CENTER        = LayoutBitmask.YCENTER | LayoutBitmask.XCENTER,
+
+    BTM_LEFT   = LayoutBitmask.BTM | LayoutBitmask.LEFT,
+    BTM_RIGHT  = LayoutBitmask.BTM | LayoutBitmask.LEFT,
+    BTM_CENTER = LayoutBitmask.BTM | LayoutBitmask.XCENTER,
+}
+
+private enum LayoutBitmask : ubyte {
+    HORIZONTAL = 0x0,
+    VERTICAL   = 0x1,
+    LAYOUT_DIR_MASK = 0x1,
+    LAYOUT_DIR_SHIFT = 0,
+    
+    LEFT       = 0x2,
+    RIGHT      = 0x4,
+    XCENTER    = 0x6,
+    X_LAYOUT_MASK = 0x6,
+    X_LAYOUT_SHIFT = 1,  // shift to put LEFT,RIGHT,XCENTER into range (0,4]
+
+    TOP        = 0x8,
+    BTM        = 0x10,
+    YCENTER    = 0x18,
+    Y_LAYOUT_MASK = 0x18,
+    Y_LAYOUT_SHIFT = 3, // shift to put TOP,BTM,YCENTER into range (0,4]
+}
+
 // Dynamic, autolayouted element container.
 class UILayoutContainer : UIContainer {
-    private vec2 contentDim;
+    private vec2 contentDim = vec2(0,0);
     public  vec2 padding;
+    public  float spacing;
 
-    public RelLayoutDirection relDirection;
-    public RelLayoutPosition  relPosition;
+    public Layout layout;
 
-    this (typeof(relDirection) relDirection, typeof(relPosition) relPosition, 
-        vec2 pos, vec2 dim, vec2 padding,
+    this (Layout layout, 
+        vec2 pos, vec2 dim, 
+        vec2 padding, 
+        float spacing, 
         UIElement[] elements
     ) {
         super(pos, dim, elements);
-        this.relDirection = relDirection;
-        this.relPosition = relPosition;
+        this.layout = layout;
         this.padding = padding;
+        this.spacing = spacing;
     }
 
     override void recalcDimensions () {
+        auto dir = layout & LayoutBitmask.LAYOUT_DIR_MASK;
+
         contentDim = vec2(0, 0);
-        final switch (relDirection) {
-            case RelLayoutDirection.HORIZONTAL: {
-                foreach (elem; elements) {
-                    elem.recalcDimensions();
-                    contentDim.x += elem.dim.x;
-                    if (elem.dim.y > contentDim.y)
-                        contentDim.y = elem.dim.y;
-                }
-            } break;
-            case RelLayoutDirection.VERTICAL: {
-                foreach (elem; elements) {
-                    elem.recalcDimensions();
-                    contentDim.y += elem.dim.y;
-                    if (elem.dim.x > contentDim.x)
-                        contentDim.x = elem.dim.x;
-                }
-            } break;
+        if (dir == LayoutBitmask.HORIZONTAL) {
+            if (elements.length)
+                contentDim.x += spacing * (elements.length - 1);
+            foreach (elem; elements) {
+                elem.recalcDimensions();
+                contentDim.x += elem.dim.x;
+                contentDim.y = max(contentDim.y, elem.dim.y);
+            }
+        } else {
+            if (elements.length)
+                contentDim.y += spacing * (elements.length - 1);
+            foreach (elem; elements) {
+                elem.recalcDimensions();
+                contentDim.x = mac(contentDim.x, elem.dim.x);
+                contentDim.y += elem.dim.y;
+            }
         }
         dim = vec2(
             max(dim.x, contentDim.x + padding.x * 2.0),
@@ -262,92 +296,43 @@ class UILayoutContainer : UIContainer {
         if (!elements.length)
             return;
 
-        bool horizontal = relDirection == RelLayoutDirection.HORIZONTAL;
-        auto flex = dim - contentDim;
+        auto dir = layout & LayoutBitmask.LAYOUT_DIR_MASK;
+        auto xlayout = layout & LayoutBitmask.X_LAYOUT_MASK;
+        auto ylayout = layout & LayoutBitmask.Y_LAYOUT_MASK;
+        assert(xlayout != 0 && ylayout != 0);
 
-        vec2 center, offs;
-        final switch (relPosition) {
-            case RelLayoutPosition.CENTER: {
-                if (horizontal) {
-                    center = flex * 0.5;
-                    offs   = vec2(0.0, 0.0);
-                } else {
-                    center = flex * 0.5 + elements[0].dim * 0.5;
-                    offs   = vec2(0.5, 0.5);
-                } 
-            } break;
-            case RelLayoutPosition.CENTER_TOP: {
-                if (horizontal) {
-                    center = vec2(flex.x * 0.5, padding.y);
-                    offs   = vec2(0.0, 0.0);
-                } else {
-                    center = vec2(flex.x * 0.5, padding.y) + elements[0].dim * 0.5;
-                    offs   = vec2(0.5, 0.5);
-                }
-            } break;
-            case RelLayoutPosition.CENTER_BTM: {
-                if (horizontal) {
-                    center = vec2(flex.x * 0.5, flex.y - padding.y);
-                    offs   = vec2(0.0, 0.0);
-                } else {
-                    center = vec2(flex.x * 0.5, flex.y - padding.y) + elements[0].dim * 0.5;
-                    offs   = vec2(0.5, 0.5);
-                }
-            } break;
-
-            case RelLayoutPosition.CENTER_LEFT: {
-                center = vec2(padding.x, flex.y * 0.5);
-                offs   = vec2(0, 0);
-            } break;
-            case RelLayoutPosition.TOP_LEFT: {
-                center = padding;
-                offs   = vec2(0, 0);
-            } break;
-            case RelLayoutPosition.BTM_LEFT: {
-                center = vec2(padding.x, flex.y - padding.y);
-                offs   = vec2(0, 0);
-            } break;
-
-            case RelLayoutPosition.CENTER_RIGHT: {
-                if (horizontal) {
-                    center = vec2(flex.x - padding.x, flex.y * 0.5);
-                    offs   = vec2(0, 0);
-                } else {
-                    center = vec2(dim.x - padding.x, flex.y * 0.5);
-                    offs   = vec2(1, 0);
-                }
-            } break;            
-            case RelLayoutPosition.TOP_RIGHT: {
-                if (horizontal) {
-                    center = vec2(flex.x - padding.x, padding.y);
-                    offs   = vec2(0, 0);
-                } else {
-                    center = vec2(dim.x - padding.x, padding.y);
-                    offs   = vec2(1, 0);
-                }
-            } break;
-            case RelLayoutPosition.BTM_RIGHT: {
-                if (horizontal) {
-                    center = vec2(flex.x - padding.x, flex.y - padding.y);
-                    offs   = vec2(0, 0);
-                } else {
-                    center = vec2(dim.x, flex.y) - padding;
-                    offs   = vec2(1, 0);  
-                }
-            } break;
+        vec2 inner;
+        switch (xlayout) {
+            case LayoutBitmask.LEFT: inner.x = 0; break;
+            case LayoutBitmask.RIGHT: inner.x = dim.x - padding.x * 2 - contentDim.x; break;
+            case LayoutBitmask.CENTER: inner.x = 0.5 * (dim.x - padding.x * 2 - contentDim.x); break;
+            default: assert(0, "invalid layout value");
+        }
+        switch (ylayout) {
+            case LayoutBitmask.TOP: inner.y = 0; break;
+            case LayoutBitmask.BTM: inner.y = dim.x - padding.y * 2 - contentDim.x; break;
+            case LayoutBitmask.CENTER: inner.y = 0.5 * (dim.x - padding.y * 2 - contentDim.x); break;
+            default: assert(0, "invalid layout value");
         }
 
-        if (horizontal) {
+        auto next = inner + pos + pad;
+        if (dir == LayoutBitmask.HORIZONTAL) {
+            assert((dir >> Layout.Y_LAYOUT_SHIFT) <= 3);
+            immutable float [3] offset_scalars = [ 0, 1, 0.5 ]; // TOP, BTM, CENTER
+            auto koffs = offset_scalars[dir >> LayoutBitmask.Y_LAYOUT_SHIFT];
+
             foreach (elem; elements) {
-                elem.pos = pos + center - vec2(elem.dim.x * offs.x, elem.dim.y * offs.y);
-                center.x += elem.dim.x;
-                elem.doLayout();
+                elem.pos = next + vec2(0, koffs * (contentDim.y - elem.dim.y));
+                next.x += elem.dim.x + spacing;
             }
         } else {
+            assert((dir >> Layout.X_LAYOUT_SHIFT) <= 3);
+            immutable float [3] offset_scalars = [ 0, 1, 0.5 ]; // LEFT, RIGHT, CENTER
+            auto koffs = offset_scalars[dir >> LayoutBitmask.X_LAYOUT_SHIFT];
+
             foreach (elem; elements) {
-                elem.pos = pos + center - vec2(elem.dim.x * offs.x, elem.dim.y * offs.y);
-                center.y += elem.dim.y;
-                elem.doLayout();
+                elem.pos = next + vec2(koffs * (contentDim.x - elem.dim.x), 0);
+                next.y += elem.dim.y + spacing;
             }
         }
     }
