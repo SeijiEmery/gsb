@@ -7,7 +7,7 @@ import std.algorithm.comparison;
 import std.algorithm.mutation;
 
 struct Collision2d {
-    struct AABB {
+    static struct AABB {
         vec2 p1, p2;
 
         this (vec2 p1, vec2 p2) {
@@ -21,21 +21,21 @@ struct Collision2d {
         @property auto height () { return p2.y - p2.y; }
         @property auto center () { return (p1 + p2) * 0.5; }
     }
-    struct OBB {
+    static struct OBB {
         vec2 center, dim, dir;
     }
-    struct Circle {
+    static struct Circle {
         vec2 center; float radius;
     }
-    struct LineSegment {
+    static struct LineSegment {
         vec2 p1, p2; float width;
     }
-    struct PolyLine {
+    static struct PolyLine {
         vec2[] points; float width;
     }
     // represents the union of two equal-sized circles, and a box joining them.
     // used for realtime collisions of moving circles (circle_t1, circle_t2)
-    struct Capsule {
+    static struct Capsule {
         vec2 p1, p2; float width;
         // Actually, it looks like this is the exact definition of a line segment
         // w/ width + rounded eges (if line width is potentially very large); 
@@ -43,7 +43,7 @@ struct Collision2d {
     }
 
     // misc algorithms
-    AABB bounds (vec2[] points) {
+    static AABB bounds (vec2[] points) {
         assert(points.length);
         vec2 a = points[0], b = points[1];
         foreach (p; points[1..$]) {
@@ -56,7 +56,7 @@ struct Collision2d {
         return AABB(a, b);
     }
 
-    AABB bounds (LineSegment line) {
+    static AABB bounds (LineSegment line) {
         auto a = min(line.p1, line.p2), b = max(line.p1, line.p2);
 
         a -= vec2(line.width, line.width);
@@ -66,7 +66,7 @@ struct Collision2d {
     }
 
 
-    AABB bounds (Circle circle) {
+    static AABB bounds (Circle circle) {
         return AABB(
             circle.center - vec2(circle.radius, circle.radius),
             circle.center + vec2(circle.radius, circle.radius));
@@ -76,39 +76,39 @@ struct Collision2d {
     // area is slightly smaller than box (for full extents see toMaxCircle), but
     // repeated calls of toMinCircle / fromCircle will return _approximately_ the same
     // circles / boxes, instead of growing w/out bound.
-    Circle toMinCircle (AABB box) {
+    static Circle toMinCircle (AABB box) {
         return Circle(box.center, max(box.width, box.height));
     }
 
     // returns a circle that fully contains box
-    Circle toMaxCircle (AABB box) {
+    static Circle toMaxCircle (AABB box) {
         return Circle(box.center, box.dim.length);
     }
 
-    bool intersects (Circle circle, vec2 pt) {
+    static bool intersects (Circle circle, vec2 pt) {
         return distance(circle.center, pt) <= circle.radius;
     }
-    bool intersects (AABB box, vec2 pt) {
+    static bool intersects (AABB box, vec2 pt) {
         return !(pt.x < box.p1.x || pt.x > box.p2.x
               || pt.y < box.p1.y || pt.y > box.p2.y);
     }
-    bool intersects (OBB box, vec2 pt) {
+    static bool intersects (OBB box, vec2 pt) {
         assert(0, "Unimplemented!");
     }
-    bool intersects (LineSegment line, vec2 pt) {
+    static bool intersects (LineSegment line, vec2 pt) {
         return line_pt_distance(line.p1, line.p2, pt) <= line.width;
     }
-    bool intersects (PolyLine line, vec2 pt) {
+    static bool intersects (PolyLine line, vec2 pt) {
         assert(0, "Unimplemented!");
     }
 
-    bool intersects (Circle a, Circle b) {
+    static bool intersects (Circle a, Circle b) {
         return distance(a.center, b.center) <= a.radius + b.radius;
     }
-    bool intersects (Circle a, AABB box) {
+    static bool intersects (Circle a, AABB box) {
         assert(0, "Unimplemented!");
     }
-    bool intersects (Circle a, LineSegment line) {
+    static bool intersects (Circle a, LineSegment line) {
         assert(0, "Unimplemented!");
     }
 
@@ -138,18 +138,6 @@ float line_pt_distance (vec2 v, vec2 w, vec2 p) {
     auto proj = v + t * (w - v);
     return distance(p, proj);
 }
-
-
-
-
-
-
-
-struct Circle {
-    vec2 center;
-    float r;
-}
-
 
 
 

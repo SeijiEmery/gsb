@@ -8,6 +8,7 @@ import gsb.core.window;
 import gsb.core.color;
 import gsb.text.textrenderer;
 import gsb.text.font;
+import gsb.core.collision2d;
 
 import gsb.core.ui.uielements;
 
@@ -25,10 +26,10 @@ shared static this () {
 
 class SubModule {
     public bool isActive = false;
-    abstract void onInit ();
-    abstract void onTeardown ();
-    abstract void draw ();
-    abstract bool handleEvent (UIEvent);
+    void onInit () {}
+    void onTeardown () {}
+    void draw () {}
+    bool handleEvent (UIEvent) { return false; }
 }
 
 private class TestModule : UIComponent {
@@ -67,8 +68,9 @@ private class TestModule : UIComponent {
 
     override void onComponentInit () {
         modules["point-circle test"] = new PointCircleTest();
-        modules["Point-rect test"]   = new PointRectTest();
-        activateModule(modules["point-circle test"]);
+        modules["point-rect test"]   = new PointRectTest();
+        modules["point-line test"]   = new PointLineTest();
+        activateModule(modules.values()[0]);
 
         auto font = new Font(FONT, fontSize);
         foreach (k, v; modules)
@@ -157,18 +159,144 @@ private class TestModule : UIComponent {
     }
 }
 
+@property auto screenCenter () { return 0.5 * vec2(g_mainWindow.screenDimensions); }
+float LINE_SAMPLES = 0;
+auto immutable INACTIVE_COLOR = Color(0.35, 0.35, 0.35, 1.0);
+auto immutable COLOR_RED     = Color(1, 0, 0, 1.0);
+auto immutable COLOR_GREEN   = Color(0, 1, 0, 1.0);
+auto immutable COLOR_BLUE    = Color(0.2, 0.2, 1, 1.0);
+auto immutable COLOR_CYAN    = Color(0, 1, 1, 1.0);
+auto immutable COLOR_MAGENTA = Color(1, 0, 1, 1.0);
+auto immutable COLOR_ORANGE  = Color(1, 0.8, 0, 1.0);
+
+import std.range: cycle;
+
+//immutable Color[6] _COLORS = ;
+auto immutable COLORS = cycle([ COLOR_RED, COLOR_GREEN, COLOR_BLUE, COLOR_CYAN, COLOR_MAGENTA, COLOR_ORANGE ]);
+
+
+
+class IShape {
+    abstract void draw (Color color, float lineWidth);
+}
+
+class Shape(T) : IShape {
+    T shape;
+    this (Args...)(Args args) {
+        shape = T(args);
+    }
+    override void draw (Color color, float lineWidth) {
+        draw(shape, color, lineWidth);
+    }
+}
+
+void drawShape (Collision2d.Circle circle, Color color, float lineWidth) {
+    uint numPoints = 80;
+    DebugRenderer.drawCircle(circle.center, circle.radius - lineWidth, color, lineWidth, numPoints, LINE_SAMPLES);
+}
+void drawShape (Collision2d.LineSegment line, Color color, float lineWidth) {
+
+    DebugRenderer.drawLines( [ line.p1, line.p2 ], color, line.width, LINE_SAMPLES );
+
+    // draw ends
+    uint numPoints = 80;
+    DebugRenderer.drawCircle(line.p1, line.width - lineWidth, color, lineWidth, numPoints, LINE_SAMPLES);
+    DebugRenderer.drawCircle(line.p2, line.width - lineWidth, color, lineWidth, numPoints, LINE_SAMPLES);
+}
+
+
+
+
+//class AABBShape : Shape {
+//    Collision2d.AABB box;
+//    this (Collision2d.AABB box, vec2 pos, Color color) { this.box = box; super(pos, color); }
+
+//    override void draw (float lineWidth) {
+//        DebugRenderer.drawLineRect(box.p1, box.p2, color, lineWidth, LINE_SAMPLES);
+//    }
+//}
+//class OBBShape : Shape {
+//    Collision2d.OBB box;
+//    this (Collision2d.OBB box, vec2 pos, Color color) { this.box = box; super(pos, color); }
+
+//    override void draw (float lineWidth) {
+//        throw new Exception("Unimplemented!");
+//        //DebugRenderer.drawPolygon(points..., color, lineWidth, LINE_SAMPLES);
+//    }
+//}
+//class CircleShape : Shape {
+//    Collision2d.Circle circle;
+//    this (Collision2d.Circle circle, vec2 pos, Color color) { this.circle = circle; super(pos, color); }
+
+//    override void draw (float lineWidth) {
+//        uint numPoints = 80;
+//        DebugRenderer.drawCircle(circle.center, circle.radius, color, lineWidth, numPoints, LINE_SAMPLES);
+//    }
+//}
+//class LineSegmentShape : Shape {
+//    Collision2d.LineSegment line;
+//    this (Collision2d.LineSegment line, vec2 pos, Color color) { this.line = line; super(pos, color); }
+
+//    override void draw (float lineWidth) {
+//        DebugRenderer.drawLines([ line.p1, line.p2 ], color, line.width, LINE_SAMPLES);
+//    }
+//}
+//class PolyLineShape : Shape {
+//    Collision2d.PolyLine line;
+//    this (Collision2d.PolyLine line, vec2 pos, Color color) { this.line = line; super(pos, color); }
+
+//    override void draw (float lineWidth) {
+//        DebugRenderer.drawLines(line.points, color, line.width, LINE_SAMPLES);
+//    }
+//}
 
 class PointCircleTest : SubModule {
-    override void onInit () {}
-    override void onTeardown () {}
-    override void draw () {}
-    override bool handleEvent (UIEvent event) { return false; }
+    Collision2d.Circle circle;
+    //Shape!(Collision2d.Circle) circle;
+    vec2 mousePos = vec2(0,0);
+
+    override void onInit () {
+        circle = Collision2d.Circle( screenCenter, 50.0 );
+        //circle = new Shape!Collision2d.Circle( screenCenter, 50.0 );
+    }
+    override void onTeardown () {
+        //circle = null;
+    }
+    override void draw () {
+        drawShape ( circle, Collision2d.intersects(circle, mousePos) ? COLOR_RED : INACTIVE_COLOR, 1 );
+    }
+    override bool handleEvent (UIEvent event) {
+        event.handle!(
+            (MouseMoveEvent ev) {
+                mousePos = ev.position;
+            },
+            () {}
+        );
+        return false;
+    }
 }
 class PointRectTest : SubModule {
     override void onInit () {}
     override void onTeardown () {}
     override void draw () {}
     override bool handleEvent (UIEvent event) { return false; }
+}
+
+class PointLineTest : SubModule {
+    Collision2d.LineSegment line;
+    vec2 mousePos;
+
+    override void onInit () {
+        line = Collision2d.LineSegment( screenCenter - vec2(200, 200), screenCenter + vec2(200, 200), 50 );
+    }
+    override void draw () {
+        auto color = Collision2d.intersects(line, mousePos) ? COLOR_RED : INACTIVE_COLOR;
+        drawShape(line, color, 1);
+    }
+    override bool handleEvent (UIEvent event) {
+        event.handle!((MouseMoveEvent ev) { mousePos = ev.position; }, () {});
+        return false;
+    }
 }
 
 

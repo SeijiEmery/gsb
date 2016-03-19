@@ -18,7 +18,7 @@ private immutable string FONT = "menlo";
 
 shared static this () {
     UIComponentManager.runAtInit({
-        UIComponentManager.registerComponent(new TestModule(), "color-test", true);
+        UIComponentManager.registerComponent(new TestModule(), "color-test", false);
     });
 }
 
