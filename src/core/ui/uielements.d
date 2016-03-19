@@ -269,6 +269,15 @@ class UILayoutContainer : UIContainer {
     public Layout    layout;
     public LayoutDir direction;
 
+    this (LayoutDir dir, Layout layout, vec2 padding, float spacing, UIElement[] elements) {
+        this(dir, layout, vec2(0,0), vec2(0,0), padding, spacing, elements);
+    }
+    this (T)(LayoutDir dir, Layout layout, vec2 padding, float spacing, T[] elements) {
+        this(dir, layout, vec2(0,0), vec2(0,0), padding, spacing, cast(UIElement[])elements);
+    }
+    this (T)(LayoutDir dir, Layout layout, vec2 pos, vec2 dim, vec2 padding, float spacing, T[] elements) {
+        this(dir, layout, pos, dim, padding, spacing, cast(UIElement[])elements);
+    }
     this (LayoutDir layoutDir, Layout layout, 
         vec2 pos, vec2 dim, 
         vec2 padding, 
