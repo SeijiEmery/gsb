@@ -38,13 +38,13 @@ private class TestModule : UIComponent {
     SubModule[string] modules;
     SubModule activeModule = null;
 
-    immutable auto UI_BACKGROUND_COLOR = Color(0.0, 0.65, 0.65, 0.55);
-    immutable auto UI_BORDER_COLOR     = Color(0.25, 0.25, 0.25, 0.85);
+    immutable auto UI_BACKGROUND_COLOR = Color(0.95, 0.95, 0.95, 0.10);
+    immutable auto UI_BORDER_COLOR     = Color(0.25, 0.25, 0.25, 1.0);
     immutable auto UI_TEXT_COLOR       = Color(1.0, 1.0, 1.0, 0.95);
     immutable float BORDER_WIDTH = 2.0;
 
-    immutable auto ACTIVE_BTN_COLOR = Color(1.0, 0.0, 0.0, 0.80);
-    immutable auto INACTIVE_BTN_COLOR = Color(0.0, 1.0, 0.0, 0.80);
+    immutable auto ACTIVE_BTN_COLOR   = Color(1.0, 0.0, 0.0, 0.80);
+    immutable auto INACTIVE_BTN_COLOR = Color(0.25, 0.25, 0.25, 0.80);
 
     immutable float BUTTON_BORDER  = 2.0;
     immutable float BUTTON_SPACING = 4.0;

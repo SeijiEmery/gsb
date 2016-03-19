@@ -76,7 +76,7 @@ class UITextElement : UIElement {
 
     override void render () {
         //DebugRenderer.drawRect(pos, pos + dim, backgroundColor);
-        DebugRenderer.drawLineRect(pos, pos + dim, backgroundColor, 0.0);
+        //DebugRenderer.drawLineRect(pos, pos + dim, backgroundColor, 0.0);
     }
 
     override bool handleEvents (UIEvent event) {

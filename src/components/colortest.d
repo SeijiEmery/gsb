@@ -29,28 +29,31 @@ private class TestModule : UIComponent {
     UILayoutContainer inner;
 
     UIBox cbox;
-    UITextElement ctext;
+    UITextElement ctext, cstats;
 
     UITextElement[ColorType] buttons;
 
     UISlider[4] sliders;
     float fontSize = 30.0;
 
-    auto ACTIVE_BUTTON_COLOR = Color(1.0, 1.0, 0.8, 1);
-    auto INACTIVE_BUTTON_COLOR = Color(0.8, 0.8, 0.8, 1);
+    auto ACTIVE_BUTTON_COLOR   = Color(0.85, 0.85, 0.85, 0.95);
+    auto INACTIVE_BUTTON_COLOR = Color(0.35, 0.35, 0.35, 0.95);
 
     auto inputType = ColorType.RGB;
 
     override void onComponentInit () {
-        auto SLIDER_COLOR     = Color(0.8, 0.6, 0.6, 0.5);
-        auto BACKGROUND_COLOR = Color(0.5, 0.7, 0.5, 0.5);
+        auto SLIDER_COLOR     = Color(0.85, 0.85, 0.85, 0.85);
+        auto BACKGROUND_COLOR = Color(0.35, 0.35, 0.35, 0.65);
 
         root = new UIDecorators.Draggable!UILayoutContainer(LayoutDir.HORIZONTAL, Layout.CENTER, 
-            vec2(200, 100), vec2(0,0), vec2(10,12), 0.0, [
-                cbox = new UIBox(vec2(0,0), vec2(200,180), Color(1,0,0,1)),
-                ctext = new UITextElement(vec2(), vec2(), vec2(10,10), "Color Demo", new Font(FONT, fontSize), Color(1,0,0,1), Color(1,0,0,1)),
+            vec2(200, 100), vec2(0,0), vec2(10,12), 10.0, [
+                new UILayoutContainer(LayoutDir.VERTICAL, Layout.TOP_CENTER, vec2(10,10), 0.0, [
+                    ctext = new UITextElement(vec2(), vec2(), vec2(10,10), "Color Demo", new Font(FONT, fontSize), Color(1,0,0,1), Color(1,0,0,1)),
+                    cbox = new UIBox(vec2(0,0), vec2(200,180), Color(1,0,0,1)),
+                ]),
+                cstats = new UITextElement(vec2(), vec2(), vec2(0,0), "", new Font(FONT,fontSize), Color(1,1,1,0.97), Color(0,0,0,0)),
                 new UILayoutContainer(LayoutDir.VERTICAL, Layout.CENTER, vec2(10,10), 0.0, [
-                        new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.TOP_LEFT, vec2(10,10), 0.0, cast(UIElement[])[
+                        new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.TOP_LEFT, vec2(10,10), 0.0, [
                             buttons[ColorType.RGB] = new UITextElement(vec2(),vec2(),vec2(3,3), "RGB", new Font(FONT,fontSize), ACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
                             buttons[ColorType.HSV] = new UITextElement(vec2(),vec2(),vec2(3,3), "HSV", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
                             buttons[ColorType.HSL] = new UITextElement(vec2(),vec2(),vec2(3,3), "HSL", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
@@ -77,7 +80,7 @@ private class TestModule : UIComponent {
                 root.recalcDimensions();
                 root.doLayout();
 
-                string fmtVec (vec4 v) { return format("(%0.2f,%0.2f,%0.2f,%0.2f)", v.x, v.y, v.z, v.w); }
+                string fmtVec (vec4 v) { return format("(%0.3f,%0.3f,%0.3f,%0.3f)", v.x, v.y, v.z, v.w); }
 
                 auto color = vec4(sliders[0].value, sliders[1].value, sliders[2].value,sliders[3].value);
                 if (inputType == ColorType.HSV)      color = vec4(hsv_to_rgb(color.xyz), color.w);
@@ -88,7 +91,7 @@ private class TestModule : UIComponent {
                 ctext.color = color_;
                 ctext.backgroundColor = color_;
 
-                ctext.text = format("Color Demo\nrgb: %s\nhsv: %s\nrgb2: %s\n", 
+                cstats.text = format("rgb: %s\nhsv: %s\nrgb2: %s\n", 
                     fmtVec(color),
                     fmtVec(vec4(rgb_to_hsv(color.xyz), color.w)),
                     fmtVec(vec4(rgb_to_hsv(color.xyz).hsv_to_rgb, color.w)));
