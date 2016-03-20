@@ -13,6 +13,8 @@ import gsb.core.color;
 import gsb.core.window;
 import gl3n.linalg;
 
+import gsb.core.collision2d;
+
 import std.random;
 
 
@@ -32,8 +34,8 @@ private float circleWidth = 0.04;
 
 float GAME_UNITS_PER_SCREEN = 100.0;
 float DEFAULT_AGENT_MOVE_SPEED = 30.0;
-float AGENT_JUMP_LENGTH = 4.0;
-float AGENT_JUMP_INTERVAL = 0.16;
+float AGENT_JUMP_LENGTH = 12.0;
+float AGENT_JUMP_INTERVAL = 0.32;
 
 float AGENT_SIZE = 1.0;
 float AGENT_FIRE_INTERVAL = 0.08;
@@ -45,6 +47,8 @@ float FIRE_LINE_LENGTH = 100.0;  // game units
 float FIRE_LINE_WIDTH  = 0.01;    // game units
 float FIRE_LINE_CHARGE_DURATION = 0.16;  // seconds
 float FIRE_LINE_STATIC_DURATION = 0.035;  // seconds; should equal 3 frames @60 hz
+
+float DAMAGE_FLASH_DURATION = 0.16;
 
 float AGENT_ALIGNMENT_DISTANCE = 40.0;
 
@@ -94,17 +98,35 @@ private class Agent : IGameRenderable {
     float timeSinceLastFired = 0.0;
     float timeSinceLastJumped = 0.0;
 
+    float timeSinceTookDamage = 0.0;
+
     void update (float speed) {
         //log.write("update: %s + %s * %0.2f (%s) = %s", position, dir, speed * DEFAULT_AGENT_MOVE_SPEED, dir * speed * DEFAULT_AGENT_MOVE_SPEED, 
         //    position + dir * speed * DEFAULT_AGENT_MOVE_SPEED);
         position += dir * speed * DEFAULT_AGENT_MOVE_SPEED;
     }
     void draw (mat3 transform) {
+
+        auto t = (timeSinceTookDamage / DAMAGE_FLASH_DURATION - 0.5) * 2;
+
+        //float colorInterp = timeSinceTookDamage > 0 ? 1 - t * t : 0;
+        float colorInterp = timeSinceTookDamage > 0 ? (timeSinceTookDamage / DAMAGE_FLASH_DURATION) : 0.0;
+
+        auto c = Color(
+            color.r * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.g * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.b * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.a * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+        );
+
         auto tpos = transform * vec3(position, 1.0);
-        DebugRenderer.drawCircle(tpos.xy, AGENT_SIZE * CURRENT_SCALE_FACTOR, color, circleWidth, 
+        DebugRenderer.drawCircle(tpos.xy, AGENT_SIZE * CURRENT_SCALE_FACTOR, c, circleWidth, 
             cast(uint)numCirclePoints, 2.0);
 
         //log.write("draw: %s * transform = %s, size: %s * %0.2f = %s", position, tpos, AGENT_SIZE, CURRENT_SCALE_FACTOR, AGENT_SIZE * CURRENT_SCALE_FACTOR);
+    }
+    void takeDamage () {
+        timeSinceTookDamage = DAMAGE_FLASH_DURATION;
     }
 }
 
@@ -118,6 +140,23 @@ private class FiringSystem : IGameSystem {
             if ((agent.timeSinceLastJumped -= dt) < 0 && agent.wantsToJump) {
                 agent.timeSinceLastJumped = AGENT_JUMP_INTERVAL;
                 agent.position += agent.dir * AGENT_JUMP_LENGTH;
+            }
+            //if (agent.timeSinceTookDamage > 0)
+            agent.timeSinceTookDamage -= dt;
+
+            if (agent != state.player && Collision2d.intersects(Collision2d.Circle(agent.position, AGENT_SIZE), Collision2d.Circle(state.player.position, AGENT_SIZE))) {
+                state.player.takeDamage();
+            }
+        }
+        foreach (line; state.fireLines) {
+            if (line.t < 0 && !line.wasFired) {
+                auto l = Collision2d.LineSegment(line.start, line.dir * FIRE_LINE_LENGTH, FIRE_LINE_WIDTH);
+                foreach (agent; state.agents) {
+                    if (agent != state.player && Collision2d.intersects(Collision2d.Circle(agent.position, AGENT_SIZE), l)) {
+                        agent.takeDamage();
+                    }
+                }
+                line.wasFired = true;
             }
         }
     }
@@ -141,7 +180,6 @@ private class EnemyPursuitSystem : IGameSystem {
             foreach (neighbor; state.agents)
                 if (neighbor != state.player && neighbor.position != agent.position)
                     sep_force += (neighbor.position - agent.position);
-            //log.write("%s", sep_force);
 
             immutable float WEIGHT = 1.0;
 
@@ -198,6 +236,7 @@ private class FireLine {
     Color color;
     vec2 start, dir;
     float t, chargeDuration, staticDuration;
+    bool wasFired = false;
 
     this (Color color, vec2 start, vec2 dir, float chargeDuration, float staticDuration) {
         this.color = color;
@@ -301,8 +340,15 @@ private class PlayerController : IGameController {
         event.handle!(
             (GamepadAxisEvent ev) {
                 player.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
+
+                //gameState.simSpeed = 1.0 - (ev.AXIS_RT - ev.AXIS_RY);
                 gameState.simSpeed = 1.0 - ev.AXIS_RT;
-                //log.write("%0.2f", gameState.simSpeed);
+                    //(abs(ev.AXIS_RT) > abs(ev.AXIS_RY) 
+                    //    ? ev.AXIS_RT : ev.AXIS_RY);
+
+                //gameState.simSpeed = 1.0 - ev.AXIS_RT;
+                log.write("%0.2f", gameState.simSpeed);
+                //log.write("%s", ev.axes[0..$].map!"a.to!string".join(", "));
 
                 if (player.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
                     player.fireDir = vec2(ev.AXIS_LX, ev.AXIS_LY).normalized();
