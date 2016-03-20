@@ -70,6 +70,7 @@ private class TestModule : UIComponent {
         modules["point-circle test"] = new PointCircleTest();
         modules["point-rect test"]   = new PointRectTest();
         modules["point-line test"]   = new PointLineTest();
+        modules["line-circle test"]  = new LineCircleTest();
         activateModule(modules.values()[0]);
 
         auto font = new Font(FONT, fontSize);
@@ -298,6 +299,32 @@ class PointLineTest : SubModule {
         return false;
     }
 }
+
+class LineCircleTest : SubModule {
+    Collision2d.Circle circle;
+    Collision2d.LineSegment line;
+
+    override void onInit () {
+        line = Collision2d.LineSegment( vec2(900, 600), vec2(0, 0), 10 );
+        circle = Collision2d.Circle ( screenCenter, 100 );
+    }
+    override void draw () {
+        auto hit = Collision2d.intersects(circle, line);
+
+        drawShape(line, hit ? COLOR_GREEN : INACTIVE_COLOR, 1);
+        drawShape(circle, hit ? COLOR_RED : INACTIVE_COLOR, 1);
+    }
+    override bool handleEvent (UIEvent event) {
+        event.handle!(
+            (MouseMoveEvent ev) { line.p2 = ev.position; }, 
+            (MouseButtonEvent ev) { if (ev.pressed) line.p1 = line.p2; },
+            (){});
+        return false;
+    }
+}
+
+
+
 
 
 

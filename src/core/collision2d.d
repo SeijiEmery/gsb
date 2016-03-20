@@ -108,8 +108,8 @@ struct Collision2d {
     static bool intersects (Circle a, AABB box) {
         assert(0, "Unimplemented!");
     }
-    static bool intersects (Circle a, LineSegment line) {
-        assert(0, "Unimplemented!");
+    static bool intersects (Circle circle, LineSegment line) {
+        return line_pt_distance(line.p1, line.p2, circle.center) <= circle.radius + line.width;
     }
 
 
