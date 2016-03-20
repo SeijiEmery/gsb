@@ -38,7 +38,8 @@ float AGENT_JUMP_LENGTH = 12.0;
 float AGENT_JUMP_INTERVAL = 0.32;
 
 float AGENT_SIZE = 1.0;
-float AGENT_FIRE_INTERVAL = 0.08;
+//float AGENT_FIRE_INTERVAL = 0.08;
+float AGENT_FIRE_INTERVAL = 0.04;
 
 float CURRENT_SCALE_FACTOR = 1.0;
 
@@ -134,7 +135,10 @@ private class FiringSystem : IGameSystem {
     void run (GameState state, float dt) {
         foreach (agent; state.agents) {
             if ((agent.timeSinceLastFired -= dt) < 0 && agent.wantsToFire) {
-                agent.timeSinceLastFired = AGENT_FIRE_INTERVAL;
+                if (agent != state.player)
+                    agent.timeSinceLastFired = uniform01!float() * 10.0;
+                else
+                    agent.timeSinceLastFired = AGENT_FIRE_INTERVAL;
                 state.fireBurst(agent.position, agent.fireDir, agent.color);
             }
             if ((agent.timeSinceLastJumped -= dt) < 0 && agent.wantsToJump) {
@@ -202,7 +206,8 @@ private class EnemyPursuitSystem : IGameSystem {
 
             //agent.fireDir = (state.player.position - agent.position).normalized();
             agent.fireDir = (futurePlayerTarget - agent.position).normalized();
-            agent.wantsToFire = false;
+            //agent.wantsToFire = uniform01() <= 1.0 / 120.0;
+            agent.wantsToFire = true;
         }
     }
 }
