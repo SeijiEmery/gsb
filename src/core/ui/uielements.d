@@ -173,6 +173,21 @@ struct UIDecorators {
             super.doLayout();
         }
     }
+
+    class ClampedPositionTo (T) : T {
+        private UIElement target;
+
+        this (Args...)(UIElement target, Args args) if (__traits(compiles, new T(args))) {
+            super(args);
+            this.target = target;
+            doLayout();
+        }
+        override void doLayout () {
+            this.pos = target.pos;
+            super.doLayout();
+        }
+    }
+
 }
 
 // Basic container w/ no bells and whistles.

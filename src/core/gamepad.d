@@ -16,19 +16,19 @@ private class GamepadInputManager : IEventCollector {
 
     this () {
         mgr.onDeviceDetected.connect((const(GamepadState)* state) {
-            localEvents ~= GamepadConnectedEvent.create(state.profile, state.name, state.naxes, state.nbuttons);
+            localEvents ~= GamepadConnectedEvent.create(state.id, state.profile, state.name, state.naxes, state.nbuttons);
         });
         mgr.onDeviceRemoved.connect((const(GamepadState)* state) {
-            localEvents ~= GamepadDisconnectedEvent.create(state.profile, state.name, state.naxes, state.nbuttons);
+            localEvents ~= GamepadDisconnectedEvent.create(state.id, state.profile, state.name, state.naxes, state.nbuttons);
         });
-        mgr.onGamepadButtonPressed.connect((GamepadButton button) {
-            localEvents ~= GamepadButtonEvent.create(button, true);
+        mgr.onGamepadButtonPressed.connect((int id, GamepadButton button) {
+            localEvents ~= GamepadButtonEvent.create(id, button, true);
         });
-        mgr.onGamepadButtonReleased.connect((GamepadButton button) {
-            localEvents ~= GamepadButtonEvent.create(button, false);
+        mgr.onGamepadButtonReleased.connect((int id, GamepadButton button) {
+            localEvents ~= GamepadButtonEvent.create(id, button, false);
         });
-        mgr.onGamepadAxesUpdate.connect((float[] axes) {
-            localEvents ~= GamepadAxisEvent.create(axes[0..NUM_GAMEPAD_AXES]);
+        mgr.onGamepadAxesUpdate.connect((int id, float[] axes) {
+            localEvents ~= GamepadAxisEvent.create(id, axes[0..NUM_GAMEPAD_AXES]);
         });
     }
 
@@ -206,18 +206,19 @@ struct GamepadState {
 
     float[NUM_GAMEPAD_AXES]    axes;
     ubyte[NUM_GAMEPAD_BUTTONS] buttons;
+    ubyte[NUM_GAMEPAD_BUTTONS] lastButtons;
 }
 
 struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
     private GamepadState[NUM_STATES] states;
-    private GamepadState             lastState; // shared, combined version of all the above states
+    //private GamepadState             lastState; // shared, combined version of all the above states
 
     Signal!(const(GamepadState)*) onDeviceDetected;
     Signal!(const(GamepadState)*) onDeviceRemoved;
 
-    Signal!(GamepadButton) onGamepadButtonPressed;
-    Signal!(GamepadButton) onGamepadButtonReleased;
-    Signal!(float[])       onGamepadAxesUpdate;
+    Signal!(int, GamepadButton) onGamepadButtonPressed;
+    Signal!(int, GamepadButton) onGamepadButtonReleased;
+    Signal!(int, float[])       onGamepadAxesUpdate;
 
     // Poll every device slot to determine what is connected and what isn't (emits onDeviceConnected/Removed)
     // Only call this every N frames, since glfwJoystickPresent(), etc., has quite a bit of overhead.
@@ -238,6 +239,9 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
                 states[i].name    = glfwGetJoystickName(i).to!string();
                 states[i].naxes   = naxes;
                 states[i].nbuttons = nbuttons;
+                states[i].buttons[0..NUM_GAMEPAD_BUTTONS] = 0;
+                states[i].lastButtons[0..NUM_GAMEPAD_BUTTONS] = 0;
+                states[i].axes[0..NUM_GAMEPAD_AXES] = 0;
                 onDeviceDetected.emit(&states[i]);
             }
             else if (!active && states[i].profile != GamepadProfile.NO_PROFILE) {
@@ -255,8 +259,8 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
     void update () {
         import std.math: fabs;
 
-        float[NUM_GAMEPAD_AXES]    sharedAxes = 0;
-        ubyte[NUM_GAMEPAD_BUTTONS] sharedButtons;
+        //float[NUM_GAMEPAD_AXES]    sharedAxes = 0;
+        //ubyte[NUM_GAMEPAD_BUTTONS] sharedButtons;
 
         foreach (ref state; states) {
             if (state.profile == GamepadProfile.NO_PROFILE || state.profile == GamepadProfile.UNKNOWN_PROFILE)
@@ -288,7 +292,7 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
             // Update buttons
             foreach (k; 0 .. nbuttons) {
                 state.buttons[profile.buttons[k]] = buttons[k];
-                sharedButtons[profile.buttons[k]] |= buttons[k];
+                //sharedButtons[profile.buttons[k]] |= buttons[k];
             }
 
             // Update axes
@@ -325,27 +329,36 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
             state.buttons[BUTTON_LTRIGGER] = state.axes[AXIS_LTRIGGER] > 0.0;
             state.buttons[BUTTON_RTRIGGER] = state.axes[AXIS_RTRIGGER] > 0.0;
 
-            sharedButtons[BUTTON_LTRIGGER] |= state.buttons[BUTTON_LTRIGGER];
-            sharedButtons[BUTTON_RTRIGGER] |= state.buttons[BUTTON_RTRIGGER];
-
-            // Combine axis values
-            foreach (k; 0 .. NUM_GAMEPAD_AXES) {
-                if (sharedAxes[k] == 0 && state.axes[k] != 0) {
-                    sharedAxes[k] = state.axes[k];
-                }
+            foreach (i; 0 .. NUM_GAMEPAD_BUTTONS) {
+                if (state.buttons[i] && !state.lastButtons[i])
+                    onGamepadButtonPressed.emit(state.id, cast(GamepadButton)i);
+                else if (state.lastButtons[i] && !state.buttons[i])
+                    onGamepadButtonReleased.emit(state.id, cast(GamepadButton)i);
             }
+            state.lastButtons[0..NUM_GAMEPAD_BUTTONS] = state.buttons[0..NUM_GAMEPAD_BUTTONS];
+            onGamepadAxesUpdate.emit(state.id, state.axes);
+
+            //sharedButtons[BUTTON_LTRIGGER] |= state.buttons[BUTTON_LTRIGGER];
+            //sharedButtons[BUTTON_RTRIGGER] |= state.buttons[BUTTON_RTRIGGER];
+
+            //// Combine axis values
+            //foreach (k; 0 .. NUM_GAMEPAD_AXES) {
+            //    if (sharedAxes[k] == 0 && state.axes[k] != 0) {
+            //        sharedAxes[k] = state.axes[k];
+            //    }
+            //}
         }
 
-        // Check merged state against last state + dispatch events
-        foreach (i; 0 .. NUM_GAMEPAD_BUTTONS) {
-            if (sharedButtons[i] && !lastState.buttons[i])
-                onGamepadButtonPressed.emit(cast(GamepadButton)i);
-            else if (lastState.buttons[i] && !sharedButtons[i])
-                onGamepadButtonReleased.emit(cast(GamepadButton)i);
-        }
-        onGamepadAxesUpdate.emit(sharedAxes);
+        //// Check merged state against last state + dispatch events
+        //foreach (i; 0 .. NUM_GAMEPAD_BUTTONS) {
+        //    if (sharedButtons[i] && !lastState.buttons[i])
+        //        onGamepadButtonPressed.emit(cast(GamepadButton)i);
+        //    else if (lastState.buttons[i] && !sharedButtons[i])
+        //        onGamepadButtonReleased.emit(cast(GamepadButton)i);
+        //}
+        //onGamepadAxesUpdate.emit(sharedAxes);
 
-        lastState.axes = sharedAxes;
-        lastState.buttons = sharedButtons;
+        //lastState.axes = sharedAxes;
+        //lastState.buttons = sharedButtons;
     }
 }

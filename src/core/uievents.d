@@ -227,6 +227,7 @@ struct ScrollEvent {
 }
 
 struct GamepadButtonEvent {
+    int id;
     GamepadButton button;
     bool          pressed = true;
     @property bool released () { return !pressed; }
@@ -235,9 +236,11 @@ struct GamepadButtonEvent {
 }
 
 struct GamepadAxisEvent {
+    int id;
     float[NUM_GAMEPAD_AXES] axes;
 
-    this (float[] axes) nothrow {
+    this (int id, float[] axes) nothrow {
+        this.id = id;
         this.axes[0..NUM_GAMEPAD_AXES] = axes[0..NUM_GAMEPAD_AXES];
     }
 
@@ -255,6 +258,7 @@ struct GamepadAxisEvent {
 }
 
 struct GamepadConnectedEvent {
+    int id;
     GamepadProfile profile;
     string name;
     uint numAxes, numButtons;
@@ -262,6 +266,7 @@ struct GamepadConnectedEvent {
     static UIEvent create (T...)(T args) nothrow { return UIEvent(GamepadConnectedEvent(args)); }
 }
 struct GamepadDisconnectedEvent {
+    int id;
     GamepadProfile profile;
     string name;
     uint numAxes, numButtons;

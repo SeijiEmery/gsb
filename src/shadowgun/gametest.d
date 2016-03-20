@@ -60,6 +60,9 @@ auto SMALL_FONT_SIZE = 18.0;
 auto PLAYER_NAME_FONT_SIZE = 40.0;
 auto PLAYER_INFO_FONT_SIZE = 25.0;
 
+auto HEALTH_BAR_DIMENSIONS = vec2(250, 30);
+auto ENERGY_BAR_DIMENSIONS = vec2(150, 18);
+
 private mat3 gameToScreenSpaceTransform (float zoom = 1.0) {
     float s = CURRENT_SCALE_FACTOR = zoom / GAME_UNITS_PER_SCREEN * g_mainWindow.screenDimensions.x;
     return mat3.identity()
@@ -91,13 +94,17 @@ immutable Color[] AGENT_COLORS = [
     Color(0.21, 0.22, 0.23, 0.79), // WALL
 ];
 
+auto makeBackgroundColor (Color color) {
+    return Color(color.r + 0.1, color.g + 0.1, color.b + 0.1, color.a * 0.5);
+}
+
 
 
 
 private class Agent : IGameRenderable {
 
     AgentId owner = AgentId.ENEMY;
-    bool dead = false;
+    bool isAlive = true;
 
     vec2 position = vec2(0, 0);
     vec2 dir      = vec2(0, 0);
@@ -130,10 +137,10 @@ private class Agent : IGameRenderable {
         float colorInterp = timeSinceTookDamage > 0 ? (timeSinceTookDamage / DAMAGE_FLASH_DURATION) : 0.0;
 
         auto color = Color(
-            AGENT_COLORS[owner].r * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].g * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].b * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].a * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[owner].r * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[owner].g * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[owner].b * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[owner].a * (1 - colorInterp) + 1.0 * colorInterp,
         );
 
         auto tpos = transform * vec3(position, 1.0);
@@ -196,26 +203,44 @@ private class FiringSystem : IGameSystem {
 
 private class EnemyPursuitSystem : IGameSystem {
     void run (GameState state, float dt) {
-        auto futurePlayerDir = state.player.position + state.player.dir * DEFAULT_AGENT_MOVE_SPEED * 1.0;
-        auto futurePlayerTarget = state.player.position + state.player.dir * (FIRE_LINE_CHARGE_DURATION) * DEFAULT_AGENT_MOVE_SPEED; // this is evil, lol
+        // charge at players
 
-        //log.write("%s", state.agents.map!("a.position.toString()").join(", "));
-        foreach (agent; state.agents) {
-            if (agent.owner != AgentId.ENEMY)
-                continue;
+        Agent[] players = [];
+        foreach (agent; state.agents)
+            if (agent.isPlayer)
+                players ~= agent;
+        if (players.length) {
+            foreach (agent; state.agents) {
+                if (!agent.isEnemy)
+                    continue;
 
-            if (distance(agent.position, state.player.position) > 40.0 || (!agent.dir.x && !agent.dir.y)) {
-                agent.dir = (futurePlayerDir - agent.position).normalized();
+                Agent nearest = players[0];
+                foreach (player; players[1..$])
+                    if (distance(agent.position, player.position) < distance(agent.position, nearest.position))
+                        nearest = player;
+
+                auto futurePos    = nearest.position + nearest.dir * DEFAULT_AGENT_MOVE_SPEED  * (uniform01!float() + 0.5);
+                auto futureTarget = nearest.position + nearest.dir * FIRE_LINE_CHARGE_DURATION * DEFAULT_AGENT_MOVE_SPEED * uniform01!float() * 2.0;
+
+                // charge at player
+                if (distance(agent.position, nearest.position) > 40.0 || (!agent.dir.x && !agent.dir.y)) {
+                    agent.dir = (futurePos - agent.position).normalized();
+                }
+                // fire at player
+                agent.fireDir = (futureTarget - agent.position).normalized();
+                agent.wantsToFire = true;
             }
+        }
 
+        // Apply separation forces
+        foreach (agent; state.agents) {
+            if (!agent.isEnemy())
+                continue;
             auto sep_force = vec2(0,0);
             foreach (neighbor; state.agents)
-                if (neighbor.owner == AgentId.ENEMY && neighbor.position != agent.position)
+                if (neighbor.isEnemy && neighbor.position != agent.position)
                     sep_force += (neighbor.position - agent.position);
-
             immutable float WEIGHT = 1.0;
-
-            //agent.dir += sep_force * 1e-2;
 
             if (sep_force.x != 0 && sep_force.y != 0) {
                 sep_force.x = WEIGHT / (sep_force.x * sep_force.x);
@@ -228,14 +253,6 @@ private class EnemyPursuitSystem : IGameSystem {
                 agent.dir += sep_force * 1.5;
             }
             agent.dir.normalize();
-
-            //log.write("%s, %s", sep_force, agent.dir);
-            //agent.dir += sep_force * -1.0e-3;
-
-            //agent.fireDir = (state.player.position - agent.position).normalized();
-            agent.fireDir = (futurePlayerTarget - agent.position).normalized();
-            //agent.wantsToFire = uniform01() <= 1.0 / 120.0;
-            agent.wantsToFire = true;
         }
     }
 }
@@ -287,7 +304,6 @@ private class FireLine {
 
 private class GameState {
     IGameSystem[] systems;
-    Agent   player;
     Agent[] agents;
     float simSpeed = 1.0;
     float zoom = 1.0;
@@ -301,14 +317,13 @@ private class GameState {
         return agents.filter!"a.isEnemy"();
     }
 
-    this (Agent player) {
+    this () {
         this.systems = [
             cast(IGameSystem)new FiringSystem(),
             cast(IGameSystem)new EnemyPursuitSystem(),
             cast(IGameSystem)new DamageSystem(),
         ];
-        this.agents = [ player ];
-        this.player = player;
+        this.agents = [];
     }
 
     void update (float dt = 1 / 60.0) {
@@ -345,31 +360,40 @@ private class GameState {
 }
 
 private class PlayerController : IGameController {
-    Agent player;
     GameState gameState;
+    Agent agent;
+    AgentId playerId;
+    int  gamepadId;
+    bool isActive = true;
 
-    this (Agent agent, AgentId owner, GameState gameState) {
-        agent.owner  = owner;
-        this.player = agent;
+    this (Agent agent, AgentId owner, GameState gameState, int gamepadId) {
+        agent.owner  = playerId = owner;
+        this.agent  = agent;
         this.gameState = gameState;
+        this.gamepadId = gamepadId;
     }
 
     void handleEvent (UIEvent event) {
         event.handle!(
             (GamepadAxisEvent ev) {
-                player.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
-                gameState.simSpeed = 1.0 - ev.AXIS_RT;
+                if (ev.id == gamepadId) {
+                    agent.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
+                    if (ev.AXIS_RT)
+                        gameState.simSpeed = 1.0 - ev.AXIS_RT;
 
-                if (player.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
-                    player.fireDir = vec2(ev.AXIS_LX, ev.AXIS_LY).normalized();
+                    if (agent.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
+                        agent.fireDir = vec2(ev.AXIS_LX, ev.AXIS_LY).normalized();
+                }
             },
             (GamepadButtonEvent ev) {
-                if (ev.button == BUTTON_X)
-                    player.wantsToFire = ev.pressed;
-                else if (ev.button == BUTTON_A)
-                    player.wantsToJump = ev.pressed;
-                else if (ev.button == BUTTON_Y && ev.pressed)
-                    gameState.createEnemy(vec2(0, 0));
+                if (ev.id == gamepadId) {
+                    if (ev.button == BUTTON_X)
+                        agent.wantsToFire = ev.pressed;
+                    else if (ev.button == BUTTON_A)
+                        agent.wantsToJump = ev.pressed;
+                    else if (ev.button == BUTTON_Y && ev.pressed)
+                        gameState.createEnemy(vec2(0, 0));
+                }
             },
             () {});
     }
@@ -381,21 +405,30 @@ private class GameUI {
     PlayerUI[4]   playerUI;
 
     class PlayerUI {
-        AgentId owner = AgentId.PLAYER_1;
+        AgentId playerId = AgentId.PLAYER_1;
+        PlayerController  player = null;
         UILayoutContainer container;
         UITextElement     score;
+        UIBox             healthBar;
+        UIBox             energyBar;
         bool              isActive = false;
 
-        this (AgentId owner, string name, Layout layoutPos, bool isActive) {
-            this.owner = owner;
+        this (AgentId playerId, string name, Layout layoutPos, bool isActive) {
+            this.playerId = playerId;
             this.isActive = isActive;
             container = new UILayoutContainer(LayoutDir.VERTICAL, layoutPos, vec2(5,5), 4, [
-                new UITextElement(vec2(),vec2(),vec2(5,5), name, new Font(FONT, PLAYER_NAME_FONT_SIZE), AGENT_COLORS[owner], Color()),
-                score = new UITextElement(vec2(),vec2(),vec2(5,5), "", new Font(FONT, PLAYER_INFO_FONT_SIZE), AGENT_COLORS[owner], Color()),
+                new UITextElement(vec2(),vec2(),vec2(0,0), name, new Font(FONT, PLAYER_NAME_FONT_SIZE), AGENT_COLORS[playerId], Color()),
+                score = new UITextElement(vec2(),vec2(),vec2(0,0), "score 12355", new Font(FONT, PLAYER_INFO_FONT_SIZE), AGENT_COLORS[playerId], Color()),
+                healthBar = new UIBox(vec2(), HEALTH_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
+                energyBar = new UIBox(vec2(), ENERGY_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
+
+                // health / energy bar backgrounds
+                new UIDecorators.ClampedPositionTo!UIBox(healthBar, vec2(), HEALTH_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
+                new UIDecorators.ClampedPositionTo!UIBox(energyBar, vec2(), ENERGY_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
             ]);
         }
         void update () {
-            if (isActive) {
+            if (player && player.isActive) {
                 container.dim = vec2(g_mainWindow.screenDimensions);
                 container.pos = vec2(0,0);
                 container.recalcDimensions();
@@ -442,15 +475,17 @@ private class GameUI {
 
 private class GameModule : UIComponent {
     IGameController[] controllers;
+    PlayerController[4] players;
+
     GameState gameState;
     GameUI    ui;
 
     override void onComponentInit () {
-        auto player = new Agent();
-        gameState = new GameState(player);
+        //auto player = new Agent();
+        gameState = new GameState();
         ui = new GameUI();
 
-        controllers ~= new PlayerController(player, AgentId.PLAYER_1, gameState);
+        //controllers ~= new PlayerController(player, AgentId.PLAYER_1, gameState);
     }
     override void onComponentShutdown () {
         controllers.length = 0;
@@ -458,8 +493,34 @@ private class GameModule : UIComponent {
         ui = null;
     }
     override void handleEvent (UIEvent event) {
-        if (controllers.length) {
+        if (gameState) {
             event.handle!(
+                (GamepadConnectedEvent ev) {
+                    foreach (i; 0 .. 4) {
+                        if (players[i] && players[i].gamepadId == ev.id)
+                            return true;
+                        else if (!players[i]) {
+                            auto agent = new Agent();
+                            gameState.agents ~= agent;
+                            players[i] = ui.playerUI[i].player = new PlayerController(agent, cast(AgentId)(AgentId.PLAYER_1 + i), gameState, ev.id);
+                            log.write("Welcome player %d! (gamepad %d)", i + 1, ev.id);
+                            return true;
+                        }
+                    }
+                    return true;
+                },
+                (GamepadDisconnectedEvent ev) {
+                    foreach (i; 0 .. 4) {
+                        if (players[i] && players[i].gamepadId == ev.id) {
+                            log.write("Player left: %d (gamepad %d)", i, ev.id);
+                            players[i].agent.isAlive = false;
+                            ui.playerUI[i].player = players[i] = null;
+                            return true;
+                        }
+                    }
+                    throw new Exception(format("Not connected to gamepad %d", ev.id));
+                    //return true;
+                },
                 (FrameUpdateEvent ev) {
                     threadStats.timedCall("gamestate.update()", {
                         gameState.update();
@@ -484,6 +545,9 @@ private class GameModule : UIComponent {
     void fireControllerEvents (UIEvent event) {
         foreach (controller; controllers)
             controller.handleEvent(event);
+        foreach (player; players)
+            if (player)
+                player.handleEvent(event);
     }
 }
 
