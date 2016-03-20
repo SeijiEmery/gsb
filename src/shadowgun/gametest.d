@@ -39,8 +39,8 @@ float AGENT_JUMP_LENGTH = 12.0;
 float AGENT_JUMP_INTERVAL = 0.32;
 
 float AGENT_SIZE = 1.0;
-//float AGENT_FIRE_INTERVAL = 0.08;
-float AGENT_FIRE_INTERVAL = 0.04;
+float AGENT_FIRE_INTERVAL = 0.08;
+//float AGENT_FIRE_INTERVAL = 0.04;
 
 float CURRENT_SCALE_FACTOR = 1.0;
 
@@ -53,6 +53,28 @@ float FIRE_LINE_STATIC_DURATION = 0.035;  // seconds; should equal 3 frames @60 
 float DAMAGE_FLASH_DURATION = 0.16;
 
 float AGENT_ALIGNMENT_DISTANCE = 40.0;
+
+immutable float INITIAL_PLAYER_HP = 300.0;
+immutable float MAX_ENERGY        = 100.0;
+
+float MELEE_DAMAGE_AMOUNT      = 10.0;
+float FIRE_DAMAGE_AMOUNT       = 20.0;
+float LIFE_STEAL               = 0.2;
+
+float ENERGY_COST_PER_SHOT     = 12.0;
+float ENERGY_COST_PER_JUMP     = 20.0;
+float ENERGY_REGEN_PER_SEC     = 24.0;
+float ENERGY_UNDERFLOW_PENALTY = 40.0;
+
+
+float POINTS_LOST_PER_HP       = 0.5;  // 5 points lost / 10 hp
+float POINTS_GAINED_PER_HP     = 1.0;  // 10 points gained / 10 hp
+float POINTS_GAINED_PER_KILL   = 100.0;
+
+float PLAYER_KILL_MULTIPLIER   = 2.0;
+float SWARMER_KILL_MULTIPLIER  = 0.1;
+float ROVER_KILL_MULTIPLIER    = 0.5;
+float SPAWNER_KILL_MULTIPLIER  = 3.0;
 
 auto TEXT_COLOR_WHITE = Color(1,1,1, 0.85);
 auto FONT = "menlo";
@@ -106,6 +128,11 @@ private class Agent : IGameRenderable {
     AgentId owner = AgentId.ENEMY;
     bool isAlive = true;
 
+    float hp     = INITIAL_PLAYER_HP;
+    float energy = MAX_ENERGY;
+    float points = 0;
+    float damage = 20.0;
+
     vec2 position = vec2(0, 0);
     vec2 dir      = vec2(0, 0);
 
@@ -122,6 +149,10 @@ private class Agent : IGameRenderable {
     }
     @property bool isPlayer () {
         return owner >= AgentId.PLAYER_1 && owner <= AgentId.PLAYER_4;
+    }
+    @property auto killValue () {
+        return isPlayer ? PLAYER_KILL_MULTIPLIER :
+            owner == AgentId.ENEMY ? ROVER_KILL_MULTIPLIER : 1.0;
     }
 
     void update (float speed) {
@@ -149,8 +180,16 @@ private class Agent : IGameRenderable {
 
         //log.write("draw: %s * transform = %s, size: %s * %0.2f = %s", position, tpos, AGENT_SIZE, CURRENT_SCALE_FACTOR, AGENT_SIZE * CURRENT_SCALE_FACTOR);
     }
-    void takeDamage () {
+    void takeDamage (Agent damager) {
         timeSinceTookDamage = DAMAGE_FLASH_DURATION;
+        this.hp    -= damager.damage;
+        damager.hp += damager.damage * LIFE_STEAL;
+
+        this.points -= damager.damage * POINTS_LOST_PER_HP;
+        damager.points += damager.damage * POINTS_GAINED_PER_HP;
+        if (this.hp <= 0 && this.hp + damager.damage > 0)
+            damager.points += this.killValue * POINTS_GAINED_PER_KILL;
+        isAlive = hp > 0;
     }
     bool collidesWith (Agent other) {
         return Collision2d.intersects(Collision2d.Circle(position, AGENT_SIZE), Collision2d.Circle(other.position, AGENT_SIZE));
@@ -165,7 +204,7 @@ private class DamageSystem : IGameSystem {
         foreach (agent; state.enemyAgents) {
             foreach (player; state.playerAgents) {
                 if (agent.collidesWith(player)) {
-                    player.takeDamage();
+                    player.takeDamage(agent);
                 }
             }
         }
@@ -173,8 +212,8 @@ private class DamageSystem : IGameSystem {
             if (fireLine.t < 0 && !fireLine.wasFired) {
                 auto line = Collision2d.LineSegment(fireLine.start, fireLine.dir * FIRE_LINE_LENGTH, FIRE_LINE_WIDTH);
                 foreach (agent; state.agents) {
-                    if (agent.owner != fireLine.owner && Collision2d.intersects(Collision2d.Circle(agent.position, AGENT_SIZE), line)) {
-                        agent.takeDamage();
+                    if (agent.owner != fireLine.ownerId && Collision2d.intersects(Collision2d.Circle(agent.position, AGENT_SIZE), line)) {
+                        agent.takeDamage(fireLine.owner);
                     }
                 }
                 fireLine.wasFired = true;
@@ -186,14 +225,23 @@ private class DamageSystem : IGameSystem {
 private class FiringSystem : IGameSystem {
     void run (GameState state, float dt) {
         foreach (agent; state.agents) {
-            if ((agent.timeSinceLastFired -= dt) < 0 && agent.wantsToFire) {
+            agent.energy = min(MAX_ENERGY, agent.energy + ENERGY_REGEN_PER_SEC * dt);
+            if ((agent.timeSinceLastFired -= dt) < 0 && agent.wantsToFire && agent.energy >= ENERGY_COST_PER_SHOT) {
+                if (agent.energy - ENERGY_COST_PER_SHOT < 0)
+                    agent.energy -= ENERGY_UNDERFLOW_PENALTY;
+                agent.energy -= ENERGY_COST_PER_SHOT;
+
                 if (agent.isEnemy)
                     agent.timeSinceLastFired = uniform01!float() * 10.0;
                 else
                     agent.timeSinceLastFired = AGENT_FIRE_INTERVAL;
-                state.fireBurst(agent.position, agent.fireDir, agent.owner);
+                state.fireBurst(agent.position, agent.fireDir, agent);
             }
-            if ((agent.timeSinceLastJumped -= dt) < 0 && agent.wantsToJump) {
+            if ((agent.timeSinceLastJumped -= dt) < 0 && agent.wantsToJump && agent.energy >= ENERGY_COST_PER_JUMP) {
+                if (agent.energy - ENERGY_COST_PER_JUMP < 0)
+                    agent.energy -= ENERGY_UNDERFLOW_PENALTY;
+                agent.energy -= ENERGY_COST_PER_JUMP;
+
                 agent.timeSinceLastJumped = AGENT_JUMP_INTERVAL;
                 agent.position += agent.dir * AGENT_JUMP_LENGTH;
             }
@@ -259,14 +307,18 @@ private class EnemyPursuitSystem : IGameSystem {
 
 
 private class FireLine {
-    AgentId owner;
+    Agent owner;
     Color color;
     vec2 start, dir;
     float t, chargeDuration, staticDuration;
     bool wasFired = false;
 
-    this (AgentId owner, vec2 start, vec2 dir, float chargeDuration, float staticDuration) {
+    @property auto ownerId () { return owner.owner; }
+
+    this (Agent owner, vec2 start, vec2 dir, float chargeDuration, float staticDuration) {
         this.owner = owner;
+        this.color = AGENT_COLORS[owner.owner];
+
         this.start = start;
         this.dir = dir;
 
@@ -278,8 +330,6 @@ private class FireLine {
         return !((t -= dt) < 0 && abs(t) > staticDuration);
     }
     void draw (mat3 transform) {
-
-
         //vec3 p1 = transform * vec3(start + dir * FIRE_OFFSET * CURRENT_SCALE_FACTOR, 1.0);
         vec3 p1 = transform * vec3(start + dir * FIRE_OFFSET, 1.0);
         vec3 p2 = transform * vec3(start + dir * FIRE_LINE_LENGTH, 1.0);
@@ -292,13 +342,13 @@ private class FireLine {
 
         colorInterp = colorInterp * colorInterp;
 
-        auto color = Color(
-            AGENT_COLORS[owner].r * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].g * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].b * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].a * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+        auto c = Color(
+            color.r * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.g * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.b * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
+            color.a * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
         );
-        DebugRenderer.drawLines([ p1.xy, p2.xy ], color, FIRE_LINE_WIDTH * CURRENT_SCALE_FACTOR);
+        DebugRenderer.drawLines([ p1.xy, p2.xy ], c, FIRE_LINE_WIDTH * CURRENT_SCALE_FACTOR);
     }
 }
 
@@ -329,8 +379,14 @@ private class GameState {
     void update (float dt = 1 / 60.0) {
         foreach (system; systems)
             system.run(this, simSpeed * dt);
-        foreach (agent; agents)
-            agent.update(simSpeed * dt);
+        for (auto i = agents.length; i --> 0; ) {
+            if (!agents[i].isAlive) {
+                agents[i] = agents[$-1];
+                agents.length--;
+            } else {
+                agents[i].update(simSpeed * dt);
+            }
+        }
 
         for (auto i = fireLines.length; i --> 0; ) {
             if (!fireLines[i].update(simSpeed * dt)) {
@@ -348,7 +404,7 @@ private class GameState {
             agent.draw(transform);
     }
 
-    void fireBurst (vec2 pos, vec2 dir, AgentId owner) {
+    void fireBurst (vec2 pos, vec2 dir, Agent owner) {
         fireLines ~= new FireLine(owner, pos, dir, FIRE_LINE_CHARGE_DURATION, FIRE_LINE_STATIC_DURATION);
     }
 
@@ -365,6 +421,23 @@ private class PlayerController : IGameController {
     AgentId playerId;
     int  gamepadId;
     bool isActive = true;
+    private float retainedScore = 0.0;
+
+    @property float energyPercent () {
+        return agent && agent.isAlive ?
+            agent.energy / MAX_ENERGY : 0.0;
+    }
+    @property float hpPercent () {
+        return agent && agent.isAlive ?
+            agent.hp / INITIAL_PLAYER_HP : 0.0;
+    }
+    @property float score () {
+        if (agent && !agent.isAlive) {
+            retainedScore += agent.points;
+            agent = null;
+        }
+        return retainedScore + (agent && agent.isAlive ? agent.points : 0.0);
+    }
 
     this (Agent agent, AgentId owner, GameState gameState, int gamepadId) {
         agent.owner  = playerId = owner;
@@ -374,6 +447,8 @@ private class PlayerController : IGameController {
     }
 
     void handleEvent (UIEvent event) {
+        if (!agent || !agent.isAlive)
+            return;
         event.handle!(
             (GamepadAxisEvent ev) {
                 if (ev.id == gamepadId) {
@@ -409,26 +484,70 @@ private class GameUI {
         PlayerController  player = null;
         UILayoutContainer container;
         UITextElement     score;
-        UIBox             healthBar;
-        UIBox             energyBar;
-        bool              isActive = false;
+        //UIBox             healthBar;
+        //UIBox             energyBar;
+        StatusBar healthBar, energyBar;
 
-        this (AgentId playerId, string name, Layout layoutPos, bool isActive) {
+
+        class StatusBar {
+            float width, value;
+            Color color, backgroundColor;
+            UIBox fbox, bbox;
+            UILayoutContainer container;
+
+            this (vec2 dimensions, float value, bool flip, Color color, Color backgroundColor) {
+                this.fbox = new UIBox(vec2(), dimensions, color);
+                this.bbox = new UIBox(vec2(), dimensions, backgroundColor);
+                this.width = dimensions.x;
+
+                this.color = color;
+                this.backgroundColor = backgroundColor;
+
+                this.container = flip ?
+                    new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.CENTER_RIGHT, vec2(0,0), 0.0, [ this.fbox, this.bbox ]) :
+                    new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.CENTER_LEFT,  vec2(0,0), 0.0, [ this.fbox, this.bbox ]);
+                update(value);
+                this.container.recalcDimensions();
+                this.container.doLayout();
+            }
+            void update (float value) {
+                if (value < 1.0) {
+                    fbox.dim.x = width * value;
+                    bbox.dim.x = width * (1 - value);
+                } else {
+                    fbox.dim.x = width * value;
+                    bbox.dim.x = 0;
+                }
+            }
+        }
+
+        this (AgentId playerId, string name, Layout layoutPos, bool flip) {
             this.playerId = playerId;
-            this.isActive = isActive;
+            healthBar = new StatusBar(HEALTH_BAR_DIMENSIONS, 1.0, flip, AGENT_COLORS[playerId], makeBackgroundColor(AGENT_COLORS[playerId]));
+            energyBar = new StatusBar(ENERGY_BAR_DIMENSIONS, 1.0, flip, AGENT_COLORS[playerId], makeBackgroundColor(AGENT_COLORS[playerId]));
+
             container = new UILayoutContainer(LayoutDir.VERTICAL, layoutPos, vec2(5,5), 4, [
                 new UITextElement(vec2(),vec2(),vec2(0,0), name, new Font(FONT, PLAYER_NAME_FONT_SIZE), AGENT_COLORS[playerId], Color()),
                 score = new UITextElement(vec2(),vec2(),vec2(0,0), "score 12355", new Font(FONT, PLAYER_INFO_FONT_SIZE), AGENT_COLORS[playerId], Color()),
-                healthBar = new UIBox(vec2(), HEALTH_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
-                energyBar = new UIBox(vec2(), ENERGY_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
+                healthBar.container,
+                energyBar.container,
 
-                // health / energy bar backgrounds
-                new UIDecorators.ClampedPositionTo!UIBox(healthBar, vec2(), HEALTH_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
-                new UIDecorators.ClampedPositionTo!UIBox(energyBar, vec2(), ENERGY_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
+                //healthBar = new UIBox(vec2(), HEALTH_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
+                //energyBar = new UIBox(vec2(), ENERGY_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
+
+                //// health / energy bar backgrounds
+                //new UIDecorators.ClampedPositionTo!UIBox(healthBar, vec2(), HEALTH_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
+                //new UIDecorators.ClampedPositionTo!UIBox(energyBar, vec2(), ENERGY_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
             ]);
         }
         void update () {
             if (player && player.isActive) {
+                healthBar.update(player.hpPercent);
+                energyBar.update(player.energyPercent);
+                //healthBar.dim.x = HEALTH_BAR_DIMENSIONS.x * player.hpPercent;
+                //energyBar.dim.x = ENERGY_BAR_DIMENSIONS.x * player.energyPercent;
+                score.text = format("score %d", cast(int)player.score);
+
                 container.dim = vec2(g_mainWindow.screenDimensions);
                 container.pos = vec2(0,0);
                 container.recalcDimensions();
@@ -447,9 +566,9 @@ private class GameUI {
         containers ~= new UILayoutContainer(LayoutDir.VERTICAL, Layout.TOP_CENTER, vec2(5,5), 3, [
             stats = new UITextElement(vec2(),vec2(),vec2(1,1),"", new Font(FONT, SMALL_FONT_SIZE), TEXT_COLOR_WHITE, Color())
         ]);
-        playerUI[0] = new PlayerUI(AgentId.PLAYER_1, "PLAYER 1", Layout.TOP_LEFT,  true);
-        playerUI[1] = new PlayerUI(AgentId.PLAYER_2, "PLAYER 2", Layout.TOP_RIGHT, false);
-        playerUI[2] = new PlayerUI(AgentId.PLAYER_3, "PLAYER 3", Layout.BTM_LEFT,  true);
+        playerUI[0] = new PlayerUI(AgentId.PLAYER_1, "PLAYER 1", Layout.TOP_LEFT, false);
+        playerUI[1] = new PlayerUI(AgentId.PLAYER_2, "PLAYER 2", Layout.TOP_RIGHT, true);
+        playerUI[2] = new PlayerUI(AgentId.PLAYER_3, "PLAYER 3", Layout.BTM_LEFT, false);
         playerUI[3] = new PlayerUI(AgentId.PLAYER_4, "PLAYER 4", Layout.BTM_RIGHT, true);
     }
     void release () {
