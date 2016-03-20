@@ -57,15 +57,12 @@ float AGENT_ALIGNMENT_DISTANCE = 40.0;
 immutable float INITIAL_PLAYER_HP = 300.0;
 immutable float MAX_ENERGY        = 100.0;
 
-float MELEE_DAMAGE_AMOUNT      = 10.0;
-float FIRE_DAMAGE_AMOUNT       = 20.0;
 float LIFE_STEAL               = 0.2;
 
 float ENERGY_COST_PER_SHOT     = 12.0;
 float ENERGY_COST_PER_JUMP     = 20.0;
 float ENERGY_REGEN_PER_SEC     = 24.0;
 float ENERGY_UNDERFLOW_PENALTY = 40.0;
-
 
 float POINTS_LOST_PER_HP       = 0.5;  // 5 points lost / 10 hp
 float POINTS_GAINED_PER_HP     = 1.0;  // 10 points gained / 10 hp
@@ -75,6 +72,40 @@ float PLAYER_KILL_MULTIPLIER   = 2.0;
 float SWARMER_KILL_MULTIPLIER  = 0.1;
 float ROVER_KILL_MULTIPLIER    = 0.5;
 float SPAWNER_KILL_MULTIPLIER  = 3.0;
+
+float PLAYER_INITIAL_HP = 300.0;
+float SWARMER_INITIAL_HP = 30.0;
+float ROVER_INITIAL_HP   = 50.0;
+float SPAWNER_INITIAL_HP = 800.0;
+
+float PLAYER_DAMAGE  = 20.0;
+float SWARMER_DAMAGE = 5.0;
+float ROVER_DAMAGE   = 15.0;
+
+float PLAYER_LIFE_STEAL  = 0.2;
+float SWARMER_LIFE_STEAL = 2.0;
+float ROVER_LIFE_STEAL   = 0.5;
+float SPAWNER_LIFE_STEAL = 0.0;
+
+float PLAYER_MAX_HP  = 1000;
+float SWARMER_MAX_HP = 60;
+float ROVER_MAX_HP   = 120;
+float SPAWNER_MAX_HP = 800;
+
+float PLAYER_RESPAWN_TIME = 6.0;
+
+enum AgentId : ubyte {
+    PLAYER_1 = 0,
+    PLAYER_2,
+    PLAYER_3,
+    PLAYER_4,
+    ENEMY_SWARMER,
+    ENEMY_ROVER,
+    ENEMY_SPAWNER,
+    GREEN_WALL_OF_DOOM,
+    INACTIVE
+}
+
 
 auto TEXT_COLOR_WHITE = Color(1,1,1, 0.85);
 auto FONT = "menlo";
@@ -97,15 +128,6 @@ interface IGameController { void handleEvent (UIEvent event); }
 interface IGameSystem     { void run (GameState state, float dt); }
 interface IGameRenderable { void draw (mat3 transform); }
 
-enum AgentId : ubyte {
-    ENEMY = 0,
-    PLAYER_1 = 1,
-    PLAYER_2 = 2,
-    PLAYER_3 = 3,
-    PLAYER_4 = 4,
-    INACTIVE = 5,
-    WALL     = 6,
-}
 immutable Color[] AGENT_COLORS = [
     Color(0.93, 0.07, 0.05, 0.86), // ENEMY
     Color(0.28, 0.69, 0.72, 0.63), // PLAYER 1
@@ -125,13 +147,15 @@ auto makeBackgroundColor (Color color) {
 
 private class Agent : IGameRenderable {
 
-    AgentId owner = AgentId.ENEMY;
+    AgentId agentId;
     bool isAlive = true;
 
-    float hp     = INITIAL_PLAYER_HP;
+    float hp     = 1.0;
+    float maxHp  = 1.0;
     float energy = MAX_ENERGY;
     float points = 0;
-    float damage = 20.0;
+    float damage = 0.0;
+    float lifeSteal = 0.0;
 
     vec2 position = vec2(0, 0);
     vec2 dir      = vec2(0, 0);
@@ -145,14 +169,26 @@ private class Agent : IGameRenderable {
     float timeSinceTookDamage = 0.0;
 
     @property bool isEnemy () {
-        return owner == AgentId.ENEMY;
+        return agentId == AgentId.ENEMY_SPAWNER || 
+               agentId == AgentId.ENEMY_ROVER || 
+               agentId == AgentId.ENEMY_SWARMER;
     }
     @property bool isPlayer () {
-        return owner >= AgentId.PLAYER_1 && owner <= AgentId.PLAYER_4;
+        return agentId >= AgentId.PLAYER_1 && agentId <= AgentId.PLAYER_4;
     }
     @property auto killValue () {
         return isPlayer ? PLAYER_KILL_MULTIPLIER :
-            owner == AgentId.ENEMY ? ROVER_KILL_MULTIPLIER : 1.0;
+            agentId == AgentId.ENEMY_ROVER ? ROVER_KILL_MULTIPLIER :
+            agentId == AgentId.ENEMY_SWARMER ? SWARMER_KILL_MULTIPLIER :
+            agentId == AgentId.ENEMY_SPAWNER ? SPAWNER_KILL_MULTIPLIER : 1.0;
+    }
+
+    this (AgentId id) {
+        this.agentId = id;
+        this.hp = isPlayer ? PLAYER_INITIAL_HP : ROVER_INITIAL_HP;
+        this.maxHp = isPlayer ? PLAYER_MAX_HP  : ROVER_MAX_HP;
+        this.damage = isPlayer ? PLAYER_DAMAGE : ROVER_DAMAGE;
+        this.lifeSteal = isPlayer ? PLAYER_LIFE_STEAL : ROVER_LIFE_STEAL;
     }
 
     void update (float speed) {
@@ -168,10 +204,10 @@ private class Agent : IGameRenderable {
         float colorInterp = timeSinceTookDamage > 0 ? (timeSinceTookDamage / DAMAGE_FLASH_DURATION) : 0.0;
 
         auto color = Color(
-            AGENT_COLORS[owner].r * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].g * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].b * (1 - colorInterp) + 1.0 * colorInterp,
-            AGENT_COLORS[owner].a * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[agentId].r * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[agentId].g * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[agentId].b * (1 - colorInterp) + 1.0 * colorInterp,
+            AGENT_COLORS[agentId].a * (1 - colorInterp) + 1.0 * colorInterp,
         );
 
         auto tpos = transform * vec3(position, 1.0);
@@ -183,7 +219,7 @@ private class Agent : IGameRenderable {
     void takeDamage (Agent damager) {
         timeSinceTookDamage = DAMAGE_FLASH_DURATION;
         this.hp    -= damager.damage;
-        damager.hp += damager.damage * LIFE_STEAL;
+        damager.hp = min(damager.hp + damager.damage * damager.lifeSteal, damager.maxHp);
 
         this.points -= damager.damage * POINTS_LOST_PER_HP;
         damager.points += damager.damage * POINTS_GAINED_PER_HP;
@@ -212,7 +248,7 @@ private class DamageSystem : IGameSystem {
             if (fireLine.t < 0 && !fireLine.wasFired) {
                 auto line = Collision2d.LineSegment(fireLine.start, fireLine.dir * FIRE_LINE_LENGTH, FIRE_LINE_WIDTH);
                 foreach (agent; state.agents) {
-                    if (agent.owner != fireLine.ownerId && Collision2d.intersects(Collision2d.Circle(agent.position, AGENT_SIZE), line)) {
+                    if (agent.agentId != fireLine.ownerId && Collision2d.intersects(Collision2d.Circle(agent.position, AGENT_SIZE), line)) {
                         agent.takeDamage(fireLine.owner);
                     }
                 }
@@ -313,11 +349,11 @@ private class FireLine {
     float t, chargeDuration, staticDuration;
     bool wasFired = false;
 
-    @property auto ownerId () { return owner.owner; }
+    @property auto ownerId () { return owner.agentId; }
 
     this (Agent owner, vec2 start, vec2 dir, float chargeDuration, float staticDuration) {
         this.owner = owner;
-        this.color = AGENT_COLORS[owner.owner];
+        this.color = AGENT_COLORS[owner.agentId];
 
         this.start = start;
         this.dir = dir;
@@ -376,7 +412,7 @@ private class GameState {
         this.agents = [];
     }
 
-    void update (float dt = 1 / 60.0) {
+    void update (float dt) {
         foreach (system; systems)
             system.run(this, simSpeed * dt);
         for (auto i = agents.length; i --> 0; ) {
@@ -409,7 +445,7 @@ private class GameState {
     }
 
     void createEnemy (vec2 pos) {
-        auto enemy = new Agent(); 
+        auto enemy = new Agent(AgentId.ENEMY_ROVER); 
         enemy.position = pos;        
         agents      ~= enemy;
     }
@@ -422,6 +458,7 @@ private class PlayerController : IGameController {
     int  gamepadId;
     bool isActive = true;
     private float retainedScore = 0.0;
+    float timeUntilRespawn = 0.0;
 
     @property float energyPercent () {
         return agent && agent.isAlive ?
@@ -432,18 +469,25 @@ private class PlayerController : IGameController {
             agent.hp / INITIAL_PLAYER_HP : 0.0;
     }
     @property float score () {
-        if (agent && !agent.isAlive) {
-            retainedScore += agent.points;
-            agent = null;
-        }
         return retainedScore + (agent && agent.isAlive ? agent.points : 0.0);
     }
 
-    this (Agent agent, AgentId owner, GameState gameState, int gamepadId) {
-        agent.owner  = playerId = owner;
+    this (Agent agent, GameState gameState, int gamepadId) {
+        playerId = agent.agentId;
         this.agent  = agent;
         this.gameState = gameState;
         this.gamepadId = gamepadId;
+    }
+
+    void update (float dt) {
+        if (agent && !agent.isAlive) {
+            retainedScore += agent.points;
+            agent = null;
+            timeUntilRespawn = PLAYER_RESPAWN_TIME;
+        } else if (!agent && (timeUntilRespawn -= dt) <= 0) {
+            agent = new Agent(playerId);
+            gameState.agents ~= agent;
+        }
     }
 
     void handleEvent (UIEvent event) {
@@ -453,6 +497,9 @@ private class PlayerController : IGameController {
             (GamepadAxisEvent ev) {
                 if (ev.id == gamepadId) {
                     agent.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
+
+                    log.write("%d RT = %0.2f", ev.id, ev.AXIS_RT);
+
                     if (ev.AXIS_RT)
                         gameState.simSpeed = 1.0 - ev.AXIS_RT;
 
@@ -600,11 +647,8 @@ private class GameModule : UIComponent {
     GameUI    ui;
 
     override void onComponentInit () {
-        //auto player = new Agent();
         gameState = new GameState();
         ui = new GameUI();
-
-        //controllers ~= new PlayerController(player, AgentId.PLAYER_1, gameState);
     }
     override void onComponentShutdown () {
         controllers.length = 0;
@@ -619,9 +663,10 @@ private class GameModule : UIComponent {
                         if (players[i] && players[i].gamepadId == ev.id)
                             return true;
                         else if (!players[i]) {
-                            auto agent = new Agent();
+                            auto id = cast(AgentId)(AgentId.PLAYER_1 + i);
+                            auto agent = new Agent(id);
                             gameState.agents ~= agent;
-                            players[i] = ui.playerUI[i].player = new PlayerController(agent, cast(AgentId)(AgentId.PLAYER_1 + i), gameState, ev.id);
+                            players[i] = ui.playerUI[i].player = new PlayerController(agent, gameState, ev.id);
                             log.write("Welcome player %d! (gamepad %d)", i + 1, ev.id);
                             return true;
                         }
@@ -641,14 +686,30 @@ private class GameModule : UIComponent {
                     //return true;
                 },
                 (FrameUpdateEvent ev) {
+                    ev.dt = abs(ev.dt);
+
+                    uint alivePlayers = 0, totalPlayers = 0;
                     threadStats.timedCall("gamestate.update()", {
-                        gameState.update();
+                        gameState.update(ev.dt);
+
+                        foreach (player; players) {
+                            if (player) {
+                                if (player.agent && player.agent.isAlive)
+                                    ++alivePlayers;
+                                ++totalPlayers;
+                                player.update(ev.dt * gameState.simSpeed);
+                            }
+                        }
+                        if (!alivePlayers)
+                            gameState.simSpeed = 1.0;
                     });
                     threadStats.timedCall("gamestate.draw()", {
                         gameState.draw();
                     });
                     threadStats.timedCall("gamestate.ui()", {
-                        ui.stats.text = format("%d agents\nspeed %0.2f", gameState.agents.length, gameState.simSpeed);
+                        ui.stats.text = format("%d agents\nspeed %0.2f\n%d / %d players", 
+                            gameState.agents.length, gameState.simSpeed,
+                            alivePlayers, totalPlayers);
                         ui.update();
                     });
                     return true;

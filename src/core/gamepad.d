@@ -154,8 +154,9 @@ protected struct GamepadProfiles {
             GamepadAxis.AXIS_LTRIGGER,
             GamepadAxis.AXIS_RTRIGGER
         ],
+        //0, 0, 0,
         0.06, 0.06, 0.0,    // deadzones (left, right, triggers)
-        false, false, false // flip LY, flip RY, clamp triggers to [0,1] (ds4 uses [0,1])
+        false, false, true // flip LY, flip RY, clamp triggers to [0,1] (ds4 uses [0,1])
     );
     static immutable auto XboxController = ProfileData (
         [
@@ -183,6 +184,7 @@ protected struct GamepadProfiles {
             GamepadAxis.AXIS_LTRIGGER,
             GamepadAxis.AXIS_RTRIGGER
         ],
+        //0, 0, 0,
         0.19, 0.19, 0.1,   // deadzones (left, right, triggers)
         false, false, true // flip LY, flip RY, clamp triggers to [0,1] (xbox controllers use [-1,1])
     );
