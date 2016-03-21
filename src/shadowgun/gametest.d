@@ -33,13 +33,14 @@ auto immutable INACTIVE_COLOR = Color(0.21, 0.22, 0.23, 0.79);
 private float numCirclePoints = 25;
 private float circleWidth = 0.04;
 
-float GAME_UNITS_PER_SCREEN = 100.0;
+immutable float GAME_UNITS_PER_SCREEN = 100.0;
 float DEFAULT_AGENT_MOVE_SPEED = 30.0;
 float AGENT_JUMP_LENGTH = 12.0;
 float AGENT_JUMP_INTERVAL = 0.32;
 
 float AGENT_SIZE = 1.0;
-float AGENT_FIRE_INTERVAL = 0.08;
+float AGENT_FIRE_INTERVAL = 0.0;
+//float AGENT_FIRE_INTERVAL = 0.05;
 //float AGENT_FIRE_INTERVAL = 0.04;
 
 float CURRENT_SCALE_FACTOR = 1.0;
@@ -59,7 +60,8 @@ immutable float MAX_ENERGY        = 100.0;
 
 float LIFE_STEAL               = 0.2;
 
-float ENERGY_COST_PER_SHOT     = 12.0;
+float ENERGY_COST_PER_SHOT     = 4.0;
+//float ENERGY_COST_PER_SHOT     = 12.0;
 float ENERGY_COST_PER_JUMP     = 20.0;
 float ENERGY_REGEN_PER_SEC     = 24.0;
 float ENERGY_UNDERFLOW_PENALTY = 40.0;
@@ -92,7 +94,7 @@ float SWARMER_MAX_HP = 60;
 float ROVER_MAX_HP   = 120;
 float SPAWNER_MAX_HP = 800;
 
-float PLAYER_RESPAWN_TIME = 6.0;
+float PLAYER_RESPAWN_TIME = 5.0;
 
 enum AgentId : ubyte {
     PLAYER_1 = 0,
@@ -128,25 +130,31 @@ interface IGameController { void handleEvent (UIEvent event); }
 interface IGameSystem     { void run (GameState state, float dt); }
 interface IGameRenderable { void draw (mat3 transform); }
 
-immutable Color[] AGENT_COLORS = [
-    Color(0.93, 0.07, 0.05, 0.86), // ENEMY
+immutable Color[9] AGENT_COLORS = [
     Color(0.28, 0.69, 0.72, 0.63), // PLAYER 1
     Color(1.00, 0.71, 0.00, 0.67), // ...
-    Color(1.00, 0.14, 0.19, 0.67), 
+    Color(1.00, 0.14, 0.89, 0.67), // ...
     Color(0.28, 0.75, 0.26, 0.63), // PLAYER 4
-    Color(0.44, 0.44, 0.44, 0.63), // INACTIVE
+    Color(0.93, 0.07, 0.05, 0.86), // ENEMY
+    Color(0.93, 0.07, 0.05, 0.86), // 
+    Color(0.93, 0.07, 0.05, 0.86), // 
     Color(0.21, 0.22, 0.23, 0.79), // WALL
+    Color(0.44, 0.44, 0.44, 0.63), // INACTIVE
+];
+
+// Relative to current window dimensions
+immutable vec2[4] PLAYER_SPAWN_POSITIONS = [
+    vec2(-0.25 * GAME_UNITS_PER_SCREEN, -0.140625 * GAME_UNITS_PER_SCREEN),
+    vec2(+0.25 * GAME_UNITS_PER_SCREEN, -0.140625 * GAME_UNITS_PER_SCREEN),
+    vec2(-0.25 * GAME_UNITS_PER_SCREEN, +0.140625 * GAME_UNITS_PER_SCREEN),
+    vec2(+0.25 * GAME_UNITS_PER_SCREEN, +0.140625 * GAME_UNITS_PER_SCREEN),
 ];
 
 auto makeBackgroundColor (Color color) {
     return Color(color.r + 0.1, color.g + 0.1, color.b + 0.1, color.a * 0.5);
 }
 
-
-
-
 private class Agent : IGameRenderable {
-
     AgentId agentId;
     bool isAlive = true;
 
@@ -183,7 +191,8 @@ private class Agent : IGameRenderable {
             agentId == AgentId.ENEMY_SPAWNER ? SPAWNER_KILL_MULTIPLIER : 1.0;
     }
 
-    this (AgentId id) {
+    this (vec2 pos, AgentId id) {
+        this.position = pos;
         this.agentId = id;
         this.hp = isPlayer ? PLAYER_INITIAL_HP : ROVER_INITIAL_HP;
         this.maxHp = isPlayer ? PLAYER_MAX_HP  : ROVER_MAX_HP;
@@ -445,8 +454,7 @@ private class GameState {
     }
 
     void createEnemy (vec2 pos) {
-        auto enemy = new Agent(AgentId.ENEMY_ROVER); 
-        enemy.position = pos;        
+        auto enemy = new Agent(pos, AgentId.ENEMY_ROVER); 
         agents      ~= enemy;
     }
 }
@@ -485,33 +493,30 @@ private class PlayerController : IGameController {
             agent = null;
             timeUntilRespawn = PLAYER_RESPAWN_TIME;
         } else if (!agent && (timeUntilRespawn -= dt) <= 0) {
-            agent = new Agent(playerId);
+            agent = new Agent(PLAYER_SPAWN_POSITIONS[playerId - AgentId.PLAYER_1], playerId);
             gameState.agents ~= agent;
         }
     }
 
     void handleEvent (UIEvent event) {
-        if (!agent || !agent.isAlive)
-            return;
         event.handle!(
             (GamepadAxisEvent ev) {
                 if (ev.id == gamepadId) {
-                    agent.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
-
-                    log.write("%d RT = %0.2f", ev.id, ev.AXIS_RT);
+                    if (agent)
+                        agent.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
 
                     if (ev.AXIS_RT)
                         gameState.simSpeed = 1.0 - ev.AXIS_RT;
 
-                    if (agent.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
+                    if (agent && agent.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
                         agent.fireDir = vec2(ev.AXIS_LX, ev.AXIS_LY).normalized();
                 }
             },
             (GamepadButtonEvent ev) {
                 if (ev.id == gamepadId) {
-                    if (ev.button == BUTTON_X)
+                    if (agent && ev.button == BUTTON_X)
                         agent.wantsToFire = ev.pressed;
-                    else if (ev.button == BUTTON_A)
+                    else if (agent && ev.button == BUTTON_A)
                         agent.wantsToJump = ev.pressed;
                     else if (ev.button == BUTTON_Y && ev.pressed)
                         gameState.createEnemy(vec2(0, 0));
@@ -534,6 +539,7 @@ private class GameUI {
         //UIBox             healthBar;
         //UIBox             energyBar;
         StatusBar healthBar, energyBar;
+        UITextElement respawnText;
 
 
         class StatusBar {
@@ -586,6 +592,7 @@ private class GameUI {
                 //new UIDecorators.ClampedPositionTo!UIBox(healthBar, vec2(), HEALTH_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
                 //new UIDecorators.ClampedPositionTo!UIBox(energyBar, vec2(), ENERGY_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
             ]);
+            this.respawnText = new UITextElement(vec2(1e-3,1e-3),vec2(),vec2(0,0), "", new Font(FONT, 50.0), AGENT_COLORS[playerId], Color());
         }
         void update () {
             if (player && player.isActive) {
@@ -600,6 +607,32 @@ private class GameUI {
                 container.recalcDimensions();
                 container.doLayout();
                 container.render();
+
+                if (!player.agent) {
+                    import std.math;
+
+                    vec2 center = g_mainWindow.screenDimensions;
+                    switch (playerId) {
+                        case AgentId.PLAYER_1: center = vec2(0.25 * center.x, 0.25 * center.y); break;
+                        case AgentId.PLAYER_2: center = vec2(0.75 * center.x, 0.25 * center.y); break;
+                        case AgentId.PLAYER_3: center = vec2(0.25 * center.x, 0.75 * center.y); break;
+                        case AgentId.PLAYER_4: center = vec2(0.75 * center.x, 0.75 * center.y); break;
+                        default:
+                    }
+
+                    respawnText.text = format("%d", cast(int)(player.timeUntilRespawn + (1 - 1e-6)));
+                    auto frac = fmod(player.timeUntilRespawn, 1.0);
+                    respawnText.fontSize = 50.0 + 150.0 * frac;
+
+                    respawnText.recalcDimensions();
+                    respawnText.pos = center - respawnText.dim * 0.5;
+                    respawnText.doLayout();
+                } else {
+                    if (respawnText.pos.x >= 0 || respawnText.pos.y >= 0) {
+                        respawnText.pos = vec2(1e-3, 1e-3);
+                        respawnText.doLayout();
+                    }
+                }
             } else {
                 // hack: move offscreen to not render. Will add caching / state retention, etc later.
                 container.pos = vec2(g_mainWindow.screenDimensions) * 2;
@@ -664,7 +697,7 @@ private class GameModule : UIComponent {
                             return true;
                         else if (!players[i]) {
                             auto id = cast(AgentId)(AgentId.PLAYER_1 + i);
-                            auto agent = new Agent(id);
+                            auto agent = new Agent(PLAYER_SPAWN_POSITIONS[i], id);
                             gameState.agents ~= agent;
                             players[i] = ui.playerUI[i].player = new PlayerController(agent, gameState, ev.id);
                             log.write("Welcome player %d! (gamepad %d)", i + 1, ev.id);
@@ -682,8 +715,8 @@ private class GameModule : UIComponent {
                             return true;
                         }
                     }
-                    throw new Exception(format("Not connected to gamepad %d", ev.id));
-                    //return true;
+                    //throw new Exception(format("Not connected to gamepad %d", ev.id));
+                    return true;
                 },
                 (FrameUpdateEvent ev) {
                     ev.dt = abs(ev.dt);
