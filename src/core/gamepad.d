@@ -143,8 +143,8 @@ protected struct GamepadProfiles {
             GamepadButton.BUTTON_RBUMPER,
             GamepadButton.BUTTON_LTRIGGER, // ds4 actually has triggers aliased as buttons, apparently
             GamepadButton.BUTTON_RTRIGGER,
-            GamepadButton.BUTTON_START,
             GamepadButton.BUTTON_SELECT, // share button
+            GamepadButton.BUTTON_START,
             GamepadButton.BUTTON_LSTICK,
             GamepadButton.BUTTON_RSTICK,
             GamepadButton.BUTTON_HOME,
@@ -317,8 +317,11 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
             assert(naxes == state.naxes && nbuttons == state.nbuttons);
 
             // Update buttons
+            foreach (i; 0 .. NUM_GAMEPAD_BUTTONS) {
+                state.buttons[i] = 0;
+            }
             foreach (k; 0 .. nbuttons) {
-                state.buttons[profile.buttons[k]] = buttons[k];
+                state.buttons[profile.buttons[k]] |= buttons[k];
                 //sharedButtons[profile.buttons[k]] |= buttons[k];
             }
 
