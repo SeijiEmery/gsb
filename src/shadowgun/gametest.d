@@ -94,6 +94,9 @@ float SWARMER_MAX_HP = 60;
 float ROVER_MAX_HP   = 120;
 float SPAWNER_MAX_HP = 800;
 
+float PLAYER_HP_REGEN_PER_SEC = 15.0;
+float PLAYER_HP_REGEN_DELAY   = 2.0;  // regen if not hit for X seconds
+
 float PLAYER_RESPAWN_TIME = 5.0;
 
 enum AgentId : ubyte {
@@ -158,8 +161,9 @@ private class Agent : IGameRenderable {
     AgentId agentId;
     bool isAlive = true;
 
-    float hp     = 1.0;
-    float maxHp  = 1.0;
+    float hp     = 1.0;       // current hp
+    float maxHp  = 1.0;       // max hp agent has had in this lifetime (affects regen + hp display)
+    float maxAllowedHp = 1.0; // max hp agent is allowed to have (defined by <AgentName>_MAX_HP)
     float energy = MAX_ENERGY;
     float points = 0;
     float damage = 0.0;
@@ -194,8 +198,8 @@ private class Agent : IGameRenderable {
     this (vec2 pos, AgentId id) {
         this.position = pos;
         this.agentId = id;
-        this.hp = isPlayer ? PLAYER_INITIAL_HP : ROVER_INITIAL_HP;
-        this.maxHp = isPlayer ? PLAYER_MAX_HP  : ROVER_MAX_HP;
+        this.hp = this.maxHp = isPlayer ? PLAYER_INITIAL_HP : ROVER_INITIAL_HP;
+        this.maxAllowedHp = isPlayer ? PLAYER_MAX_HP  : ROVER_MAX_HP;
         this.damage = isPlayer ? PLAYER_DAMAGE : ROVER_DAMAGE;
         this.lifeSteal = isPlayer ? PLAYER_LIFE_STEAL : ROVER_LIFE_STEAL;
     }
@@ -225,10 +229,16 @@ private class Agent : IGameRenderable {
 
         //log.write("draw: %s * transform = %s, size: %s * %0.2f = %s", position, tpos, AGENT_SIZE, CURRENT_SCALE_FACTOR, AGENT_SIZE * CURRENT_SCALE_FACTOR);
     }
+    void regenHp (float amount) {
+        hp = min(hp + amount, maxAllowedHp);
+        if (hp > maxHp)
+            log.write("increasing maxHp from %0.2f to %0.2f", maxHp, hp);
+        maxHp = max(hp, maxHp);
+    }
     void takeDamage (Agent damager) {
         timeSinceTookDamage = DAMAGE_FLASH_DURATION;
         this.hp    -= damager.damage;
-        damager.hp = min(damager.hp + damager.damage * damager.lifeSteal, damager.maxHp);
+        damager.regenHp(damager.damage * damager.lifeSteal);
 
         this.points -= damager.damage * POINTS_LOST_PER_HP;
         damager.points += damager.damage * POINTS_GAINED_PER_HP;
@@ -264,6 +274,13 @@ private class DamageSystem : IGameSystem {
                 fireLine.wasFired = true;
             }
         }
+
+        foreach (player; state.playerAgents) {
+            if (player.timeSinceTookDamage < -PLAYER_HP_REGEN_DELAY && player.hp < player.maxHp) {
+                player.regenHp(min(PLAYER_HP_REGEN_PER_SEC * dt, player.maxHp - player.hp));
+            }
+        }
+
     }
 }
 
@@ -468,14 +485,10 @@ private class PlayerController : IGameController {
     private float retainedScore = 0.0;
     float timeUntilRespawn = 0.0;
 
-    @property float energyPercent () {
-        return agent && agent.isAlive ?
-            agent.energy / MAX_ENERGY : 0.0;
-    }
-    @property float hpPercent () {
-        return agent && agent.isAlive ?
-            agent.hp / INITIAL_PLAYER_HP : 0.0;
-    }
+    @property float energy () { return agent && agent.isAlive ? agent.energy : 0; }
+    @property float hp     () { return agent && agent.isAlive ? agent.hp     : 0; }
+    @property float maxHp  () { return agent && agent.isAlive ? agent.maxHp  : PLAYER_INITIAL_HP; }
+
     @property float score () {
         return retainedScore + (agent && agent.isAlive ? agent.points : 0.0);
     }
@@ -557,20 +570,16 @@ private class GameUI {
                 this.backgroundColor = backgroundColor;
 
                 this.container = flip ?
-                    new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.CENTER_RIGHT, vec2(0,0), 0.0, [ this.fbox, this.bbox ]) :
+                    new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.CENTER_RIGHT, vec2(0,0), 0.0, [ this.bbox, this.fbox ]) :
                     new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.CENTER_LEFT,  vec2(0,0), 0.0, [ this.fbox, this.bbox ]);
-                update(value);
+                update(value, value, value);
                 this.container.recalcDimensions();
                 this.container.doLayout();
             }
-            void update (float value) {
-                if (value < 1.0) {
-                    fbox.dim.x = width * value;
-                    bbox.dim.x = width * (1 - value);
-                } else {
-                    fbox.dim.x = width * value;
-                    bbox.dim.x = 0;
-                }
+            void update (float value, float max, float maxTotal) {
+                fbox.dim.x = width * value / maxTotal;
+                bbox.dim.x = width * (max - value) / maxTotal;
+                this.container.dim.x = 0; // force relayout / recalc dimensions
             }
         }
 
@@ -582,24 +591,15 @@ private class GameUI {
             container = new UILayoutContainer(LayoutDir.VERTICAL, layoutPos, vec2(5,5), 4, [
                 new UITextElement(vec2(),vec2(),vec2(0,0), name, new Font(FONT, PLAYER_NAME_FONT_SIZE), AGENT_COLORS[playerId], Color()),
                 score = new UITextElement(vec2(),vec2(),vec2(0,0), "score 12355", new Font(FONT, PLAYER_INFO_FONT_SIZE), AGENT_COLORS[playerId], Color()),
-                healthBar.container,
                 energyBar.container,
-
-                //healthBar = new UIBox(vec2(), HEALTH_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
-                //energyBar = new UIBox(vec2(), ENERGY_BAR_DIMENSIONS, AGENT_COLORS[playerId]),
-
-                //// health / energy bar backgrounds
-                //new UIDecorators.ClampedPositionTo!UIBox(healthBar, vec2(), HEALTH_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
-                //new UIDecorators.ClampedPositionTo!UIBox(energyBar, vec2(), ENERGY_BAR_DIMENSIONS, makeBackgroundColor(AGENT_COLORS[playerId])),
+                healthBar.container,
             ]);
             this.respawnText = new UITextElement(vec2(1e-3,1e-3),vec2(),vec2(0,0), "", new Font(FONT, 50.0), AGENT_COLORS[playerId], Color());
         }
         void update () {
             if (player && player.isActive) {
-                healthBar.update(player.hpPercent);
-                energyBar.update(player.energyPercent);
-                //healthBar.dim.x = HEALTH_BAR_DIMENSIONS.x * player.hpPercent;
-                //energyBar.dim.x = ENERGY_BAR_DIMENSIONS.x * player.energyPercent;
+                healthBar.update(player.hp, player.maxHp, PLAYER_INITIAL_HP);
+                energyBar.update(player.energy, MAX_ENERGY, MAX_ENERGY);
                 score.text = format("score %d", cast(int)player.score);
 
                 container.dim = vec2(g_mainWindow.screenDimensions);
