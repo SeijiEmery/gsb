@@ -58,8 +58,6 @@ float AGENT_ALIGNMENT_DISTANCE = 40.0;
 immutable float INITIAL_PLAYER_HP = 300.0;
 immutable float MAX_ENERGY        = 100.0;
 
-float LIFE_STEAL               = 0.2;
-
 float ENERGY_COST_PER_SHOT     = 4.0;
 //float ENERGY_COST_PER_SHOT     = 12.0;
 float ENERGY_COST_PER_JUMP     = 20.0;
@@ -686,15 +684,22 @@ private class GameModule : UIComponent {
     override void onComponentShutdown () {
         controllers.length = 0;
         gameState = null;
-        ui = null;
+        if (ui) {
+            ui.release();
+            ui = null;
+        }
+        foreach (i; 0 .. 4)
+            players[i] = null;
     }
     override void handleEvent (UIEvent event) {
         if (gameState) {
             event.handle!(
                 (GamepadConnectedEvent ev) {
                     foreach (i; 0 .. 4) {
-                        if (players[i] && players[i].gamepadId == ev.id)
+                        if (players[i] && players[i].gamepadId == ev.id) {
+                            log.write("gamepad %d is already connected as player %d", ev.id, i+1);
                             return true;
+                        }
                         else if (!players[i]) {
                             auto id = cast(AgentId)(AgentId.PLAYER_1 + i);
                             auto agent = new Agent(PLAYER_SPAWN_POSITIONS[i], id);

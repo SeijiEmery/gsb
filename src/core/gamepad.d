@@ -7,6 +7,9 @@ import gsb.core.uievents;
 
 import Derelict.glfw3.glfw3;
 
+
+GamepadManager!(GLFW_JOYSTICK_LAST+1)* g_gamepadManager = null;
+
 private class GamepadInputManager : IEventCollector {
     GamepadManager!(GLFW_JOYSTICK_LAST+1) mgr;
     UIEvent[] localEvents;
@@ -30,11 +33,16 @@ private class GamepadInputManager : IEventCollector {
         mgr.onGamepadAxesUpdate.connect((int id, float[] axes) {
             localEvents ~= GamepadAxisEvent.create(id, axes[0..NUM_GAMEPAD_AXES]);
         });
+        g_gamepadManager = &mgr;
+    }
+    ~this () {
+        if (g_gamepadManager == &mgr)
+            g_gamepadManager = null;
     }
 
     UIEvent[] getEvents () {
         localEvents.length = 0;
-        if (sinceLastPoll == 0) {
+        if (sinceLastPoll == 0 || mgr.wantsConnectionsResent) {
             sinceLastPoll = POLL_EVERY - 1;
             mgr.updateDeviceList();
         } else {
@@ -222,16 +230,21 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
     Signal!(int, GamepadButton) onGamepadButtonReleased;
     Signal!(int, float[])       onGamepadAxesUpdate;
 
+    private bool wantsConnectionsResent = false;
+
     // Poll every device slot to determine what is connected and what isn't (emits onDeviceConnected/Removed)
     // Only call this every N frames, since glfwJoystickPresent(), etc., has quite a bit of overhead.
     void updateDeviceList () {
         import std.conv;
 
-        log.write("Scanning for devices...");
-
+        if (wantsConnectionsResent) 
+            log.write("Resending connection events");
+        else
+            log.write("Scanning for devices...");
+        
         foreach (int i; 0 .. states.length) {
             bool active = glfwJoystickPresent(i) != 0;
-            if (active && states[i].profile == GamepadProfile.NO_PROFILE) {
+            if (active && (states[i].profile == GamepadProfile.NO_PROFILE || wantsConnectionsResent)) {
                 int naxes, nbuttons;
                 glfwGetJoystickAxes(i, &naxes);
                 glfwGetJoystickButtons(i, &nbuttons);
@@ -251,6 +264,18 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
                 states[i].profile = GamepadProfile.NO_PROFILE;
             }
         }
+        wantsConnectionsResent = false;
+    }
+
+    void resendConnectionEvents () {
+        wantsConnectionsResent = true;
+        //foreach (int i; 0 .. states.length) {
+        //    bool active = glfwJoystickPresent(i) != 0;
+        //    if (active && states[i].profile != GamepadProfile.NO_PROFILE) {
+        //        onDeviceDetected.emit(&states[i]);
+        //        log.write("Resending connection %d", i);
+        //    }
+        //}
     }
 
     // Call this once every frame: polls all attached joysticks + dispatches event signals

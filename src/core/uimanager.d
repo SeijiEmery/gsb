@@ -135,6 +135,12 @@ private class UIComponentManagerInstance {
             activeComponents ~= component;
             component.onComponentInit();
             onComponentActivated.emit(component);
+
+            // resend gamepad connection events whenever a module gets activated / reactivated
+            // (normally these only get sent the first time a gamepad is physically connected,
+            //  so a re-activated module could miss out on these)
+            if (g_gamepadManager)
+                g_gamepadManager.resendConnectionEvents();
         }
     }
     private void deactivateComponent (UIComponent component) {
@@ -152,7 +158,6 @@ private class UIComponentManagerInstance {
                     return;
                 }
             }
-            //assert(0);
         }
     }
 }
