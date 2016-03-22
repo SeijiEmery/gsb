@@ -53,6 +53,10 @@ class UITextElement : UIElement {
         recalcDimensions();
         doLayout();
     }
+    this (vec2 padding, string text, Font font, Color color) {
+        this(vec2(0,0), vec2(0,0), padding, text, font, color, Color());
+    }
+
     override void release () {
         if (fragment) {
             fragment.detatch();
