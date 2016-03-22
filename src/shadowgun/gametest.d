@@ -38,7 +38,7 @@ float DEFAULT_AGENT_MOVE_SPEED = 30.0;
 float AGENT_JUMP_LENGTH = 12.0;
 float AGENT_JUMP_INTERVAL = 0.32;
 
-float AGENT_SIZE = 1.0;
+float AGENT_SIZE = 1.5;
 float AGENT_FIRE_INTERVAL = 0.0;
 //float AGENT_FIRE_INTERVAL = 0.05;
 //float AGENT_FIRE_INTERVAL = 0.04;
@@ -89,7 +89,7 @@ float SPAWNER_LIFE_STEAL = 0.0;
 
 float PLAYER_MAX_HP  = 1000;
 float SWARMER_MAX_HP = 60;
-float ROVER_MAX_HP   = 120;
+float ROVER_MAX_HP   = 80;
 float SPAWNER_MAX_HP = 800;
 
 float PLAYER_HP_REGEN_PER_SEC = 15.0;
@@ -222,7 +222,7 @@ private class Agent : IGameRenderable {
         );
 
         auto tpos = transform * vec3(position, 1.0);
-        DebugRenderer.drawCircle(tpos.xy, AGENT_SIZE * CURRENT_SCALE_FACTOR, color, circleWidth, 
+        DebugRenderer.drawCircle(tpos.xy, (AGENT_SIZE * CURRENT_SCALE_FACTOR - 2.0), color, circleWidth, 
             cast(uint)numCirclePoints, 2.0);
 
         //log.write("draw: %s * transform = %s, size: %s * %0.2f = %s", position, tpos, AGENT_SIZE, CURRENT_SCALE_FACTOR, AGENT_SIZE * CURRENT_SCALE_FACTOR);
@@ -263,9 +263,14 @@ private class DamageSystem : IGameSystem {
         }
         foreach (fireLine; state.fireLines) {
             if (fireLine.t < 0 && !fireLine.wasFired) {
-                auto line = Collision2d.LineSegment(fireLine.start, fireLine.dir * FIRE_LINE_LENGTH, FIRE_LINE_WIDTH);
+                auto line = Collision2d.LineSegment(
+                    fireLine.start, 
+                    fireLine.start + fireLine.dir * FIRE_LINE_LENGTH, 
+                    FIRE_LINE_WIDTH);
+    
                 foreach (agent; state.agents) {
-                    if (agent.agentId != fireLine.ownerId && Collision2d.intersects(Collision2d.Circle(agent.position, AGENT_SIZE), line)) {
+                    auto circle = Collision2d.Circle(agent.position, AGENT_SIZE);
+                    if (agent.agentId != fireLine.ownerId && Collision2d.intersects(circle, line)) {
                         agent.takeDamage(fireLine.owner);
                     }
                 }
@@ -482,6 +487,7 @@ private class PlayerController : IGameController {
     bool isActive = true;
     private float retainedScore = 0.0;
     float timeUntilRespawn = 0.0;
+    float desiredSimSpeed  = 1.0;
 
     @property float energy () { return agent && agent.isAlive ? agent.energy : 0; }
     @property float hp     () { return agent && agent.isAlive ? agent.hp     : 0; }
@@ -515,9 +521,8 @@ private class PlayerController : IGameController {
                 if (ev.id == gamepadId) {
                     if (agent)
                         agent.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
-
-                    if (ev.AXIS_RT)
-                        gameState.simSpeed = 1.0 - ev.AXIS_RT;
+                    
+                    desiredSimSpeed = 1.0 - ev.AXIS_RT;
 
                     if (agent && agent.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
                         agent.fireDir = vec2(ev.AXIS_LX, ev.AXIS_LY).normalized();
@@ -730,16 +735,18 @@ private class GameModule : UIComponent {
                     threadStats.timedCall("gamestate.update()", {
                         gameState.update(ev.dt);
 
+                        gameState.simSpeed = 1.0;
                         foreach (player; players) {
                             if (player) {
                                 if (player.agent && player.agent.isAlive)
                                     ++alivePlayers;
                                 ++totalPlayers;
                                 player.update(ev.dt * gameState.simSpeed);
+
+                                if (player.desiredSimSpeed < gameState.simSpeed)
+                                    gameState.simSpeed = player.desiredSimSpeed;
                             }
                         }
-                        if (!alivePlayers)
-                            gameState.simSpeed = 1.0;
                     });
                     threadStats.timedCall("gamestate.draw()", {
                         gameState.draw();
