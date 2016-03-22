@@ -304,6 +304,12 @@ class LineCircleTest : SubModule {
     Collision2d.Circle circle;
     Collision2d.LineSegment line;
 
+    enum LineMode {
+        FREE, CLAMP_TO_X, CLAMP_TO_Y
+    };
+    auto mode = LineMode.FREE;
+    vec2 lastMousePos = vec2(0,0);
+
     override void onInit () {
         line = Collision2d.LineSegment( vec2(900, 600), vec2(0, 0), 10 );
         circle = Collision2d.Circle ( screenCenter, 100 );
@@ -316,8 +322,29 @@ class LineCircleTest : SubModule {
     }
     override bool handleEvent (UIEvent event) {
         event.handle!(
-            (MouseMoveEvent ev) { line.p2 = ev.position; }, 
-            (MouseButtonEvent ev) { if (ev.pressed) line.p1 = line.p2; },
+            (MouseMoveEvent ev) { 
+                final switch (mode) {
+                    case LineMode.FREE: line.p2 = ev.position; break;
+                    case LineMode.CLAMP_TO_X:
+                        line.p2 = vec2(ev.position.x, line.p1.y); break;
+                    case LineMode.CLAMP_TO_Y:
+                        line.p2 = vec2(line.p1.x, ev.position.y); break;
+                }
+                lastMousePos = ev.position;
+            }, 
+            (MouseButtonEvent ev) { 
+                if (ev.isLMB && ev.pressed) line.p1 = line.p2; 
+                else if (ev.isRMB && ev.pressed) {
+                    mode = cast(LineMode)((mode + 1) % 3);
+                    log.write("Set line mode to %s", mode);
+                }
+            },
+            (ScrollEvent ev) {
+                if (Collision2d.intersects(line, lastMousePos))
+                    line.width += ev.dir.y * 0.1;
+                if (Collision2d.intersects(circle, lastMousePos))
+                    circle.radius += ev.dir.y * 0.1;
+            },
             (){});
         return false;
     }
