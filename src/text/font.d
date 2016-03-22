@@ -22,6 +22,8 @@ public void registerDefaultFonts () {
         FontRegistry.registerFont("menlo", "/System/Library/Fonts/Menlo.ttc", 0);
         FontRegistry.registerFont("arial", "/Library/Fonts/Arial Unicode.ttf", 0);
 
+        // note: we don't use these (but nearly every subsystem uses "menlo" or "arial", which 
+        // should include the unicode charset as it's our fallback for non-latin characters)
         FontRegistry.registerFont("menlo-italic", "/System/Library/Fonts/Menlo.ttc", 1);
         FontRegistry.registerFont("menlo-bold", "/System/Library/Fonts/Menlo.ttc", 2);
         FontRegistry.registerFont("menlo-bold-italic", "/System/Library/Fonts/Menlo.ttc", 3);
@@ -30,15 +32,24 @@ public void registerDefaultFonts () {
         FontRegistry.registerFont("georgia-bold", "/Library/Fonts/Georgia Bold.ttf");
         FontRegistry.registerFont("georgia-italic", "/Library/Fonts/Georgia Italic.ttf");
         FontRegistry.registerFont("georgia-bold-italic", "/Library/Fonts/Georgia Bold Italic.ttf");
-
-        FontLoader.instance.onFontFileLoaded.connect((string filename) {
-            log.write("Loaded font file '%s'", filename);
-        });
-        FontLoader.instance.onFontLoaded.connect((string filename, FontData fontData) {
-            log.write("Loaded font '%s', %d (filesize = %d)", 
-                filename, fontData.fontIndex, fontData.contents.length);
-        });
     }
+    version(Linux) {
+        // FontRegistry.registerFont(<string id>, <path to .ttf or .ttc file>, <optional index iff .ttc w/ multiple fonts>)
+        FontRegistry.registerFont("menlo", "your-font-file-here");
+        FontRegistry.registerFont("arial", "your-font-file-here");
+    }
+    version(Windows) {
+        FontRegistry.registerFont("menlo", "your-font-file-here");
+        FontRegistry.registerFont("arial", "your-font-file-here");
+    }
+
+    FontLoader.instance.onFontFileLoaded.connect((string filename) {
+        log.write("Loaded font file '%s'", filename);
+    });
+    FontLoader.instance.onFontLoaded.connect((string filename, FontData fontData) {
+        log.write("Loaded font '%s', %d (filesize = %d)", 
+            filename, fontData.fontIndex, fontData.contents.length);
+    });
 }
 
 class Font {
