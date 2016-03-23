@@ -229,8 +229,6 @@ private class Agent : IGameRenderable {
     }
     void regenHp (float amount) {
         hp = min(hp + amount, maxAllowedHp);
-        if (hp > maxHp)
-            log.write("increasing maxHp from %0.2f to %0.2f", maxHp, hp);
         maxHp = max(hp, maxHp);
     }
     void takeDamage (Agent damager) {
@@ -421,6 +419,7 @@ private class GameState {
     IGameSystem[] systems;
     Agent[] agents;
     float simSpeed = 1.0;
+    float baseSimSpeed = 1.0;
     float zoom = 1.0;
 
     FireLine[] fireLines;
@@ -522,7 +521,7 @@ private class PlayerController : IGameController {
                     if (agent)
                         agent.dir = vec2(ev.AXIS_LX, ev.AXIS_LY);
                     
-                    desiredSimSpeed = 1.0 - ev.AXIS_RT;
+                    desiredSimSpeed = 1.0 - ev.AXIS_RT + ev.AXIS_LT;
 
                     if (agent && agent.wantsToFire && (ev.AXIS_LX || ev.AXIS_LY))
                         agent.fireDir = vec2(ev.AXIS_LX, ev.AXIS_LY).normalized();
@@ -530,12 +529,27 @@ private class PlayerController : IGameController {
             },
             (GamepadButtonEvent ev) {
                 if (ev.id == gamepadId) {
+                    // X: fire, A: jump
                     if (agent && ev.button == BUTTON_X)
                         agent.wantsToFire = ev.pressed;
                     else if (agent && ev.button == BUTTON_A)
                         agent.wantsToJump = ev.pressed;
+
+                    // Y: spawn enemy at origin
                     else if (ev.button == BUTTON_Y && ev.pressed)
                         gameState.createEnemy(vec2(0, 0));
+
+                    // Dpad left,right,down, L/R bumpers: time controls (set baseSimSpeed)
+                    else if (ev.pressed && (ev.button == BUTTON_DPAD_LEFT || ev.button == BUTTON_LBUMPER) && gameState.baseSimSpeed >= 0.25)
+                        gameState.baseSimSpeed *= 0.5;
+                    else if (ev.pressed && (ev.button == BUTTON_DPAD_RIGHT || ev.button == BUTTON_RBUMPER) && gameState.baseSimSpeed <= 8.0)
+                        gameState.baseSimSpeed *= 2.0;
+                    else if (ev.pressed && ev.button == BUTTON_DPAD_DOWN)
+                        gameState.baseSimSpeed = 1.0;
+
+                    // Start: move player to origin
+                    else if (ev.pressed && ev.button == BUTTON_START)
+                        agent.position = vec2(0, 0);
                 }
             },
             () {});
@@ -676,7 +690,6 @@ private class GameUI {
 }
 
 private class GameModule : UIComponent {
-    IGameController[] controllers;
     PlayerController[4] players;
 
     GameState gameState;
@@ -687,7 +700,6 @@ private class GameModule : UIComponent {
         ui = new GameUI();
     }
     override void onComponentShutdown () {
-        controllers.length = 0;
         gameState = null;
         if (ui) {
             ui.release();
@@ -731,22 +743,24 @@ private class GameModule : UIComponent {
                 (FrameUpdateEvent ev) {
                     ev.dt = abs(ev.dt);
 
-                    uint alivePlayers = 0, totalPlayers = 0;
+                    uint alivePlayers = 0, activePlayers = 0;
                     threadStats.timedCall("gamestate.update()", {
                         gameState.update(ev.dt);
 
-                        gameState.simSpeed = 1.0;
+                        float speed = 1.0;
                         foreach (player; players) {
                             if (player) {
                                 if (player.agent && player.agent.isAlive)
                                     ++alivePlayers;
-                                ++totalPlayers;
+                                ++activePlayers;
                                 player.update(ev.dt * gameState.simSpeed);
 
-                                if (player.desiredSimSpeed < gameState.simSpeed)
-                                    gameState.simSpeed = player.desiredSimSpeed;
+                                if (abs(1.0 - player.desiredSimSpeed) > abs(1.0 - speed)) {
+                                    speed = player.desiredSimSpeed;
+                                }
                             }
                         }
+                        gameState.simSpeed = speed * gameState.baseSimSpeed;
                     });
                     threadStats.timedCall("gamestate.draw()", {
                         gameState.draw();
@@ -754,7 +768,7 @@ private class GameModule : UIComponent {
                     threadStats.timedCall("gamestate.ui()", {
                         ui.stats.text = format("%d agents\nspeed %0.2f\n%d / %d players", 
                             gameState.agents.length, gameState.simSpeed,
-                            alivePlayers, totalPlayers);
+                            alivePlayers, activePlayers);
                         ui.update();
                     });
                     return true;
@@ -768,8 +782,6 @@ private class GameModule : UIComponent {
         }
     }
     void fireControllerEvents (UIEvent event) {
-        foreach (controller; controllers)
-            controller.handleEvent(event);
         foreach (player; players)
             if (player)
                 player.handleEvent(event);

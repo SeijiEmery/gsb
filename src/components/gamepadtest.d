@@ -24,7 +24,7 @@ private immutable bool LOG_BUTTON_PRESSES = false;
 
 shared static this () {
     UIComponentManager.runAtInit({
-        UIComponentManager.registerComponent(new GamepadTestModule(), MODULE_NAME, true);
+        UIComponentManager.registerComponent(new GamepadTestModule(), MODULE_NAME, false);
     });
 }
 
