@@ -92,7 +92,7 @@ private class UIComponentManagerInstance {
     // Register component instance. Components are created once
     void registerComponent (UIComponent component, string name, bool active = true) {
         if (name in registeredComponents)
-            throw new Exception("Already registered component '%s'", name);
+            throw new Exception(format("Already registered component '%s'", name));
 
         component._id = nextComponentId++;
         component._name = name;
@@ -118,13 +118,13 @@ private class UIComponentManagerInstance {
 
     void createComponent (string name) {
         if (name !in registeredComponents)
-            throw new Exception("No registered component '%s'", name);
+            throw new Exception(format("No registered component '%s'", name));
 
         activateComponent(registeredComponents[name]);
     }
     void deleteComponent (string name) {
         if (name !in registeredComponents)
-            throw new Exception("No registered component '%s'", name);
+            throw new Exception(format("No registered component '%s'", name));
 
         deactivateComponent(registeredComponents[name]);
     }
