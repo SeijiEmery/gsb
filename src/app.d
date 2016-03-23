@@ -23,6 +23,7 @@ import gsb.text.font;
 import gsb.text.textrenderer;
 import gsb.triangles_test;
 import gsb.text.textrendertest;
+import gsb.gl.graphicsmodule;
 
 import gsb.ui.testui;
 import gsb.gl.debugrenderer;
@@ -87,6 +88,12 @@ void graphicsThread (Tid mainThreadId) {
 
 					//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+					// Render user gl code (and draw ui, etc on top later)
+					threadStats.timedCall("GraphicsComponents.updateAndRender", {
+						GraphicsComponentManager.updateFromGraphicsThread();
+					});
 
 					//utfTest.render();
 					//textRenderer.render();
@@ -162,6 +169,16 @@ void mainThread (Tid graphicsThreadId) {
 		log.write("Unregistered event source");
 	});
 
+	GraphicsComponentManager.onComponentLoaded.connect((string name, GraphicsComponent component) {
+		log.write("Loaded graphics component %s", name);
+	});
+	GraphicsComponentManager.onComponentUnloaded.connect((string name, GraphicsComponent component) {
+		log.write("Unloaded graphics component %s", name);
+	});
+	GraphicsComponentManager.onComponentRegistered.connect((string name, GraphicsComponent component) {
+		log.write("Registered graphics component %s", name);
+	});
+
 	registerDefaultFonts();
 
 	//auto text2 = new TextFragment(
@@ -195,6 +212,11 @@ void mainThread (Tid graphicsThreadId) {
 			threadStats.timedCall("UIComponents.update", {
 				UIComponentManager.updateFromMainThread();
 				DebugRenderer.mainThread_onFrameEnd();
+			});
+
+			// Dispatch graphics component messages
+			threadStats.timedCall("GraphicsComponents.update", {
+				GraphicsComponentManager.updateFromMainThread();
 			});
 
 			// Run textrenderer updates on any modified state. Does stuff like re-rasterize + repack
