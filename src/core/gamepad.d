@@ -52,18 +52,13 @@ private class GamepadInputManager : IEventCollector {
         return localEvents;
     }
 }
-static this () {
+
+shared static this () {
     UIComponentManager.runAtInit({
         UIComponentManager.registerEventSource(
             new GamepadInputManager());
     });
 }
-
-
-
-
-
-
 
 // Directly ported from GLSandbox (c++ version)
 enum : ubyte {
