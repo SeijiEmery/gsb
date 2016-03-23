@@ -20,6 +20,8 @@ private immutable auto TEXT_COLOR_GRAY  = Color(0.65,0.65,0.65, 0.85);
 private immutable auto BACKGROUND_BORDER_COLOR = Color(1,0.08,0.08, 0.5);
 private immutable auto BACKGROUND_PANEL_COLOR  = Color(0.38,0.38,0.38, 0.08);
 
+private immutable bool LOG_BUTTON_PRESSES = false;
+
 shared static this () {
     UIComponentManager.runAtInit({
         UIComponentManager.registerComponent(new GamepadTestModule(), MODULE_NAME, true);
@@ -30,11 +32,15 @@ private class GamepadTestModule : UIComponent {
     UIElement root;
     UIDecorators.Draggable!UILayoutContainer container;
     UITextElement headerText;
+    UITextElement infoLog;
+    string infoLogText = "";
 
     GamepadState[uint] gamepadStates;
     GamepadStatusPanel[uint] gamepadUI;
     bool dirtyGamepadConnections = true;
     float textSize = 18.0;
+
+    int curFrame = 0;
 
     static struct GamepadState {
         int id;
@@ -113,7 +119,8 @@ private class GamepadTestModule : UIComponent {
     override void onComponentInit () {
         root = container = new UIDecorators.Draggable!UILayoutContainer(
             LayoutDir.VERTICAL, Layout.TOP_LEFT, vec2(50,50), vec2(400,200), vec2(5,5), 5, [
-                headerText = new UITextElement(vec2(10,10), "", new Font(FONT, textSize), TEXT_COLOR_WHITE)
+                headerText = new UITextElement(vec2(10,10), "", new Font(FONT, textSize), TEXT_COLOR_WHITE),
+                infoLog    = new UITextElement(vec2(10,10), "", new Font(FONT, textSize), TEXT_COLOR_WHITE),
             ]
         );
     }
@@ -147,6 +154,8 @@ private class GamepadTestModule : UIComponent {
             headerText.text = format("%d gamepads connected", gamepadUI.length);
             container.elements.length = 1;
             container.elements ~= cast(UIElement[])( gamepadUI.values.map!"a.container".array );
+            static if (LOG_BUTTON_PRESSES)
+                container.elements ~= cast(UIElement) infoLog;
         } else {
             foreach (k, v; gamepadStates) {
                 gamepadUI[k].update(v);
@@ -179,10 +188,25 @@ private class GamepadTestModule : UIComponent {
             (GamepadButtonEvent ev) {
                 if (ev.id in gamepadStates) {
                     gamepadStates[ev.id].buttons[ev.button] = ev.pressed;
+                    static if (LOG_BUTTON_PRESSES) {
+                        infoLogText ~= format("%d [%d]: %s %s\n",
+                        curFrame, ev.id, ev.button, ev.pressed ? "pressed" : "released");
+                        infoLog.text = infoLogText;
+                    }
                 }
+            },
+            (MouseButtonEvent ev) {
+                static if (LOG_BUTTON_PRESSES) {
+                    if (ev.pressed && ev.isRMB) {
+                        infoLogText = "";
+                        infoLog.text = infoLogText;
+                    }
+                }
+                root.handleEvents(event);
             },
             (FrameUpdateEvent ev) {
                 updateUI();
+                ++curFrame;
             },
             () {
                 root.handleEvents(event);
