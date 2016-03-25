@@ -24,6 +24,19 @@ shared static this () {
     });
 }
 
+private immutable auto UI_BACKGROUND_COLOR = Color(0.95, 0.95, 0.95, 0.10);
+private immutable auto UI_BORDER_COLOR     = Color(0.25, 0.25, 0.25, 1.0);
+private immutable auto UI_TEXT_COLOR       = Color(1.0, 1.0, 1.0, 0.95);
+private immutable float BORDER_WIDTH = 2.0;
+ 
+private immutable auto ACTIVE_BTN_COLOR   = Color(1.0, 0.0, 0.0, 0.80);
+private immutable auto INACTIVE_BTN_COLOR = Color(0.25, 0.25, 0.25, 0.80);
+ 
+private immutable float BUTTON_BORDER  = 2.0;
+private immutable float BUTTON_SPACING = 4.0;
+private float fontSize = 18.0;
+
+
 class SubModule {
     public bool isActive = false;
     void onInit () {}
@@ -38,19 +51,6 @@ private class TestModule : UIComponent {
     UITextElement[string] buttons;
     SubModule[string] modules;
     SubModule activeModule = null;
-
-    immutable auto UI_BACKGROUND_COLOR = Color(0.95, 0.95, 0.95, 0.10);
-    immutable auto UI_BORDER_COLOR     = Color(0.25, 0.25, 0.25, 1.0);
-    immutable auto UI_TEXT_COLOR       = Color(1.0, 1.0, 1.0, 0.95);
-    immutable float BORDER_WIDTH = 2.0;
-
-    immutable auto ACTIVE_BTN_COLOR   = Color(1.0, 0.0, 0.0, 0.80);
-    immutable auto INACTIVE_BTN_COLOR = Color(0.25, 0.25, 0.25, 0.80);
-
-    immutable float BUTTON_BORDER  = 2.0;
-    immutable float BUTTON_SPACING = 4.0;
-
-    float fontSize = 18.0;
 
     void activateModule (SubModule newModule) {
         if (newModule != activeModule) {
