@@ -33,7 +33,7 @@ auto immutable INACTIVE_COLOR = Color(0.21, 0.22, 0.23, 0.79);
 private float numCirclePoints = 25;
 private float circleWidth = 0.04;
 
-immutable float GAME_UNITS_PER_SCREEN = 100.0;
+immutable float GAME_UNITS_PER_SCREEN = 200.0;
 float DEFAULT_AGENT_MOVE_SPEED = 30.0;
 float AGENT_JUMP_LENGTH = 12.0;
 float AGENT_JUMP_INTERVAL = 0.32;
@@ -47,7 +47,7 @@ float CURRENT_SCALE_FACTOR = 1.0;
 
 float FIRE_OFFSET = 0.01;
 float FIRE_LINE_LENGTH = 100.0;  // game units
-float FIRE_LINE_WIDTH  = 0.01;    // game units
+float FIRE_LINE_WIDTH  = 0.005;    // game units
 float FIRE_LINE_CHARGE_DURATION = 0.16;  // seconds
 float FIRE_LINE_STATIC_DURATION = 0.035;  // seconds; should equal 3 frames @60 hz
 
@@ -411,7 +411,7 @@ private class FireLine {
             color.b * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
             color.a * 0.5 * (1 - colorInterp) + 1.0 * colorInterp,
         );
-        DebugRenderer.drawLines([ p1.xy, p2.xy ], c, FIRE_LINE_WIDTH * CURRENT_SCALE_FACTOR);
+        DebugRenderer.drawLines([ p1.xy, p2.xy ], c, FIRE_LINE_WIDTH * CURRENT_SCALE_FACTOR, 1.0);
     }
 }
 

@@ -2,7 +2,7 @@
 module gsb.gl.algorithms;
 
 import gsb.gl.state;
-import gsb.gl.drawcalls;
+public import gsb.gl.drawcalls;
 
 import gsb.core.log;
 import gsb.core.color;
