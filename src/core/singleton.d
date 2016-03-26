@@ -1,12 +1,14 @@
 
 module gsb.core.singleton;
-import gsb.core.log;
-import std.traits;
-
 
 // http://wiki.dlang.org/Low-Lock_Singleton_Pattern
 mixin template LowLockSingleton () {
-    private this () { log.write("Creating %s instance", fullyQualifiedName!(typeof(this))); }
+    private this () { 
+        import std.traits;
+        import gsb.core.log;
+        
+        log.write("Creating %s instance", fullyQualifiedName!(typeof(this))); 
+    }
     private static bool instantiated_ = false;
     private static __gshared typeof(this) instance_ = null;
 

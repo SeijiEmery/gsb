@@ -20,7 +20,6 @@ import std.algorithm.mutation : move, swap;
 import std.algorithm.iteration;
 import std.algorithm.sorting;
 import std.array;
-import std.traits;
 import std.typecons;
 import std.math: approxEqual;
 import core.sync.rwmutex;

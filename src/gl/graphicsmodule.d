@@ -4,7 +4,6 @@ import gsb.core.log;
 import gsb.core.pseudosignals;
 import gsb.core.singleton;
 import gsb.core.stats;
-import std.traits;
 import std.format;
 import std.algorithm.sorting;
 

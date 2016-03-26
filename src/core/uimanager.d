@@ -8,7 +8,6 @@ import gsb.core.gamepad;
 import gsb.core.frametime;
 import gsb.core.singleton;
 
-import std.traits;
 import gl3n.linalg;
 
 // UIComponent base class. Note: components should use onInit() / onShutdown() as its 
