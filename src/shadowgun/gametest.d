@@ -508,7 +508,7 @@ private class PlayerController : IGameController {
             retainedScore += agent.points;
             agent = null;
             timeUntilRespawn = PLAYER_RESPAWN_TIME;
-        } else if (!agent && (timeUntilRespawn -= dt) <= 0) {
+        } else if (!agent && (timeUntilRespawn -= dt / gameState.baseSimSpeed) <= 0) {
             agent = new Agent(PLAYER_SPAWN_POSITIONS[playerId - AgentId.PLAYER_1], playerId);
             gameState.agents ~= agent;
         }
