@@ -55,17 +55,6 @@ void graphicsThread (Tid mainThreadId) {
 
 	DerelictGL3.reload();
 
-	import gsb.coregl.glerrors;
-
-	glchecked({
-		//glDrawArrays( GL_TRIANGLES, 0, 100 );
-		//glDrawArrays( GL_TRIANGLES, 0, 100 );
-		//glDrawArrays( GL_TRIANGLES, 0, 100 );
-		//glDrawArrays( 101, 0, 100 );
-		glBindTexture( 10923, 0 );
-	});
-	glchecked!glDrawArrays(GL_TRIANGLES, 0, 100);
-
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
 

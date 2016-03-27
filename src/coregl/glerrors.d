@@ -15,13 +15,13 @@ class GLException : Exception {
 }
 
 private string glGetMessage (GLenum err) {
-    final switch (err) {
-        case GL_NO_ERROR: return "GL_NO_ERROR";
+    switch (err) {
         case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
         case GL_INVALID_ENUM:      return "GL_INVALID_ENUM";
         case GL_INVALID_VALUE:     return "GL_INVALID_VALUE";
         case GL_INVALID_FRAMEBUFFER_OPERATION: return "GL_INVALID_FRAMEBUFFER_OPERATION";
         case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
+        default: 
     }
     assert(0, format("Invalid error: %d", err));
 }
@@ -31,7 +31,7 @@ private string glGetMessage (GLenum err) {
 // usage:  glchecked({ glDrawArrays(GL_TRIANGLES, 0, 100); }); 
 //
 public auto glchecked (T, string file = __FILE__, ulong line = __LINE__, string externalFunc = __PRETTY_FUNCTION__)
-    (T function() expr) 
+    (T delegate() expr) 
 {
     static if (!is(T == void)) auto result = expr();
     else                expr();

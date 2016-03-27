@@ -1,92 +1,11 @@
 
 module gsb.gl.state;
+public import gsb.coregl.glstate;
 
 import gsb.core.log;
-
 import gsb.glutils;
 import derelict.opengl3.gl3;
 import gl3n.linalg;
-
-public __gshared GLState glState;
-struct GLState {
-    private bool depthTestEnabled = false;
-    private GLenum depthTestFunc  = GL_LESS;
-    private bool transparencyEnabled = false;
-    private GLuint lastBoundBuffer = 0;
-    private GLuint lastBoundShader = 0;
-    private GLuint lastBoundVao = 0;
-    private GLuint lastBoundTexture = 0;
-    private uint lastActiveTexture = 0;
-
-    void enableDepthTest (bool enabled, GLenum depthTest = GL_LESS) {
-        if (depthTestEnabled != enabled || depthTestFunc != depthTest) {
-            if ((depthTestEnabled = enabled) == true) {
-                depthTestFunc = depthTest;
-                //log.write("Enabling glDepthTest (GL_LESS)");
-                glEnable(GL_DEPTH_TEST);
-                glDepthFunc(depthTest);
-            } else {
-                //log.write("Disabling glDepthTest");
-                glDisable(GL_DEPTH_TEST);
-            }
-        }
-    }
-    void enableTransparency (bool enabled) {
-        if (transparencyEnabled != enabled) {
-            if ((transparencyEnabled = enabled) == true) {
-                //log.write("Enabling alpha transparency blending");
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            } else {
-                //log.write("Disabling alpha transparency");
-                glDisable(GL_BLEND);
-            }
-        }
-    }
-
-    void bindShader (GLuint shader) {
-
-        //log.write("glState: binding shader %s", shader);
-
-        //if (shader != lastBoundShader) {
-            checked_glUseProgram(shader);
-            lastBoundShader = shader;
-        //}
-    }
-    void bindVao (GLuint vao) {
-
-        //log.write("glState: binding vao %s", vao);
-        //if (vao != lastBoundVao) {
-            checked_glBindVertexArray(vao);
-            lastBoundVao = vao;
-        //}
-    }
-    void bindBuffer (GLenum type, GLuint vbo) {
-
-        //log.write("glState: binding vbo %s", vbo);
-        //if (vbo != lastBoundBuffer) {
-            checked_glBindBuffer(type, vbo);
-            lastBoundBuffer = vbo;
-        //}
-    }
-    void bindTexture (GLenum type, GLuint texture) {
-
-        //log.write("glState: binding texture %s", texture);
-
-        //if (texture != lastBoundTexture) {
-            checked_glBindTexture(type, texture);
-            lastBoundTexture = texture;
-        //}
-    }
-    void activeTexture (uint textureUnit) {
-
-        //log.write("glState: activating texture %d", textureUnit - GL_TEXTURE0);
-
-        if (textureUnit != lastActiveTexture)
-            checked_glActiveTexture(lastActiveTexture = textureUnit);
-    }
-
-}
 
 private bool isValidGlTarget (GLenum target) {
     return target == GL_ARRAY_BUFFER ||
