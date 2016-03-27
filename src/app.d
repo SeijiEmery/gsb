@@ -18,10 +18,9 @@ import gsb.core.uievents;
 import gsb.core.stats;
 import gsb.core.color;
 
-import gsb.glutils;
+import gsb.coregl;
 import gsb.text.font;
 import gsb.text.textrenderer;
-import gsb.triangles_test;
 import gsb.text.textrendertest;
 import gsb.gl.graphicsmodule;
 
@@ -55,20 +54,13 @@ void graphicsThread (Tid mainThreadId) {
 
 	DerelictGL3.reload();
 
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS);
-
-    glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); 
-	CHECK_CALL("setup gl state");
-	bool running = true;
-
 	log.write("Running GLSandbox");
 	log.write("Renderer: %s", todstr(glGetString(GL_RENDERER)));
 	log.write("Opengl version: %s", todstr(glGetString(GL_VERSION)));
-
-	auto camera = new Camera();
-	auto test = new TriangleRenderer();
+	
+	glState.enableDepthTest(true, GL_LESS);
+	glState.enableTransparency(true);
+	bool running = true;
 
 	auto textRenderer = TextRenderer.instance.getGraphicsThreadHandle();
 
@@ -85,10 +77,7 @@ void graphicsThread (Tid mainThreadId) {
 					g_graphicsFrameTime.updateFromRespectiveThread(); // update g_graphicsTime and g_graphicsDt
 
 					//log.write("on frame %d", frame++);
-
-					//tryCall(glClear)(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 
 					// Render user gl code (and draw ui, etc on top later)
 					threadStats.timedCall("GraphicsComponents.updateAndRender", {
@@ -180,13 +169,6 @@ void mainThread (Tid graphicsThreadId) {
 	});
 
 	registerDefaultFonts();
-
-	//auto text2 = new TextFragment(
-	//	"Hello world!\nü@asdlfj;\n",
-	//	new Font("menlo", 32),
-	//	Color("#ffaaff"),
-	//	vec2(0,0));
-
 	UIComponentManager.init();
 
 	log.write("Window: %d,%d, %d,%d, %f,%f",

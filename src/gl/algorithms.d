@@ -1,31 +1,19 @@
 
 module gsb.gl.algorithms;
 
-import gsb.gl.state;
+import gsb.coregl;
 public import gsb.gl.drawcalls;
 
+import gsb.core.mathutils;
 import gsb.core.log;
 import gsb.core.color;
 import gsb.core.singleton;
 import gsb.core.window;
-import gsb.glutils;
 import derelict.opengl3.gl3;
 import dglsl;
 import gl3n.linalg;
 import std.traits;
 
-
-// http://locklessinc.com/articles/next_pow2/
-private auto nextPow2 (T)(T x) {
-    x -= 1;
-    x |= (x >> 1);
-    x |= (x >> 2);
-    x |= (x >> 4);
-    x |= (x >> 8);
-    x |= (x >> 16);
-    x |= (x >> 32);
-    return x + 1;
-}
 
 
 interface IDynamicRenderer {
@@ -49,7 +37,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             //log.write("Clearing vbo; reserving size %d", bufferSize);
             //vbo.bind(GL_ARRAY_BUFFER);
             glBindBuffer(GL_ARRAY_BUFFER, vbo.get()); // need to force this, since not everything else uses glState.bindVbo yet...
-            checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
+            glchecked!glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
             bufferOffset = 0;
         }
     }
@@ -67,7 +55,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             log.write("Creating vbo; reserving size %d", bufferSize);
 
             vbo.bind(GL_ARRAY_BUFFER);
-            checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
+            glchecked!glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
             //vbo.bufferData!(GL_ARRAY_BUFFER, GL_STREAM_DRAW)(bufferSize, null);
             bufferOffset = 0;
         }
@@ -83,7 +71,7 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             //log.write("Orphaning vbo (%d + %d > %d); reserving size %d", neededLength, bufferOffset, bufferSize, bufferSize);
             // Orphan buffer, reset cursor
             vbo.bind(GL_ARRAY_BUFFER);
-            checked_glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
+            glchecked!glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
             bufferOffset = 0;
         } else {
             vbo.bind(GL_ARRAY_BUFFER);
@@ -118,11 +106,11 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
             bufferOffset += size;
 
             foreach (attrib; component.attribs) {
-                checked_glEnableVertexAttribArray(attrib.index);
-                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointerOffset);
+                glchecked!glEnableVertexAttribArray(attrib.index);
+                glchecked!glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointerOffset);
             }
         }
-        checked_glDrawArrays(batch.type, batch.offset, batch.count);
+        glchecked!glDrawArrays(batch.type, batch.offset, batch.count);
         glState.bindVao(0);
     }
 
@@ -148,7 +136,7 @@ private class BasicDynamicRenderer : IDynamicRenderer {
             auto first = vbos.length;
             foreach (i; 0..toCreate)
                 vbos ~= [ 0 ];
-            checked_glGenBuffers(toCreate, vbos.ptr + first);
+            glchecked!glGenBuffers(toCreate, vbos.ptr + first);
             log.write("BDR genereated %d vbos", toCreate);
         }
     }
@@ -160,21 +148,21 @@ private class BasicDynamicRenderer : IDynamicRenderer {
         // buffer data + draw
         glState.bindVao(batch.vao);
         foreach (i; 0..batch.components.length) {
-            checked_glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
-            checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].data, GL_STREAM_DRAW);
+            glchecked!glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
+            glchecked!glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].data, GL_STREAM_DRAW);
             foreach (attrib; batch.components[i].attribs) {
-                checked_glEnableVertexAttribArray(attrib.index);
-                checked_glVertexAttribPointer(
+                glchecked!glEnableVertexAttribArray(attrib.index);
+                glchecked!glVertexAttribPointer(
                     attrib.index, attrib.count, attrib.type, attrib.normalized, 
                     attrib.stride, attrib.pointerOffset);
             }
         }
-        checked_glDrawArrays(batch.type, batch.offset, batch.count);
+        glchecked!glDrawArrays(batch.type, batch.offset, batch.count);
 
         // orphan buffers so we can reuse them for the next drawcall (note: we're _not_ trying to be fast/efficient here; this is just a minimalistic
         // implementation that we can test against the others)
         foreach (i; 0..batch.components.length) {
-            checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, null, GL_STREAM_DRAW);
+            glchecked!glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, null, GL_STREAM_DRAW);
         }
     }
 
@@ -183,20 +171,20 @@ private class BasicDynamicRenderer : IDynamicRenderer {
         genVbos(batch.components.length + 1);
         
         // buffer data + draw
-        checked_glBindVertexArray(batch.vao);
+        glchecked!glBindVertexArray(batch.vao);
         foreach (i; 0..batch.components.length) {
-            checked_glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
-            checked_glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].data, GL_STREAM_DRAW);
+            glchecked!glBindBuffer(GL_ARRAY_BUFFER, vbos[i]);
+            glchecked!glBufferData(GL_ARRAY_BUFFER, batch.components[i].length, batch.components[i].data, GL_STREAM_DRAW);
             foreach (attrib; batch.components[i].attribs) {
-                checked_glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointerOffset);
+                glchecked!glVertexAttribPointer(attrib.index, attrib.count, attrib.type, attrib.normalized, attrib.stride, attrib.pointerOffset);
             }
         }
-        checked_glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[batch.components.length]);
-        checked_glBufferData(GL_ELEMENT_ARRAY_BUFFER, elementData.length, elementData.data, GL_STREAM_DRAW);
-        checked_glDrawElements(batch.type, batch.count, elementData.type, elementData.pointerOffset);
+        glchecked!glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[batch.components.length]);
+        glchecked!glBufferData(GL_ELEMENT_ARRAY_BUFFER, elementData.length, elementData.data, GL_STREAM_DRAW);
+        glchecked!glDrawElements(batch.type, batch.count, elementData.type, elementData.pointerOffset);
 
-        checked_glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[batch.components.length]);
-        checked_glBufferData(GL_ELEMENT_ARRAY_BUFFER, elementData.length, null, GL_STREAM_DRAW);
+        glchecked!glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, vbos[batch.components.length]);
+        glchecked!glBufferData(GL_ELEMENT_ARRAY_BUFFER, elementData.length, null, GL_STREAM_DRAW);
     }
 
     final void release () {
