@@ -2,6 +2,8 @@
 module gsb.core.color;
 
 import gl3n.linalg;
+import gl3n.ext.hsv;
+
 import std.format;
 import std.regex;
 import std.conv;
@@ -12,16 +14,56 @@ private auto clamp (T) (T x, T m, T n) {
 }
 
 struct Color {
-    float r = 1, g = 1, b = 1, a = 1;
+    vec4 components;
+    alias components this;
 
+    static Color fromRGBA (vec4 rgba) { return Color(rgba); }
+    static Color fromRGBA (float r, float g, float b, float a) {
+        return Color(r, g, b, a);
+    }
+    static Color fromHSVA (vec4 hsva) {
+        return Color(hsv2rgb(hsva));
+    }
+    static Color fromHSVA (float h, float s, float v, float a) {
+        return Color(hsv2rgb(vec4(h, s, v, a)));
+    }
+    static vec4  toHSVA (Color color_rgba) {
+        return rgb2hsv(color_rgba.components);
+    }
+    static vec4  toHSVA (vec4 color_rgba) {
+        return rgb2hsv(color_rgba);
+    }
+
+    this (vec4 rgba) { 
+        this.components = rgba; 
+    }
     this (float r, float g, float b, float a) {
-        this.r = r; this.g = g; this.b = b; this.a = a;
+        this.components = vec4(r, g, b, a);
+    }
+    this (vec3 rgb) {
+        this.components = vec4(rgb, 1.0);
     }
     this (float r, float g, float b) {
-        this.r = r; this.g = g; this.b = b;
+        this.components = vec4(r, g, b, 1.0);
     }
-    this (vec4 v) {
-        this.r = v.x; this.g = v.y; this.b = v.z; this.a = v.w;
+    this (Color color) {
+        this.components = color.components;
+    }
+    this (uint hexv) {
+        import std.bitmanip;
+        ubyte[4] values = nativeToLittleEndian(hexv);
+        this.components = values[3] ?
+            vec4(
+                (cast(float)values[3]) * (1f / 255f),
+                (cast(float)values[2]) * (1f / 255f),
+                (cast(float)values[1]) * (1f / 255f),
+                (cast(float)values[0]) * (1f / 255f)) :
+
+            vec4( 
+                (cast(float)values[2]) * (1f / 255f),
+                (cast(float)values[1]) * (1f / 255f),
+                (cast(float)values[0]) * (1f / 255f),
+                1.0 );
     }
     this (string colorHash) {
         static auto ctr = ctRegex!("#([0-9a-fA-F]+)");
@@ -29,28 +71,26 @@ struct Color {
         if (!m.empty && m[1].length == 6 || m[1].length == 8) {
             //string s = colorHash[1..$];
             string s;
-            r = cast(float)parse!int((s = colorHash[1..3], s), 16) / 255.0;
-            g = cast(float)parse!int((s = colorHash[3..5], s), 16) / 255.0;
-            b = cast(float)parse!int((s = colorHash[5..7], s), 16) / 255.0;
-            if (colorHash.length == 9)
-                a = cast(float)parse!int((s = colorHash[7..9], s), 16) / 255.0;
+            this.components = vec4(
+                cast(float)parse!int((s = colorHash[1..3], s), 16) * (1 / 255.0),
+                cast(float)parse!int((s = colorHash[3..5], s), 16) * (1 / 255.0),
+                cast(float)parse!int((s = colorHash[5..7], s), 16) * (1 / 255.0),
+                colorHash.length == 9 ?
+                    cast(float)parse!int((s = colorHash[7..9], s), 16) * (1 / 255.0) :
+                    1.0);
         } else {
             throw new Exception(format("Cannot construct Color from '%s'", colorHash));
         }
     }
-    vec4 toVec () {
-        return vec4(r, g, b, a);
+
+    bool opEquals (Color other) {
+        return r == other.r && g == other.g && b == other.b && a == other.a;
+        //return components == other.components;
     }
+
     // from http://aras-p.info/blog/2009/07/30/encoding-floats-to-rgba-the-final/
     float toPackedFloat () {
-        return toVec.dot(vec4(1.0, 1/255.0, 1/65025.0, 1/160581375.0));
-    }
-    uint getRGBA () {
-        return 
-            (cast(uint)(r * 256.0) << 0)  |
-            (cast(uint)(g * 256.0) << 8)  |
-            (cast(uint)(b * 256.0) << 16) |
-            (cast(uint)(a * 256.0) << 24);
+        return components.dot(vec4(1.0, 1/255.0, 1/65025.0, 1/160581375.0));
     }
 
     // Add this to shaders to unpack packed color values
@@ -70,8 +110,6 @@ struct Color {
         return Color(unpackRGBA(v));
     }
 
-
-
     // And here's a basic fract implementation so we can get the above to compile in D
     // (do NOT mixin this into the actual shader; the function should just be in scope outside,
     //  and we should hopefully never need to actually _use_ this (since it's defined in glsl))
@@ -88,30 +126,38 @@ struct Color {
     }
 
     string toString () {
-        return format("#%2x%2x%2x%2x", 
-            cast(int)(clamp(r, 1.0, 0.0) * 255),
-            cast(int)(clamp(g, 1.0, 0.0) * 255),
-            cast(int)(clamp(b, 1.0, 0.0) * 255),
-            cast(int)(clamp(a, 1.0, 0.0) * 255)
-        );
-    }
-    //vec4  () {
-    //    return vec4(r, g, b, a);
-    //}
-    bool opEquals (Color c) {
-        return r == c.r && g == c.g && b == c.b && a == c.a;
+        return a != 1f ?
+            format("#%2x%2x%2x%2x", 
+                cast(int)(clamp(r, 1.0, 0.0) * 255),
+                cast(int)(clamp(g, 1.0, 0.0) * 255),
+                cast(int)(clamp(b, 1.0, 0.0) * 255),
+                cast(int)(clamp(a, 1.0, 0.0) * 255)) :
+            format("#%2x%2x%2x",
+                cast(int)(clamp(r, 1.0, 0.0) * 255),
+                cast(int)(clamp(g, 1.0, 0.0) * 255),
+                cast(int)(clamp(b, 1.0, 0.0) * 255));
     }
 
     unittest {
+        writefln("%x, %s", 0x1256afce, Color(0x1256afce));
+        writefln("%x, %s", 0x1256af, Color(0x1256af));
+        writefln("%s, %s, equal: %s", to!Color("#1fadff"), Color(0x1fadff), Color("#1fadff") == Color(0x1fadff));
+        writefln("%s, %s, equal: %s", to!Color("#1fadff").components, Color(0x1fadff).components,
+            Color("#1fadff").components == Color(0x1fadff).components);
+
         assert(Color(1.0, 0.0, 1.0, 0.0) == Color(1.0, 0.0, 1.0, 0.0));
         assert(Color(1.0, 0.0, 1.0, 0.0) != Color(0.0, 1.0, 1.0, 0.0));
         writeln(Color(1.0, 1.0, 1.0, 1.0));
         writeln(Color("#ffffff"));
 
-        assert(Color("#ffffff") == Color(1.0, 1.0, 1.0, 0.0));
-        assert(Color("#000000") == Color(0.0, 0.0, 0.0, 0.0));
+        assert(Color("#ffffff") == Color(1.0, 1.0, 1.0, 1.0));
+        assert(Color("#000000") == Color(0.0, 0.0, 0.0, 1.0));
         assert(to!Color("#1fadff") == Color("#1fadff"));
-        assert(to!string(to!Color("#1fadff")) == "#1fadff");
+        //assert(to!Color("#1fadff") == Color(0x1fadff));
+        //assert(to!Color("#1fadff2e") == Color(0x1fadff2e));
+        writeln(to!string(to!Color("#1fadff")));
+
+        //assert(to!string(to!Color("#1fadff")) == "#1fadffff");
 
         //writeln(Color(0x94 / 255.0, 0x47 / 255.0, 0xfa / 255.0));
         //writeln(to!Color(to!string(Color(0x94 / 255.0, 0x47 / 255.0, 0xfa / 255.0))));

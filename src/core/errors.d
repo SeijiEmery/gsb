@@ -2,9 +2,9 @@
 module gsb.core.errors;
 import std.format;
 
-class ResourceError : Error {
-    this (T...) (string fmt, T args) {
-        super(format(fmt, args));
+class ResourceException : Exception {
+    this (string file = __FILE__, ulong line = __LINE__, T...) (string fmt, T args) {
+        super(format(fmt, args), file, line);
     }
 }
 

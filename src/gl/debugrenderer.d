@@ -179,7 +179,7 @@ struct ColorPaletteCache {
     //private uint textureWidth = 256; // changed iff texture size gets really large; usually only the v dimension changes.
     // Main thread functions
     ushort getCoord (Color color) {
-        return cast(ushort)palettes[mthreadCurrent].getIndex(color.toVec());
+        return cast(ushort)palettes[mthreadCurrent].getIndex(color.components);
     }
     //{
     //    auto index = palettes[mthreadCurrent].getIndex(color.getBGRA());
