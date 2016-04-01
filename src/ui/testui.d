@@ -50,7 +50,7 @@ class UITestModule : UIComponent {
         event.handle!( 
             (MouseMoveEvent mouse) @system {
                 lastPos = mouse.position;
-                points ~= lastPos;
+                //points ~= lastPos;
                 return false;
             },
             (MouseButtonEvent btn) @system {

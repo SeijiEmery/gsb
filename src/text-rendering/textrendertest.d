@@ -105,18 +105,18 @@ class StbTextRenderTest {
 
         // Load font
         if (!exists(fontPath) || (!attrIsFile(getAttributes(fontPath))))
-            throw new ResourceError("Cannot load font file '%s'", fontPath);
+            throw new ResourceException("Cannot load font file '%s'", fontPath);
 
         auto fontData = cast(ubyte[])read(fontPath);
         if (fontData.length == 0)
-            throw new ResourceError("Failed to load font file '%s'", fontPath);
+            throw new ResourceException("Failed to load font file '%s'", fontPath);
 
         //writeln("loading font");
 
         stbtt_fontinfo fontInfo;
         int offs = stbtt_GetFontOffsetForIndex(fontData.ptr, 0);
         if (offs == -1)
-            throw new ResourceError("stb_truetype: Failed to get font index for '%s'", fontPath);
+            throw new ResourceException("stb_truetype: Failed to get font index for '%s'", fontPath);
 
         {
             int i = 0;
@@ -126,7 +126,7 @@ class StbTextRenderTest {
 
 
         if (!stbtt_InitFont(&fontInfo, fontData.ptr, offs))
-            throw new ResourceError("stb_trutype: Failed to load font '%s'", fontPath);
+            throw new ResourceException("stb_trutype: Failed to load font '%s'", fontPath);
 
         //writeln("font loaded");
 

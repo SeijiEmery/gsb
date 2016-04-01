@@ -112,7 +112,7 @@ class PackedFontAtlas {
     //    else
     //        stbtt_PackEnd(&packContext);
     //    if (!stbtt_PackBegin(&packContext, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
-    //        throw new ResourceError("stbtt_PackBegin failed");
+    //        throw new ResourceException("stbtt_PackBegin failed");
     //    }
     //    stbtt_PackSetOversampling(&packContext, value.x, value.y);
     //    repack();
@@ -122,14 +122,14 @@ class PackedFontAtlas {
     {
         auto index = font.stringId;
         if (index !in charLookup)
-            throw new ResourceError("PackedFontAtlas font '%s' has not been packed! (does contain %s)",
+            throw new ResourceException("PackedFontAtlas font '%s' has not been packed! (does contain %s)",
                 index, charLookup.byKey.map!((a) => format("'%s'", a)).join(", "));
 
         stbtt_aligned_quad quad;
 
         ref auto getQuad (dchar chr) {
             if (chr !in charLookup[index])
-                throw new ResourceError("PackedFontAtlas codepoint %c (%s) has not been packed!", chr, index);
+                throw new ResourceException("PackedFontAtlas codepoint %c (%s) has not been packed!", chr, index);
             //DEBUG_LOG(log.write("Got '%s', %c = %d", index, chr, charLookup[index][chr]));
             stbtt_GetPackedQuad(packedChars.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, cast(int)charLookup[index][chr], 
                 &layoutX, &layoutY, &quad, alignToInteger);
@@ -143,7 +143,7 @@ class PackedFontAtlas {
             DEBUG_LOG(log.write("PackedFontAtlas: creating resources"));
             bitmapData = new ubyte[BITMAP_WIDTH * BITMAP_HEIGHT * BITMAP_CHANNELS];
             if (!stbtt_PackBegin(&packContext, bitmapData.ptr, BITMAP_WIDTH, BITMAP_HEIGHT, 0, 1, null)) {
-                throw new ResourceError("sbttt_PackBegin failed");
+                throw new ResourceException("sbttt_PackBegin failed");
             }
             stbtt_PackSetOversampling(&packContext, 4, 4);
         }
