@@ -5,7 +5,7 @@ import gsb.core.pseudosignals;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 
-import Derelict.glfw3.glfw3;
+import derelict.glfw3.glfw3;
 
 
 GamepadManager!(GLFW_JOYSTICK_LAST+1)* g_gamepadManager = null;

@@ -37,10 +37,10 @@ public void registerDefaultFonts () {
         FontRegistry.registerFont("georgia-italic", "/Library/Fonts/Georgia Italic.ttf");
         FontRegistry.registerFont("georgia-bold-italic", "/Library/Fonts/Georgia Bold Italic.ttf");
     }
-    version(Linux) {
+    version(linux) {
         // FontRegistry.registerFont(<string id>, <path to .ttf or .ttc file>, <optional index iff .ttc w/ multiple fonts>)
-        FontRegistry.registerFont("menlo", "your-font-file-here");
-        FontRegistry.registerFont("arial", "your-font-file-here");
+        FontRegistry.registerFont("menlo", "/usr/share/fonts/truetype/droid/DroidSansMono.ttf");
+        FontRegistry.registerFont("arial", "/usr/share/fonts/truetype/droid/DroidSans.ttf");
     }
     version(Windows) {
         FontRegistry.registerFont("menlo", "your-font-file-here");

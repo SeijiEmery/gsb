@@ -1,5 +1,5 @@
 module gsb.core.frametime;
-import Derelict.glfw3.glfw3;
+import derelict.glfw3.glfw3;
 
 private struct TimeState {
     @property double current () { return _currentTime; }

@@ -11,7 +11,7 @@ import std.container.rbtree;
 import std.range.primitives;
 import std.array;
 import core.sync.rwmutex;
-import Derelict.opengl3.gl3;
+import derelict.opengl3.gl3;
 import gsb.glutils;
 import gl3n.linalg;
 

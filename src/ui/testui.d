@@ -12,7 +12,7 @@ import gsb.core.gamepad;
 import gl3n.linalg;
 import gsb.glutils;
 import gsb.core.color;
-import Derelict.glfw3.glfw3;
+import derelict.glfw3.glfw3;
 
 shared static this () {
     UIComponentManager.runAtInit({
