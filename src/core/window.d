@@ -1,6 +1,6 @@
 
 module gsb.core.window;
-import Derelict.glfw3.glfw3;
+import derelict.glfw3.glfw3;
 import gl3n.linalg;
 
 import std.exception;

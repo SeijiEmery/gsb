@@ -6,8 +6,8 @@ import std.format;
 
 import std.parallelism;
 
-import Derelict.glfw3.glfw3;
-import Derelict.opengl3.gl3;
+import derelict.glfw3.glfw3;
+import derelict.opengl3.gl3;
 import gl3n.linalg;
 
 import gsb.core.log;

@@ -6,7 +6,7 @@ import gsb.core.window;
 import gsb.core.gamepad;
 import gsb.core.frametime;
 import gl3n.linalg;
-import Derelict.glfw3.glfw3;
+import derelict.glfw3.glfw3;
 
 import std.traits: isSomeString;
 import std.conv: to;
