@@ -168,6 +168,8 @@ void mainThread (Tid graphicsThreadId) {
 		log.write("Registered graphics component %s", name);
 	});
 
+	g_mainWindow.setScreenScale(vec2(2,2));
+
 	registerDefaultFonts();
 	UIComponentManager.init();
 

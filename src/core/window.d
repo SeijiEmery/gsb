@@ -36,9 +36,29 @@ private:
     vec2i m_screenSize;       // window size in unscaled pixels (0.5x framebuffer size if retina)
     vec2  m_screenScale;      // screen scaling factor -- either 1.0 (standard / old monitors), or 2.0 (retina)
     EventCollector m_eventCollector;
+    bool hasManuallySetScreenScale = false;
 
 public:
     @property GLFWwindow* handle () { return m_window; }
+
+    void setScreenScale (vec2 scale) {
+        hasManuallySetScreenScale = true;
+
+        if (scale.x == 0) scale.x = 1;
+        if (scale.y == 0) scale.y = 1;
+        m_screenScale = scale;
+
+        auto screenSize = vec2i(
+            cast(int)(m_framebufferSize.x / scale.x),
+            cast(int)(m_framebufferSize.y / scale.y));
+
+        updateScreenScale(screenSize, m_framebufferSize);
+        assert(scale == m_screenScale);
+    }
+    void clearScreenScale () {
+        hasManuallySetScreenScale = false;
+        updateScreenScale(m_screenSize, m_framebufferSize);
+    }
 
     @property auto pixelDimensions () { return m_framebufferSize; }
     @property auto screenDimensions () { return m_screenSize; }
@@ -170,21 +190,29 @@ public:
 
     private void updateScreenScale (vec2i screenSize, vec2i framebufferSize) {
         log.write("Updating screen scale");
-        double scale_x = cast(double)framebufferSize.x / cast(double)screenSize.x;
-        double scale_y = cast(double)framebufferSize.y / cast(double)screenSize.y;
 
-        // Sanity check screen scale; we only support two scales: 1.0 (standard), 2.0 (retina)
-        assert(approxEqual(scale_x, 1.0) || approxEqual(scale_x, 2.0));
-        assert(approxEqual(scale_y, 1.0) || approxEqual(scale_y, 2.0));
+        vec2 newScale;
+            double scale_x = cast(double)framebufferSize.x / cast(double)screenSize.x;
+            double scale_y = cast(double)framebufferSize.y / cast(double)screenSize.y;
 
-        vec2 newScale = vec2(round(scale_x), round(scale_y));
+            // Sanity check screen scale; we only support two scales: 1.0 (standard), 2.0 (retina)
+            assert(approxEqual(scale_x, 1.0) || approxEqual(scale_x, 2.0));
+            assert(approxEqual(scale_y, 1.0) || approxEqual(scale_y, 2.0));
+
+            newScale = vec2(round(scale_x), round(scale_y));
 
         bool sizeChanged = screenSize != m_screenSize;
         bool scaleChanged = newScale  != m_screenScale;
         bool fbChanged    = framebufferSize != m_framebufferSize;
 
-        m_screenScale = vec2(round(scale_x), round(scale_y));
-        m_screenSize  = screenSize;
+        if (!hasManuallySetScreenScale) {
+            m_screenScale = vec2(round(scale_x), round(scale_y));
+            m_screenSize  = screenSize;
+        } else {
+            m_screenSize = vec2i(
+                cast(int)(cast(double)framebufferSize.x / m_screenScale.x),
+                cast(int)(cast(double)framebufferSize.y / m_screenScale.y));
+        }
         m_framebufferSize = framebufferSize;
 
         // Still want our old code to work, and some stuff needs to operate outside of the UIEvent system
