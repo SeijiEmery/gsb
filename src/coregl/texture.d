@@ -1,6 +1,6 @@
 
 module gsb.coregl.texture;
-import gsb.coregl.commandbuffer;
+import gsb.coregl.batch;
 import gsb.coregl.sharedimpl;
 
 import gsb.core.mathutils;

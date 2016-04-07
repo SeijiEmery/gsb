@@ -2,7 +2,7 @@
 module gsb.coregl;
 
 public import gsb.coregl.glerrors;
-public import gsb.coregl.commandbuffer;
+public import gsb.coregl.batch;
 public import gsb.coregl.glstate;
 //public import gsb.coregl.glstats;
 public import gsb.coregl.interfaces;

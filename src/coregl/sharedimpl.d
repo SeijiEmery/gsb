@@ -1,6 +1,6 @@
 
 module gsb.coregl.sharedimpl;
-import gsb.coregl.commandbuffer;
+import gsb.coregl.batch;
 public import gsb.coregl.glerrors;
 public import gsb.coregl.interfaces;
 
