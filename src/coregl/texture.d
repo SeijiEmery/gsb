@@ -1,6 +1,7 @@
 
 module gsb.coregl.texture;
 import gsb.coregl.batch;
+import gsb.coregl.batchpool;
 import gsb.coregl.sharedimpl;
 
 import gsb.core.mathutils;
@@ -34,7 +35,7 @@ public:
     void create () {
         if (!_id) {
             _id = 1;
-            GLCommandBuffer.instance.pushImmediate({
+            pushImmediate(GLCommandBuffer.instance, {
                 glchecked!glGenTextures(1, &_id);
                 //glchecked!(glGenTextures, __FILE__, __LINE__, int, uint*)(1, &_id);
             });
@@ -43,20 +44,20 @@ public:
     void release () {
         if (_id) {
             auto texid = _id; _id = 0;
-            GLCommandBuffer.instance.pushImmediate({
+            pushImmediate(GLCommandBuffer.instance, {
                 glchecked!glDeleteTextures(1, &texid);
             });
         }
     }
     void bind (uint textureUnit) {
         assert( id != 0 );
-        GLCommandBuffer.instance.pushImmediate({
+        pushImmediate(GLCommandBuffer.instance, {
             glState.activeTexture( textureUnit );
             glState.bindTexture( GL_TEXTURE_2D, id );
         });
     }
     void setFiltering (GLenum minFilter, GLenum magFilter) {
-        GLCommandBuffer.instance.pushImmediate({
+        pushImmediate(GLCommandBuffer.instance, {
             glState.bindTexture( GL_TEXTURE_2D, id );
             glchecked!glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
             glchecked!glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);

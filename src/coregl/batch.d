@@ -30,6 +30,7 @@ class GLBatch {
             foreach (cmd; commands) {
                 cmd();
             }
+            reset();
         });
     }
 }
@@ -60,6 +61,7 @@ class GLCommandBuffer {
     private uint next    = 3;
     private uint executing = 1;
 
+    private Mutex eofMutex;
     private EndOfFrameTask[] eofTasks;
 
     private Mutex mutex;
@@ -72,6 +74,7 @@ class GLCommandBuffer {
 
     this () {
         mutex = new Mutex();
+        eofMutex = new Mutex();
         cv_onFrameComplete = new Condition(mutex);
         cv_batchSubmit = new Condition(mutex);
     }
@@ -79,7 +82,7 @@ class GLCommandBuffer {
     // Add task to be run every frame before glSwapBuffers() gets called.
     // Returns an id to optionally remove said task.
     final auto addEndOfFrameTask (uint priority, GLCommand cmd) {
-        synchronized (mutex) {
+        synchronized (eofMutex) {
             auto task = EndOfFrameTask(cmd, priority);
             auto id = task.id;
             eofTasks ~= task;
@@ -90,7 +93,7 @@ class GLCommandBuffer {
     final auto removeEndOfFrameTask (uint id) {
         foreach (i, task; eofTasks) {
             if (task.id == id) {
-                synchronized (mutex) {
+                synchronized (eofMutex) {
                     eofTasks[i] = eofTasks[$-1];
                     if (--eofTasks.length)
                         eofTasks.sort!"a.priority < b.priority"();
@@ -169,10 +172,17 @@ class GLCommandBuffer {
                 }
             } while (!shouldExit && lastIndex == current);
 
-            // post-frame
+            // Update batch state (advance to next frame)
+            synchronized (mutex) {
+                executing = (current - 1) % 4;
+                lastIndex = current;
+                cv_onFrameComplete.notify();
+            }
+
+            // post-frame (note: we're now running on the 'next' frame: next => immediate)
             if (!shouldExit && eofTasks.length) {
                 threadStats.timedCall("postframe", {
-                    synchronized (mutex) {
+                    synchronized (eofMutex) {
                         foreach (task; eofTasks) {
                             task.run();
                         }
@@ -185,7 +195,6 @@ class GLCommandBuffer {
                 threadStats.timedCall("swapBuffers", {
                     glfwSwapBuffers(g_mainWindow.handle);
                 });
-                cv_onFrameComplete.notify();
             }
         }
 
