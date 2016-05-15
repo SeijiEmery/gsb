@@ -85,78 +85,6 @@ public:
         glfwSetWindowTitle(m_window, title.ptr);
     }
 
-    /+public void setupDefaultEventLogging () {
-        onScreenScaleChanged.connect((float x, float y) {
-            log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y);
-        });
-        onFramebufferSizeChanged.connect((float x, float y) {
-            log.write("WindowEvent: Framebuffer size set to %0.2f, %0.2f", x, y);
-        });
-        onScreenSizeChanged.connect((float x, float y) {
-            log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
-        });
-        onKeyPressed.connect((KeyPress evt) {
-            log.write(evt.mods ?
-                format("KeyEvent: %s pressed (modifiers %s)", formatGlfwKey(evt.key), formatGlfwModifiers(evt.mods)) :
-                format("KeyEvent: %s pressed", formatGlfwKey(evt.key)));
-        });      
-        onKeyReleased.connect((KeyPress evt) {
-            log.write(evt.mods ?
-                format("KeyEvent: %s released (modifiers %s)", formatGlfwKey(evt.key), formatGlfwModifiers(evt.mods)) :
-                format("KeyEvent: %s released", formatGlfwKey(evt.key)));
-        });
-        onTextInput.connect((dchar[] text) {
-            log.write("TextEvent: \"%s\"", text);
-        });
-        onMouseMoved.connect((vec2 pos) {
-            log.write("MouseEvent: pos %0.2f, %0.2f", pos.x, pos.y);
-        });
-        onScrollInput.connect((vec2 scroll) {
-            log.write("ScrollEvent: %0.2f, %0.2f", scroll.x, scroll.y);
-        });
-        onMouseButtonPressed.connect((MouseButton evt) {
-            try {
-            log.write(evt.mods ?
-                format("MouseEvent: %s pressed (modifiers %s)", formatGlfwMouseButton(evt.button), formatGlfwModifiers(evt.mods)) :
-                format("MosueEvent: %s pressed", formatGlfwMouseButton(evt.button)));
-            } catch (Throwable e) {
-                log.write("Error! %s", e);
-            }
-        });
-        onMouseButtonReleased.connect((MouseButton evt) {
-            log.write(evt.mods ?
-                format("MouseEvent: %s released (modifiers %s)", formatGlfwMouseButton(evt.button), formatGlfwModifiers(evt.mods)) :
-                format("MosueEvent: %s released", formatGlfwMouseButton(evt.button)));
-        });
-
-        onGamepadDetected.connect((const(GamepadState)* gamepad) {
-            log.write("Connected %s gamepad '%s' (slot %d, %d axes, %d buttons)",
-                gamepad.profile, gamepad.name, gamepad.id, gamepad.naxes, gamepad.nbuttons);
-        });
-        onGamepadRemoved.connect((const(GamepadState)* gamepad) {
-            log.write("Disconnected %s gamepad '%s' (slot %d, %d axes, %d buttons)",
-                gamepad.profile, gamepad.name, gamepad.id, gamepad.naxes, gamepad.nbuttons);
-        });
-        onGamepadButtonPressed.connect((GamepadButton btn) {
-            log.write("Gamepad button %s pressed", to!string(btn));
-        });
-        onGamepadButtonReleased.connect((GamepadButton btn) {
-            log.write("Gamepad button %s released", to!string(btn));
-        });
-        onGamepadAxesUpdate.connect((float[] axes) {
-            string[NUM_GAMEPAD_AXES] results; uint n = 0;
-            foreach (m; __traits(allMembers, GamepadAxis)) {
-                auto v = axes[mixin("GamepadAxis."~m)];
-                if (v != 0) {
-                    results[n++] = format("%s %0.2f", m, v);
-                }
-            }
-            if (n > 0) {
-                log.write("Gamepad input: %s", results[0..n].join(", "));
-            }
-        });
-    }+/
-
     // Basic ctor. In the future, would like to have this driven by a config file instead.
     this (int width, int height) {
         m_window = glfwCreateWindow(width, height, "GLSandbox", glfwGetPrimaryMonitor(), null);
@@ -344,23 +272,5 @@ public:
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
