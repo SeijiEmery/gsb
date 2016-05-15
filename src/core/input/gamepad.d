@@ -1,5 +1,5 @@
 
-module gsb.core.gamepad;
+module gsb.core.input.gamepad;
 import gsb.core.log;
 import gsb.utils.signals;
 import gsb.core.uimanager;

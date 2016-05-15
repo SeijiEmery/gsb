@@ -7,7 +7,7 @@ import gsb.utils.signals;
 import gsb.core.log;
 import gsb.core.uimanager;
 import gsb.core.uievents;
-import gsb.core.gamepad;
+import gsb.core.input.gamepad;
 
 import gl3n.linalg;
 import gsb.glutils;

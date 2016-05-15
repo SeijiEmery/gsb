@@ -4,7 +4,7 @@ import gsb.core.ui.uielements;
 import gsb.gl.debugrenderer;
 import gsb.core.uimanager;
 import gsb.core.uievents;
-import gsb.core.gamepad;
+import gsb.core.input.gamepad;
 import gsb.core.window;
 import gsb.utils.color;
 import gsb.text.font;

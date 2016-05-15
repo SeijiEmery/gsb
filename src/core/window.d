@@ -8,7 +8,7 @@ import std.math;
 
 import gsb.core.log;
 import gsb.utils.signals;
-import gsb.core.gamepad;
+import gsb.core.input.gamepad;
 import gsb.core.uievents;
 import gsb.core.uimanager;
 

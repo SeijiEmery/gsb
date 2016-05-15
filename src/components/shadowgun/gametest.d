@@ -8,7 +8,7 @@ import gsb.utils.signals;
 import gsb.core.log;
 import gsb.core.ui.uielements;
 import gsb.text.font;
-import gsb.core.gamepad;
+import gsb.core.input.gamepad;
 import gsb.utils.color;
 import gsb.core.window;
 import gl3n.linalg;
