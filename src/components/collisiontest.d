@@ -5,7 +5,7 @@ import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.log;
 import gsb.core.window;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.text.textrenderer;
 import gsb.text.font;
 import gsb.core.collision2d;

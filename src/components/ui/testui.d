@@ -3,7 +3,7 @@ module gsb.ui.testui;
 
 import gsb.gl.debugrenderer;
 import gsb.core.window;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import gsb.core.log;
 import gsb.core.uimanager;
 import gsb.core.uievents;
@@ -11,7 +11,7 @@ import gsb.core.gamepad;
 
 import gl3n.linalg;
 import gsb.glutils;
-import gsb.core.color;
+import gsb.utils.color;
 import derelict.glfw3.glfw3;
 
 shared static this () {

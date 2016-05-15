@@ -10,7 +10,7 @@ import gsb.text.textrenderer;
 import gsb.text.font;
 
 import gl3n.linalg;
-import gsb.core.color;
+import gsb.utils.color;
 import core.time;
 import std.utf;
 import std.array;

@@ -9,7 +9,7 @@ import gsb.text.textshader;
 import gsb.text.font;
 import gsb.text.geometrybuffer;
 import gsb.text.fontatlas;
-import gsb.core.color;
+import gsb.utils.color;
 
 import std.format;
 import std.utf;

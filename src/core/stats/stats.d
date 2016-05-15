@@ -1,7 +1,7 @@
 
 module gsb.core.stats;
 import gsb.core.log;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 
 import core.time;
 import std.datetime;

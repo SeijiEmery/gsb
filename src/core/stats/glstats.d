@@ -2,8 +2,8 @@
 module gsb.glstats;
 import gsb.core.singleton;
 import gsb.core.engineutils;
-import gsb.core.pseudosignals;
-import gsb.core.logging.tags;   // we're reusing the new logger tagging subsystem here for nested stat categories
+import gsb.utils.signals;
+import gsb.utils.logging.tags;   // we're reusing the new logger tagging subsystem here for nested stat categories
 import gsb.core.log;
 import std.range;
 import std.container.rbtree;

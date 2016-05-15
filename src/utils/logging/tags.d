@@ -1,5 +1,5 @@
 
-module gsb.core.logging.tags;
+module gsb.utils.logging.tags;
 import core.sync.mutex: Mutex;
 import std.format: format;
 import std.algorithm.iteration: map;

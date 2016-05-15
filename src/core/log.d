@@ -1,4 +1,3 @@
-
 module gsb.core.log;
 import std.stdio;
 import std.format;

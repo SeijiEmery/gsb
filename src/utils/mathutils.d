@@ -1,5 +1,5 @@
 
-module gsb.core.mathutils;
+module gsb.utils.mathutils;
 public import gl3n.linalg;
 public import gl3n.math;
 import gsb.core.log;

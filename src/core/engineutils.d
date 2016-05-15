@@ -1,6 +1,6 @@
 
 module gsb.core.engineutils;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 
 private struct ThreadLocalSignals {
     Signal!() onFrameBegin;

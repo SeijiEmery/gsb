@@ -4,7 +4,7 @@ import gsb.coregl.batch;
 import gsb.coregl.batchpool;
 import gsb.coregl.sharedimpl;
 
-import gsb.core.mathutils;
+import gsb.utils.mathutils;
 import gsb.gl.state;
 
 bool isValidTextureType (GLenum type) {

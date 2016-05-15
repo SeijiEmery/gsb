@@ -11,12 +11,13 @@ import derelict.opengl3.gl3;
 import gl3n.linalg;
 
 import gsb.core.log;
+import gsb.utils.color;
+
 import gsb.core.window;
 import gsb.core.frametime;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.stats;
-import gsb.core.color;
 
 import gsb.coregl;
 import gsb.text.font;

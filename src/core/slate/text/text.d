@@ -3,7 +3,7 @@ module gsb.slate.text.text;
 
 import gsb.core.log;
 import gsb.core.singleton;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.text.font;
 import gsb.coregl;
 import gl3n.linalg;

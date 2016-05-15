@@ -3,7 +3,7 @@ module gsb.text.geometrybuffer;
 import gsb.gl.state;
 import gsb.gl.algorithms;
 import gsb.gl.drawcalls;
-import gsb.core.color;
+import gsb.utils.color;
 
 import gsb.core.log;
 import stb.truetype;

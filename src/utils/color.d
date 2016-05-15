@@ -1,5 +1,4 @@
-
-module gsb.core.color;
+module gsb.utils.color;
 
 import gl3n.linalg;
 import gl3n.ext.hsv;

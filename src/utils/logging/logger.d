@@ -1,7 +1,7 @@
 
-module gsb.core.logging.logger;
-import gsb.core.logging.tags;
-import gsb.core.utils.ringbuffer;
+module gsb.utils.logging.logger;
+import gsb.utils.logging.tags;
+import gsb.utils.ringbuffer;
 
 import std.algorithm.mutation;
 import std.algorithm.comparison;

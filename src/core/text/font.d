@@ -4,7 +4,7 @@ module gsb.text.font;
 import gsb.core.log;
 import gsb.core.singleton;
 import gsb.core.errors;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import stb.truetype;
 import core.sync.mutex;
 import gl3n.linalg;

@@ -4,9 +4,9 @@ module gsb.gl.algorithms;
 import gsb.coregl;
 public import gsb.gl.drawcalls;
 
-import gsb.core.mathutils;
+import gsb.utils.mathutils;
 import gsb.core.log;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.core.singleton;
 import gsb.core.window;
 import derelict.opengl3.gl3;

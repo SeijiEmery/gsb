@@ -1,7 +1,7 @@
 
 module gsb.core.uievents;
 import gsb.core.log;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import gsb.core.window;
 import gsb.core.gamepad;
 import gsb.core.frametime;

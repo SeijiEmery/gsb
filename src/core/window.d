@@ -7,7 +7,7 @@ import std.exception;
 import std.math;
 
 import gsb.core.log;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import gsb.core.gamepad;
 import gsb.core.uievents;
 import gsb.core.uimanager;

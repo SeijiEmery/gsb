@@ -5,7 +5,7 @@ import gsb.gl.state;
 import gsb.gl.drawcalls;
 
 import gsb.core.log;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.core.singleton;
 import gsb.core.window;
 import gsb.glutils;

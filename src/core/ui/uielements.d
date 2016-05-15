@@ -7,7 +7,7 @@ import gsb.core.uievents;
 import gsb.gl.debugrenderer;
 
 import gsb.text.textrenderer;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.text.font;
 
 import gl3n.linalg;

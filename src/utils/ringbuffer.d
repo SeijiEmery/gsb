@@ -1,5 +1,5 @@
 
-module gsb.core.utils.ringbuffer;
+module gsb.utils.ringbuffer;
 
 
 private size_t toBase2 (size_t sz) {

@@ -13,7 +13,7 @@ import gsb.core.ui.uielements;
 import gsb.gl.algorithms: DynamicRenderer;
 
 import gl3n.linalg;
-import gsb.core.color;
+import gsb.utils.color;
 import core.time;
 
 shared static this () {

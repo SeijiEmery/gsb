@@ -1,8 +1,5 @@
-
-module gsb.core.pseudosignals;
-
+module gsb.utils.signals;
 import gsb.core.log;
-
 
 interface ISlot {
     void disconnect ();

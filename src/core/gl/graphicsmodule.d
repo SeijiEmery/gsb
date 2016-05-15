@@ -1,7 +1,7 @@
 
 module gsb.gl.graphicsmodule;
 import gsb.core.log;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import gsb.core.singleton;
 import gsb.core.stats;
 import std.format;
