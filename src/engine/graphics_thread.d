@@ -1,6 +1,35 @@
-module gsb.engine.graphics;
+module gsb.engine.graphics_thread;
+import gsb.engine.thread_mgr;
+import gsb.engine.engine;
+
+import derelict.glfw3.glfw3;
+import derelict.opengl3.gl3;
+
+import gsb.coregl;             // this is a mess... xD
+import gsb.gl.graphicsmodule;
+import gsb.gl.algorithms;
+import gsb.gl.debugrenderer;
+import gsb.text.textrenderer;
+
+import gsb.core.window;
+import gsb.core.frametime;
+import gsb.core.uimanager;
+import gsb.core.stats;
+import gsb.core.log;
+
+import std.exception: enforce;
+import std.concurrency;
+import std.format;
+
+
+private auto todstr(inout(char)* cstr) {
+    import core.stdc.string: strlen;
+    return cstr ? cstr[0 .. strlen(cstr)] : "";
+}
 
 struct GraphicsThreadManager {
+    public IEngine engine;
+    public Window mainWindow;
 
     // should be called exactly once by engine and on the main thread,
     // and before runGraphicsThread is called.
@@ -11,7 +40,7 @@ struct GraphicsThreadManager {
         DerelictGLFW3.load();
         DerelictGL3.load();
 
-        bool success = glfwInit();
+        auto success = glfwInit();
         enforce(success, format("Failed to initialize glfw"));
 
         // create window
@@ -26,9 +55,9 @@ struct GraphicsThreadManager {
         enforce(mainWindow, format("Failed to create glfw window"));
     }
 
-    // should be called exactly once by the engine, on the main thread,
-    // and after preInitGL is called.
-    void runGraphicsThread (ref ThreadManager.GThreadContext threadCtx) {
+    // should be called exactly once by the engine and on the graphics thread,
+    // after preInitGL is called.
+    void runGraphicsThread (ThreadManager.GThreadContext threadCtx) {
         try {
             threadCtx.running = true;
 
@@ -52,7 +81,9 @@ struct GraphicsThreadManager {
             glState.enableTransparency(true);
 
             // and enter gthread main loop
-            runGraphicsMainLoop();
+            runGraphicsMainLoop( threadCtx );
+
+            threadCtx.notifyThreadTerminated();
 
         } catch (Throwable e) {
             threadCtx.notifyTerminatedWithError(e);
@@ -60,9 +91,9 @@ struct GraphicsThreadManager {
     }
 
     // should be called only from graphics thread.
-    private void runGraphicsMainLoop (ref ThreadManager.GThreadContext threadCtx) {
+    private void runGraphicsMainLoop (ThreadManager.GThreadContext threadCtx) {
         while (threadCtx.running) {
-            recieve(
+            receive(
                 (ClientMessage.KillRequest _) { threadCtx.running = false; },
                 (ClientMessage.NextFrame frameInfo) {
                     threadStats.timedCall("frame", {
@@ -80,7 +111,7 @@ struct GraphicsThreadManager {
                         });
                         DynamicRenderer.signalFrameEnd();
                         threadStats.timedCall("send threadSync message", {
-                            send(GraphicsMessage.ReadyForNextFrame(frameInfo));
+                            send(threadCtx.mainTid, GraphicsMessage.ReadyForNextFrame());
                         });
                     });
                     threadStats.timedCall("swapBuffers", {
@@ -90,6 +121,5 @@ struct GraphicsThreadManager {
                 (Variant v) { log.write("Unhandled event: %s", v); } 
             );
         }
-        threadCtx.notifyThreadTermOk();
     }
 }
