@@ -1,28 +1,93 @@
+module gsb.core.task.task;
+import std.datetime: StopWatch, TickDuration, Duration;
+import core.sync.mutex: Mutex;
+import core.sync.condition;
+import core.thread: Thread;
+import std.format: format;
+import std.conv;
+import std.algorithm;
+import gsb.utils.signals;
+import gsb.core.log;
 
 
-enum TaskStatus {
+enum TaskStatus : ushort {
     WAITING, RUNNING, COMPLETE, ERROR
+}
+enum TaskType : ushort { ASYNC, FRAME, IMMED };
+
+struct TaskOptions {
+    //private static struct Option {
+        bool recurring = false;
+        uint priority  = 0;
+
+        auto opBinary(string op="|")(const Option rhs) const {
+            return TaskOptions(
+                recurring || rhs.recurring,
+                max(priority, rhs.priority)
+            );
+        }
+    //}
+    static private immutable TaskOptions NONE = {};
+    static private immutable TaskOptions RECURRING = { recurring: true };
+
+    static auto @property None ()      { return cast(TaskOptions)NONE; }
+    static auto @property Recurring () { return cast(TaskOptions)RECURRING; }
+    static auto Priority (uint n) { return TaskOptions(false, n); }
+}
+unittest {
+    assert(TaskOptions.None.recurring == false && TaskOptions.None.priority == 0);
+    assert(TaskOptions.Recurring.recurring == true && TaskOptions.Recurring.priority == 0);
+    assert(TaskOptions.Priority(10).recurring == false && TaskOptions.Priority(10).priority == 10);
+
+    assert((TaskOptions.None | TaskOptions.Recurring).recurring == true);
+    assert((TaskOptions.None | TaskOptions.Priority(12)).recurring == false);
+    assert((TaskOptions.None | TaskOptions.Priority(12)).priority == 12);
+    assert((TaskOptions.None | TaskOptions.Recurring).priority == 0);
+
+    assert((TaskOptions.Priority(0) | TaskOptions.Priority(12)).priority == 12);
+    assert((TaskOptions.Priority(24) | TaskOptions.Priority(12)).priority == 24);
+    assert((TaskOptions.Priority(12) | TaskOptions.Priority(24)).priority == 24);
+}
+
+
+
+
+struct TaskMetadata {
+    string name;
+    string file;
+    uint   line;
+    string toString () {
+        return name ?
+            format("%s (%s:%d)", name, file, line) :
+            format("%s:%d", file, line);
+    }
 }
 
 alias TaskDelegate = void delegate();
 class BasicTask {
     TaskDelegate dg;
     TaskStatus   status;
+    TaskType     type;
     bool         active = true;
+    bool         recurring = false;
     short        priority = 0;
     union {
         Duration duration;
         Throwable err;
     }
+    TaskMetadata metadata;
 
-    this (TaskDelegate dg, short priority = 0) { 
-        this.dg = dg; 
+    this (TaskMetadata metadata, TaskType type, TaskDelegate dg, bool recurring = false, short priority = 0) {
+        this.dg = dg;
+        this.type = type;
+        this.recurring = recurring;
         this.priority = priority;
+        this.metadata = metadata;
     }
     void exec () {
-        assert(stats == TaskStatus.RUNNING);
+        assert(status == TaskStatus.RUNNING);
         try {
-            Stopwatch sw; sw.start();
+            StopWatch sw; sw.start();
             dg();
             sw.stop();
             status = TaskStatus.COMPLETE;
@@ -44,24 +109,27 @@ class BasicTask {
     void remove () {
         active = false;
     }
+    override string toString () {
+        return format("[Task %s (priority %d)]", metadata, priority);
+    }
 }
 
 class DependentTask : BasicTask {
     BasicTask[] prereqs;
     TaskStatus  prereqStatus;
 
-    this (TaskDelegate dg, BasicTask[] prereqs) {
-        super(dg);
+    this (Args...)(Args args, BasicTask[] prereqs) if (__traits(compiles, super(args))) {
+        super(args);
         this.prereqs = prereqs;
         foreach (prereq; prereqs)
             ++prereq.priority;
     }
-    void remove () {
+    override void remove () {
         super.remove();
         foreach (prereq; prereqs)
             --prereq.priority;
     }
-    @property bool canRun () {
+    override @property bool canRun () {
         if (!super.canRun)
             return false;
 
@@ -82,39 +150,50 @@ class DependentTask : BasicTask {
         // otherwise, canRun true iff prereq status == COMPLETE (not ERROR or WAITING)
         return prereqStatus == TaskStatus.COMPLETE;
     }
-    void reset () {
+    override void reset () {
         super.reset();
         prereqStatus = TaskStatus.WAITING;
+    }
+    override string toString () {
+        return format("[Task %s (priority %d, prereqs %d)]", metadata, priority, prereqs.length);
     }
 }
 
 class TimedTask : DependentTask {
-    Stopwatch sw;
-    Duration  interval;
+    StopWatch sw;
+    TickDuration interval;
 
-    this (TaskDelegate dg, BasicTask[] prereqs, Duration interval) {
-        super(dg, prereqs);
+    this (Args...)(Args args, TickDuration interval) if (__traits(compiles, super(args))) {
+        super(args);
         sw.start();
         this.interval = interval;
     }
-    @property bool canRun () {
-        return super.canRun && sw.peek.to!Duration >= interval;
+    override @property bool canRun () {
+        return super.canRun && sw.peek >= interval;
+    }
+    override void reset () {
+        super.reset();
+        sw.reset();
+    }
+    override string toString () {
+        return format("[Timed task %s (priority %d, prereqs %d, duration %d)]",
+            metadata, priority, prereqs.length, interval);
     }
 }
 
-enum TaskType { ASYNC, FRAME, IMMED };
-
-private void swapDelete (T)(ref T[] range, uint i) {
+private void swapDelete (T,Int)(ref T[] range, Int i) {
     range[i] = range[$-1];
     --range.length;
 }
 private void swapDeleteAll (string pred, T)(ref T[] range) {
     for (auto i = range.length; i --> 0; ) {
         auto a = range[i];
-        mixin("if (%s) swapDelete(range, i)");
+        mixin("if ("~pred~") swapDelete(range, i);");
     }
 }
-
+private void sortTasks (ref BasicTask[] tasks) {
+    tasks.sort!"a.priority < b.priority";
+}
 
 
 class TaskGraph {
@@ -122,9 +201,11 @@ class TaskGraph {
     BasicTask[] asyncTasks;
     BasicTask[] immedTasks;
     Mutex mutex;
+    Condition workerTaskCv;
 
     this () {
         mutex = new Mutex();
+        workerTaskCv = new Condition(new Mutex());
     }
     auto launch (uint NUM_WORKERS)() {
         auto runner = new TGRunner!NUM_WORKERS(this);
@@ -133,16 +214,41 @@ class TaskGraph {
         return this;
     }
 final:
+    // Public task ctors: createTask!([name])( type, [prereqs], [duration], dg, [options] )
+    auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
+        (TaskType type, TaskDelegate dg, TaskOptions opts = TaskOptions.None) 
+    {
+        return addTask(new BasicTask(TaskMetadata(name, file, line), type, dg, opts.recurring));
+    }
+    auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
+        (TaskType type, BasicTask[] prereqs, TaskDelegate dg, TaskOptions opts = TaskOptions.None)
+    {
+        return addTask(new DependentTask(TaskMetadata(name, file, line), type, dg, opts.recurring, prereqs));
+    }
+    auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
+        (TaskType type, TickDuration duration, TaskDelegate dg, TaskOptions opts = TaskOptions.None)
+    {
+        return addTask(new TimedTask(TaskMetadata(name, file, line), type, dg, opts.recurring, [], duration));
+    }
+    auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
+        (TaskType type, BasicTask[] prereqs, TickDuration duration, TaskDelegate dg, TaskOptions opts = TaskOptions.None)
+    {
+        return addTask(new TimedTask(TaskMetadata(name, file, line), type, dg, opts.recurring, prereqs, duration));
+    }
+
+    // Internal methods
+private:
     BasicTask fetchNextTask () {
         auto fetchTask (ref BasicTask[] tasks) {
             return tasks.length ?
-                reduce!"a ? a : b.aquire"(null, tasks) :
+                reduce!"a ? a : b.aquire()"(cast(BasicTask)null, tasks) :
                 null;
         }
         synchronized (mutex) {
-            return fetchTask(immedTasks) ||
-                fetchTask(frameTasks) ||
-                fetchTask(asyncTasks);
+            auto task = fetchTask(immedTasks);
+            if (!task) task = fetchTask(frameTasks);
+            if (!task) task = fetchTask(asyncTasks);
+            return task;
         }
     }
     TaskStatus nextFrameStatus () {
@@ -164,30 +270,30 @@ final:
                     frameTasks[i].reset();
                 }
             }
-            frameTasks.sort!"a.priority";
+            frameTasks.sortTasks();
 
             // cleanup + resort immed + async tasks
             immedTasks.swapDeleteAll!"!a.active";
-            immedTasks.sort!"a.priority";
+            immedTasks.sortTasks();
 
             asyncTasks.swapDeleteAll!"!a.active";
-            asyncTasks.sort!"a.priority";
+            asyncTasks.sortTasks();
         }
     }
-    private void addTask (TaskType type, BasicTask task) {
+    private auto addTask (BasicTask task) {
         synchronized (mutex) {
-            switch (type) {
+            final switch (task.type) {
                 case TaskType.ASYNC:
                     asyncTasks ~= task;
-                    asyncTasks.sort!"a.priority";
+                    asyncTasks.sortTasks();
                 break;
                 case TaskType.IMMED:
                     immedTasks ~= task;
-                    immedTasks.sort!"a.priority";
+                    immedTasks.sortTasks();
                 break;
                 case TaskType.FRAME:
                     frameTasks ~= task;
-                    frameTasks.sort!"a.priority";
+                    frameTasks.sortTasks();
             }
         }
         workerTaskCv.notify();
@@ -196,26 +302,12 @@ final:
         workerTaskCv.wait();
     }
 
-    auto createTask (TaskType type, TaskDelegate dg) {
-        addTask(type, new BasicTask(dg));
-    }
-    auto createTask (TaskType type, BasicTask[] prereqs, TaskDelegate dg) {
-        addTask(type, new DependentTask(dg, prereqs));
-    }
-    auto createTask (TaskType type, BasicTask[] prereqs, Duration dur, TaskDelegate dg) {
-        addTask(type, new TimedTask(dg, prereqs, dur, dg));
-    }
-    auto createTask (TaskType type, Duration dur, TaskDelegate dg) {
-        addTask(type, new TimedTask(dg, [], dur, dg));
-    }
-
-private:
     // Task callbacks
     void notifyFailed (BasicTask task) {
-        log.write("Task failed!: %s", task.err);
+        log.write("%s failed!: %s", task, task.err);
     }
     void notifyCompleted (BasicTask task) {
-        log.write("Task completed in %s", task.duration);
+        log.write("%s completed in %s", task.duration, task);
     }
 
     // TGWorker / TGRunner callbacks
@@ -224,7 +316,7 @@ private:
     }
     void handleFailedFrame (TGRunner runner) {
         log.write("gsb-frame failed!\nFailed tasks:\n\t%s",
-            frameTasks.filter!"a.status == TaskStatus.ERROR"
+            frameTasks.filter!((a) => a.status == TaskStatus.ERROR)
                 .map!((BasicTask task) {
                     return format("Failed task: %s", task.err);
                 })
@@ -249,8 +341,9 @@ class TGWorker : Thread {
     bool runNextTask () {
         auto task = tg.fetchNextTask();
         if (task) {
+            log.write("%s executing task: %s", name, task);
             task.exec();
-            if (task.status == ERROR)
+            if (task.status == TaskStatus.ERROR)
                 tg.notifyFailed(task);
             else
                 tg.notifyCompleted(task);
@@ -265,34 +358,55 @@ class TGWorker : Thread {
         }
     }
     final void run () {
+        log.write("Starting thread '%s'");
         try {
             runTasks();
         } catch (Throwable e) {
             tg.notifyWorkerFailed(this, e);
         }
+        log.write("Thread ended: '%s'", name);
     }
     void kill () {
+        log.write("Killing thread '%s'", name);
         active = false;
     }
 }
 
-class TGRunner (uint NUM_WORKERS = 6) : TGWorker {
-    TGWorker [ NUM_WORKERS ] workers;
-    public Signal!void onFrameEnter;
-    public Signal!void onFrameExit;
+class TGRunner : TGWorker {
+    TGWorker[] workers;
+    public Signal!() onFrameEnter;
+    public Signal!() onFrameExit;
 
-    this (TaskGraph graph) {
+    this (TaskGraph graph, uint NUM_WORKERS = 6) {
         super("TG-RUNNER", graph);
-        foreach (i; 0 .. NUM_WORKERS) {
-            workers[i] = new TGWorker(format("TG-WORKER %d", i+1), graph).run();
+        setWorkThreadCount( NUM_WORKERS );
+    }
+    @property uint numWorkers () { return cast(uint)workers.length; }
+    @property uint numWorkers (uint n) {
+        return setWorkThreadCount(n), n;
+    }
+
+    void setWorkThreadCount (uint n) {
+        if (n < workers.length) {
+            while (n < workers.length) {
+                workers[$-1].kill();
+                --workers.length;
+            }
+        } else if (n > workers.length) {
+            foreach (i; 0 .. (n - workers.length)) {
+                auto worker = new TGWorker(format("TG-WORKER %d", i+1), tg);
+                workers ~= worker;
+                worker.start();
+            }
         }
     }
-    void kill () {
+
+    override void kill () {
         super.kill();
         foreach (worker; workers)
             worker.kill();
     }
-    void runTasks () {
+    override void runTasks () {
         while (active) {
             final switch (tg.nextFrameStatus) {
                 case TaskStatus.WAITING: {
@@ -306,6 +420,7 @@ class TGRunner (uint NUM_WORKERS = 6) : TGWorker {
                     tg.summarizeFrame(); onFrameExit.emit();
                     tg.enterNextFrame(); onFrameEnter.emit();
                 } break;
+                case TaskStatus.RUNNING: assert(0);
             }
         }
     }

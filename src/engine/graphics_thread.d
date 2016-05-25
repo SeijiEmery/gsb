@@ -20,6 +20,7 @@ import gsb.core.log;
 import std.exception: enforce;
 import std.concurrency;
 import std.format;
+import core.thread;
 
 
 private auto todstr(inout(char)* cstr) {
@@ -27,7 +28,16 @@ private auto todstr(inout(char)* cstr) {
     return cstr ? cstr[0 .. strlen(cstr)] : "";
 }
 
-struct GThreadWorker {
+class GraphicsThread : Thread {
+    GraphicsMgr mgr;
+
+    this (GraphicsMgr mgr) { this.mgr = mgr; }
+    void run () {
+        mgr.runGraphicsThread();
+    }
+}
+
+class GraphicsMgr {
     public IEngine engine;
     public Window mainWindow;
 
