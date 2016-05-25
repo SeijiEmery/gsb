@@ -8,6 +8,12 @@ import std.stdio;
 
 interface IEngine {}
 
+private void launchGraphicsThread ( shared Engine engine ) {
+    engine.graphicsMgr.runGraphicsThread();
+}
+
+
+
 class Engine : IEngine {
     public Signal!(Engine) onShutdown;
 
@@ -20,7 +26,8 @@ class Engine : IEngine {
         graphicsMgr.preInitGL();
         try {
             // non-blocking call: launches parallel graphics thread, finishes init + waits for instructions
-            threadMgr.launchGraphicsThread ( &graphicsMgr.runGraphicsThread );
+            //threadMgr.launchGraphicsThread ( &graphicsMgr.runGraphicsThread );
+            launchGraphicsThread( graphicsMgr );
 
             // **blocking** call: "launches" + runs event system on _this_ thread, which drives the rest of
             // the application. Returns only when application exits (normally); throws an exception / throwable
@@ -45,7 +52,7 @@ private:
     // Engine components
     ThreadManager         threadMgr;
     EventThreadManager    eventMgr;
-    GraphicsThreadManager graphicsMgr;
+    GThreadWorker graphicsMgr;
 }
 
 

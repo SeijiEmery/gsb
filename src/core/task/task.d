@@ -4,17 +4,63 @@ alias TaskDelegate     = void delegate();
 alias TaskCompletionDg = void delegate(Task, Duration);
 alias TaskErrorDg      = void delegate(Task, Throwable);
 
-enum  TaskState : ubyte {
-    WAITING = 0, RUNNING, ERROR, COMPLETED
+enum  TaskStatus : ubyte {
+    WAITING = 0, RUNNING, ERROR, COMPLETE
 }
 private immutable MAX_TASK_DEPS = 16;
 
 class Task {
     TaskDelegate dg;
     ushort    priority = 0;
-    TaskState status;
-    Task[MAX_TASK_DEPS] deps;
+    TaskStatus status;
+
+    TaskMetadata metadata;
+    Task[MAX_TASK_DEPS] prereqs;
+
+    this (TaskDelegate dg, ushort priority, TaskStatus status, Task[] prereqs, TaskMetadata metadata) {
+        enforce(prereqs.length < MAX_TASK_DEPS, format("%s > %s! (%s)", prereqs.length, MAX_TASK_DEPS, metadata));
+
+        this.dg = dg;
+        this.priority = priority;
+        this.status   = status;
+        this.metadata = metadata;
+        this.prereqs[0..prereqs.length] = prereqs;
+    }
+    void reset () {
+        status = TaskStatus.WAITING;
+    }
+
+    // returns TaskStatus.COMPLETE if all prereqs are complete, TaskStatus.ERROR if any prereq failed,
+    // or TaskStatus.WAITING otherwise (tasks are a mix of COMPLETE / RUNNING / WAITING)
+    final TaskStatus prereqState () {
+        bool complete = true;
+        foreach (prereq; prereqs) {
+            if (prereq) {
+                switch (prereq.status) {
+                    case TaskStatus.ERROR: return TaskStatus.ERROR;
+                    case TaskStatus.COMPLETED: continue;
+                    default: complete = false;
+                }
+            }
+        }
+        return complete ?
+            TaskStatus.COMPLETE :
+            TaskStatus.WAITING;
+    }
+    bool canRun () {
+        assert(status == TaskStatus.WAITING);
+        return prereqState == TaskStatus.COMPLETE;
+    }
 }
+struct TaskMetadata {
+    string file;
+    uint   line;
+    string prettyFunc;
+    string taskName;
+}
+
+
+
 
 struct TaskCompletionListener {
     private TaskCompletionDg dg;

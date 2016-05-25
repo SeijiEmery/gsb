@@ -27,7 +27,7 @@ private auto todstr(inout(char)* cstr) {
     return cstr ? cstr[0 .. strlen(cstr)] : "";
 }
 
-struct GraphicsThreadManager {
+struct GThreadWorker {
     public IEngine engine;
     public Window mainWindow;
 
@@ -57,10 +57,8 @@ struct GraphicsThreadManager {
 
     // should be called exactly once by the engine and on the graphics thread,
     // after preInitGL is called.
-    void runGraphicsThread (ThreadManager.GThreadContext threadCtx) {
+    void runGraphicsThread () {
         try {
-            threadCtx.running = true;
-
             // setup log, thread stats, and write message
             log = g_graphicsLog = new Log("graphics-thread");
             log.write("Launched graphics thread");
@@ -81,20 +79,19 @@ struct GraphicsThreadManager {
             glState.enableTransparency(true);
 
             // and enter gthread main loop
-            runGraphicsMainLoop( threadCtx );
-
-            threadCtx.notifyThreadTerminated();
+            runGraphicsMainLoop();
 
         } catch (Throwable e) {
-            threadCtx.notifyTerminatedWithError(e);
+            log.write("Thread terminated: %s", e);
         }
     }
 
     // should be called only from graphics thread.
-    private void runGraphicsMainLoop (ThreadManager.GThreadContext threadCtx) {
-        while (threadCtx.running) {
+    private void runGraphicsMainLoop () {
+        bool keepRunning = true;
+        while (keepRunning) {
             receive(
-                (ClientMessage.KillRequest _) { threadCtx.running = false; },
+                (ClientMessage.KillRequest _) { keepRunning = false; },
                 (ClientMessage.NextFrame frameInfo) {
                     threadStats.timedCall("frame", {
                         g_graphicsFrameTime.updateFromRespectiveThread();
@@ -111,7 +108,7 @@ struct GraphicsThreadManager {
                         });
                         DynamicRenderer.signalFrameEnd();
                         threadStats.timedCall("send threadSync message", {
-                            send(threadCtx.mainTid, GraphicsMessage.ReadyForNextFrame());
+                            send(ownerTid, GraphicsMessage.ReadyForNextFrame());
                         });
                     });
                     threadStats.timedCall("swapBuffers", {

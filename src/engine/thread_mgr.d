@@ -6,14 +6,14 @@ import gsb.core.log;
 
 import std.concurrency;
 
-private void launchThread (Args...)(void delegate(Args) f, Args args) if (__traits(compiles, f(args))) {
+private void launchThread (Args...)(shared void delegate(Args) f, Args args) if (__traits(compiles, f(args))) {
     f(args);
 }
 
 class ThreadManager {
 private:
-    GThreadContext   graphicsThread;
-    EThreadContext   eventThread;
+    Tid graphicsThread;
+    Tid eventThread;
     WThreadContext[] threadList;
 
 public:
@@ -23,17 +23,13 @@ public:
         foreach (thread; threadList)
             thread.kill();
     }
-    void launchGraphicsThread (void delegate(GThreadContext) fcn) {
+    void launchGraphicsThread (void delegate() fcn) {
         assert(!graphicsThread);
-        graphicsThread = new GThreadContext();
-        graphicsThread.tid = spawn(launchThread, fcn, graphicsThread);
-        threadList ~= graphicsThread;
+        graphicsThread = spawn(launchThread, fcn, graphicsThread);
     }
-    void launchEventThread (void delegate(EThreadContext) fcn) {
+    void launchEventThread (void delegate() fcn) {
         assert(!eventThread);
-        threadList ~= (eventThread = new EThreadContext());
-        eventThread.tid = thisTid;
-
+        eventThread = thisTid;
         fcn(eventThread);
     }
 
