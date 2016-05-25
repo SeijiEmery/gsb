@@ -223,7 +223,7 @@ class TaskGraph {
     this () {
         mutex = new Mutex();
         workerTaskCv = new Condition(new Mutex());
-        runner = new TGRunner(this);
+        runner = new TGRunner(this, 1);
     }
     void run () {
         runner.run();
@@ -378,7 +378,7 @@ class TGWorker : Thread {
         }
     }
     final void run () {
-        log.write("Starting thread '%s'");
+        log.write("Starting thread '%s'", name);
         try {
             runTasks();
         } catch (Throwable e) {

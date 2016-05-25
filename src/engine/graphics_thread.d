@@ -28,12 +28,11 @@ private auto todstr(inout(char)* cstr) {
 }
 
 class GraphicsThread : Thread {
-    public IEngine engine;
+    public Engine engine;
     private GlSyncPoint.GSP glSync;
-    public Window mainWindow;
     private bool keepRunning = true;
 
-    this (IEngine engine, GlSyncPoint.GSP glSync) {
+    this (Engine engine, GlSyncPoint.GSP glSync) {
         this.engine = engine;
         this.glSync = glSync;
         super(&runGraphicsThread);
@@ -44,7 +43,7 @@ class GraphicsThread : Thread {
     // should be called exactly once by engine and on the main thread,
     // and before runGraphicsThread is called.
     void preInitGL () {
-        assert(!mainWindow, "Invalid call to preInitGL()");
+        assert(!engine.mainWindow, "Invalid call to preInitGL()");
 
         // preload gl + glfw
         DerelictGLFW3.load();
@@ -59,10 +58,10 @@ class GraphicsThread : Thread {
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-        g_mainWindow = mainWindow = new Window (
+        g_mainWindow = engine.mainWindow = new Window (
             glfwCreateWindow(800, 600, "GL Sandbox", null, null), false
         );
-        enforce(mainWindow, format("Failed to create glfw window"));
+        enforce(engine.mainWindow, format("Failed to create glfw window"));
     }
 
     // should be called exactly once by the engine and on the graphics thread,
@@ -76,7 +75,7 @@ class GraphicsThread : Thread {
             g_graphicsFrameTime.init();
 
             // finish gl init
-            glfwMakeContextCurrent(mainWindow.handle);
+            glfwMakeContextCurrent(engine.mainWindow.handle);
             glfwSwapInterval(1);
             DerelictGL3.reload();
 
@@ -117,7 +116,7 @@ class GraphicsThread : Thread {
             });
             threadStats.timedCall("swapBuffers", {
                 glSync.notifyFrameComplete();
-                glfwSwapBuffers(mainWindow.handle);
+                glfwSwapBuffers(engine.mainWindow.handle);
             });
         }
     }

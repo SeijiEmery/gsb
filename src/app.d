@@ -268,54 +268,57 @@ void enterMainThread (Tid graphicsThreadId) {
 
 void main()
 {
-	defaultPoolThreads(16);
-	//log = g_mainLog = new Log("main-thread");
-	log.write("launching gsb");
+	import gsb.engine;
+	new Engine().run();
 
-	// Preload gl + glfw
-	DerelictGLFW3.load();
-	DerelictGL3.load();
+	//defaultPoolThreads(16);
+	////log = g_mainLog = new Log("main-thread");
+	//log.write("launching gsb");
 
-	if (!glfwInit()) {
-		writeln("Failed to initialize glfw");
-		return;
-	}
+	//// Preload gl + glfw
+	//DerelictGLFW3.load();
+	//DerelictGL3.load();
 
-	// Create window
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	//if (!glfwInit()) {
+	//	writeln("Failed to initialize glfw");
+	//	return;
+	//}
 
-	g_mainWindow = new Window(glfwCreateWindow(800, 600, "GL Sandbox", null, null), false);
-	if (!g_mainWindow) {
-		writeln("Failed to create glfw window");
-		glfwTerminate();
-		return;
-	}
+	//// Create window
+	//glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	//glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+	//glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, true);
+	//glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	// And then hand our gl context off to the graphics thread (via the __gshared window handle)
-	auto gthreadHandle = spawn(&enterGraphicsThread, thisTid);
+	//g_mainWindow = new Window(glfwCreateWindow(800, 600, "GL Sandbox", null, null), false);
+	//if (!g_mainWindow) {
+	//	writeln("Failed to create glfw window");
+	//	glfwTerminate();
+	//	return;
+	//}
 
-	// We'll finish initializing and run our control + event code on the main thread, but opengl
-	// access is confined _strictly_ to the graphics thread.
+	//// And then hand our gl context off to the graphics thread (via the __gshared window handle)
+	//auto gthreadHandle = spawn(&enterGraphicsThread, thisTid);
 
-	try {
-		enterMainThread(gthreadHandle);
-	} catch (Throwable e) {
-		writeln(e);
-	}
+	//// We'll finish initializing and run our control + event code on the main thread, but opengl
+	//// access is confined _strictly_ to the graphics thread.
 
-	// App shutdown code
-	// Note: the main thread terminates iff
-	// - app exits normally (cmd+q / window closed / etc)
-	// - main thread threw an exception and must terminate
-	// - a critical / core thread (like the graphics thread) threw an exception and terminated.
-	//
-	// In the first two cases, mainThread / enterMainThread will kill all worker threads and wait
-	// for confirmation before returning
-	//
-	log.write("Shutting down");
-	glfwDestroyWindow(g_mainWindow.handle);
-	glfwTerminate();
+	//try {
+	//	enterMainThread(gthreadHandle);
+	//} catch (Throwable e) {
+	//	writeln(e);
+	//}
+
+	//// App shutdown code
+	//// Note: the main thread terminates iff
+	//// - app exits normally (cmd+q / window closed / etc)
+	//// - main thread threw an exception and must terminate
+	//// - a critical / core thread (like the graphics thread) threw an exception and terminated.
+	////
+	//// In the first two cases, mainThread / enterMainThread will kill all worker threads and wait
+	//// for confirmation before returning
+	////
+	//log.write("Shutting down");
+	//glfwDestroyWindow(g_mainWindow.handle);
+	//glfwTerminate();
 }

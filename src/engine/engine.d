@@ -1,6 +1,7 @@
 module gsb.engine.engine;
 import gsb.core.task;
 import gsb.core.log;
+import gsb.core.window;
 
 import gsb.engine.graphics_thread;
 import gsb.utils.signals;
@@ -13,8 +14,6 @@ import gsb.gl.debugrenderer;
 import gsb.gl.graphicsmodule;
 import gsb.text.textrenderer;
 
-
-interface IEngine {}
 
 class GlSyncPoint {
     uint engineFrame = 0;
@@ -78,12 +77,13 @@ class GlSyncPoint {
 
 
 
-class Engine : IEngine {
+class Engine {
     public Signal!(Engine) onInit;
     public Signal!(Engine) onShutdown;
 
     public TaskGraph     tg;
     public GraphicsThread gthread;
+    public Window mainWindow = null;
 
     GlSyncPoint.ESP  engineSync;
     GlSyncPoint.GSP  glSync;
@@ -133,27 +133,33 @@ class Engine : IEngine {
             log.write("Finished init (%s)", initTasks);
 
             // Register per-frame events:
-            auto pollEvents = tg.createTask!"poll-events"(TaskType.FRAME, {
-                glfwPollEvents();
-            });
-            auto updateComponents = tg.createTask!"UIComponents.update"(TaskType.FRAME, [ pollEvents ], {
+            auto updateComponents = tg.createTask!"UIComponents.update"(TaskType.FRAME, [], {
+                log.write("Running task: UIComponents.update");
                 UIComponentManager.updateFromMainThread();
                 DebugRenderer.mainThread_onFrameEnd();
             });
-            auto updateGraphicsComponents = tg.createTask!"GraphicsComponents.update"(TaskType.FRAME, [ pollEvents ], {
+            auto updateGraphicsComponents = tg.createTask!"GraphicsComponents.update"(TaskType.FRAME, [], {
+                log.write("Running task: GraphicsComponents.update");
                 GraphicsComponentManager.updateFromMainThread();
             });
             auto textUpdate = tg.createTask!"render-text"(TaskType.FRAME, [ updateComponents, updateGraphicsComponents ], {
+                log.write("Running task: textRenderer.update");
                 TextRenderer.instance.updateFragments();
             });
 
             tg.onFrameExit.connect({
                 log.write("ending frame");
                 engineSync.notifyFrameComplete();
+
+                tg.createTask!"seppuku"(TaskType.FRAME, [ textUpdate ], {
+                    throw new Exception("We're done");
+                });
             });
             tg.onFrameEnter.connect({
                 engineSync.waitNextFrame();
                 log.write("starting frame");
+
+                glfwPollEvents();
             });
         });
     }
@@ -167,5 +173,9 @@ class Engine : IEngine {
         
         gthread.awaitDeath();
         tg.awaitWorkerDeath();
+
+        if (mainWindow.handle)
+            glfwDestroyWindow(mainWindow.handle);
+        glfwTerminate();
     }
 }
