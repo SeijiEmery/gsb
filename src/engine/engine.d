@@ -20,11 +20,10 @@ class Engine : IEngine {
 
     public TaskGraph     tg;
     public GraphicsThread gthread;
-    private GraphicsMgr  graphicsMgr;
 
     this () {
         tg = new TaskGraph();
-        graphicsMgr = new GraphicsMgr();
+        gthread = new GraphicsThread();
     }
     void run () {
         log.write("launching gsb");
@@ -50,11 +49,11 @@ class Engine : IEngine {
     }
 
     private void engine_launchSubsystems () {
-        auto t1 = tg.createTask!"launch-gl"(TaskType.IMMED, {
-            graphicsThread.preInitGL();
-            gthread = new GThreadWorker(graphicsMgr).start();
+        auto t1 = tg.createTask!"launch-gl"(TaskType.IMMED, () {
+            gthread.preInitGL();
+            gthread.start();
         });
-        auto t2 = tg.createTask!"some-other-task"(TaskType.IMMED, {
+        auto t2 = tg.createTask!"some-other-task"(TaskType.IMMED, () {
             log.write("other task!");
         });
 

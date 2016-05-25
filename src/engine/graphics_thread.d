@@ -1,5 +1,4 @@
 module gsb.engine.graphics_thread;
-import gsb.engine.thread_mgr;
 import gsb.engine.engine;
 
 import derelict.glfw3.glfw3;
@@ -29,17 +28,16 @@ private auto todstr(inout(char)* cstr) {
 }
 
 class GraphicsThread : Thread {
-    GraphicsMgr mgr;
-
-    this (GraphicsMgr mgr) { this.mgr = mgr; }
-    void run () {
-        mgr.runGraphicsThread();
-    }
-}
-
-class GraphicsMgr {
     public IEngine engine;
     public Window mainWindow;
+    private bool keepRunning = true;
+
+    this (IEngine engine) {
+        this.engine = engine;
+        super(&runGraphicsThread);
+    }
+    void kill () { keepRunning = false; }
+    void awaitDeath () {}
 
     // should be called exactly once by engine and on the main thread,
     // and before runGraphicsThread is called.
@@ -67,7 +65,7 @@ class GraphicsMgr {
 
     // should be called exactly once by the engine and on the graphics thread,
     // after preInitGL is called.
-    void runGraphicsThread () {
+    private void runGraphicsThread () {
         try {
             // setup log, thread stats, and write message
             log = g_graphicsLog = new Log("graphics-thread");
@@ -98,7 +96,6 @@ class GraphicsMgr {
 
     // should be called only from graphics thread.
     private void runGraphicsMainLoop () {
-        bool keepRunning = true;
         while (keepRunning) {
             receive(
                 (ClientMessage.KillRequest _) { keepRunning = false; },

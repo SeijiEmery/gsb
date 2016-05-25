@@ -202,17 +202,19 @@ class TaskGraph {
     BasicTask[] immedTasks;
     Mutex mutex;
     Condition workerTaskCv;
+    TGRunner  runner;
 
     this () {
         mutex = new Mutex();
         workerTaskCv = new Condition(new Mutex());
+        runner = new TGRunner(this);
     }
-    auto launch (uint NUM_WORKERS)() {
-        auto runner = new TGRunner!NUM_WORKERS(this);
+    void run () {
         runner.run();
         runner.kill();
-        return this;
     }
+    void killWorkers () { runner.kill(); }
+    void awaitWorkerDeath () {}
 final:
     // Public task ctors: createTask!([name])( type, [prereqs], [duration], dg, [options] )
     auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
@@ -297,6 +299,7 @@ private:
             }
         }
         workerTaskCv.notify();
+        return task;
     }
     private void waitNextTask () {
         workerTaskCv.wait();
@@ -335,6 +338,7 @@ class TGWorker : Thread {
     bool active = true;
 
     this (string name, TaskGraph graph) {
+        super(&run);
         this.name = name;
         tg = graph;
     }
