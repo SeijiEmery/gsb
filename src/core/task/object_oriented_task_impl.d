@@ -204,6 +204,9 @@ class TaskGraph {
     Condition workerTaskCv;
     TGRunner  runner;
 
+    @property auto onFrameExit () { return runner.onFrameExit; }
+    @property auto onFrameEnter () { return runner.onFrameEnter; }
+
     this () {
         mutex = new Mutex();
         workerTaskCv = new Condition(new Mutex());

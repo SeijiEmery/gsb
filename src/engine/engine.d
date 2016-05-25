@@ -6,13 +6,75 @@ import gsb.core.log;
 import gsb.engine.graphics_thread;
 //import gsb.engine.event_thread;
 import gsb.utils.signals;
-//import std.concurrency;
-//import std.stdio;
+import core.sync.mutex;
+import core.sync.condition;
 
 interface IEngine {}
 //private void launchGraphicsThread ( shared Engine engine ) {
 //    engine.graphicsMgr.runGraphicsThread();
 //}
+
+class GlSyncPoint {
+    uint engineFrame = 0;
+    uint glFrame     = 0;
+    Mutex mutex;
+    Condition  engineNextFrameCv;
+    Condition  glNextFrameCv;
+    this () {
+        mutex = new Mutex();
+        engineNextFrameCv = new Condition(new Mutex());
+        glNextFrameCv     = new Condition(new Mutex());
+    }
+    private static bool shouldWait (uint a, uint b) {
+        return b != uint.max ?
+            a > b :
+            b < a;
+    }
+    unittest {
+        assert(!shouldWait(0,0));
+        assert(!shouldWait(0,1));
+        assert( shouldWait(1,0));
+        assert(!shouldWait(1,1));
+        assert(!shouldWait(uint.max, uint.max));
+        assert(!shouldWait(uint.max, 0));
+        assert( shouldWait(0,        uint.max));
+    }
+
+    class ESP {
+        void notifyFrameComplete () {
+            assert(!shouldWait(engineFrame, glFrame));
+            synchronized (mutex) { ++engineFrame; }
+            engineNextFrameCv.notify();
+        }
+        void waitNextFrame () {
+            mutex.lock();
+            while (shouldWait(engineFrame, glFrame)) {
+                mutex.unlock();
+                glNextFrameCv.wait();
+            }
+            ++engineFrame;
+            mutex.unlock();
+        }
+    }
+    class GSP {
+        void notifyFrameComplete () {
+            assert(!shouldWait(glFrame, engineFrame));
+            synchronized (mutex) { ++glFrame; }
+            glNextFrameCv.notify();
+        }
+        void waitNextFrame () {
+            mutex.lock();
+            while (shouldWait(glFrame, engineFrame)) {
+                mutex.unlock();
+                engineNextFrameCv.wait();
+            }
+            ++glFrame;
+            mutex.unlock();
+        }
+    }
+}
+
+
 
 class Engine : IEngine {
     public Signal!(Engine) onInit;
@@ -21,9 +83,16 @@ class Engine : IEngine {
     public TaskGraph     tg;
     public GraphicsThread gthread;
 
+    GlSyncPoint.ESP  engineSync;
+    GlSyncPoint.GSP  glSync;
+
     this () {
         tg = new TaskGraph();
-        gthread = new GraphicsThread();
+
+        auto sp = new GlSyncPoint();
+        engineSync = sp.new ESP();
+        glSync     = sp.new GSP();
+        gthread   = new GraphicsThread(this, glSync);
     }
     void run () {
         log.write("launching gsb");
@@ -78,9 +147,10 @@ class Engine : IEngine {
 
             tg.onFrameExit.connect({
                 log.write("ending frame");
-                graphicsMgr.signalNextFrame();
+                engineSync.notifyFrameComplete();
             });
             tg.onFrameEnter.connect({
+                engineSync.waitNextFrame();
                 log.write("starting frame");
             });
         });

@@ -29,11 +29,13 @@ private auto todstr(inout(char)* cstr) {
 
 class GraphicsThread : Thread {
     public IEngine engine;
+    private GlSyncPoint.GSP glSync;
     public Window mainWindow;
     private bool keepRunning = true;
 
-    this (IEngine engine) {
+    this (IEngine engine, GlSyncPoint.GSP glSync) {
         this.engine = engine;
+        this.glSync = glSync;
         super(&runGraphicsThread);
     }
     void kill () { keepRunning = false; }
@@ -97,33 +99,26 @@ class GraphicsThread : Thread {
     // should be called only from graphics thread.
     private void runGraphicsMainLoop () {
         while (keepRunning) {
-            receive(
-                (ClientMessage.KillRequest _) { keepRunning = false; },
-                (ClientMessage.NextFrame frameInfo) {
-                    threadStats.timedCall("frame", {
-                        g_graphicsFrameTime.updateFromRespectiveThread();
+            glSync.waitNextFrame();
+            threadStats.timedCall("frame", {
+                g_graphicsFrameTime.updateFromRespectiveThread();
 
-                        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                        threadStats.timedCall("GraphicsComponents.updateAndRender", {
-                            GraphicsComponentManager.updateFromGraphicsThread();
-                        });
-                        threadStats.timedCall("DebugRenderer.render", {
-                            DebugRenderer.renderFromGraphicsThread();
-                        });
-                        threadStats.timedCall("TextRenderer.renderFragments", {
-                            TextRenderer.instance.renderFragments();
-                        });
-                        DynamicRenderer.signalFrameEnd();
-                        threadStats.timedCall("send threadSync message", {
-                            send(ownerTid, GraphicsMessage.ReadyForNextFrame());
-                        });
-                    });
-                    threadStats.timedCall("swapBuffers", {
-                        glfwSwapBuffers(mainWindow.handle);
-                    });
-                },
-                (Variant v) { log.write("Unhandled event: %s", v); } 
-            );
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                threadStats.timedCall("GraphicsComponents.updateAndRender", {
+                    GraphicsComponentManager.updateFromGraphicsThread();
+                });
+                threadStats.timedCall("DebugRenderer.render", {
+                    DebugRenderer.renderFromGraphicsThread();
+                });
+                threadStats.timedCall("TextRenderer.renderFragments", {
+                    TextRenderer.instance.renderFragments();
+                });
+                DynamicRenderer.signalFrameEnd();
+            });
+            threadStats.timedCall("swapBuffers", {
+                glSync.notifyFrameComplete();
+                glfwSwapBuffers(mainWindow.handle);
+            });
         }
     }
 }
