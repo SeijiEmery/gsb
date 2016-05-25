@@ -20,7 +20,7 @@ struct TaskOptions {
         bool recurring = false;
         ushort priority  = 0;
 
-        auto opBinary(string op="|")(const Option rhs) const {
+        auto opBinary(string op="|")(const TaskOptions rhs) const {
             return TaskOptions(
                 recurring || rhs.recurring,
                 max(priority, rhs.priority)
@@ -217,12 +217,17 @@ class TaskGraph {
     Condition workerTaskCv;
     TGRunner  runner;
 
+    //auto startFrameTask = new DependentTask([], TaskMetadata("start-frame"), TaskType.FRAME, {
+    //    onFrameEnter.emit();
+    //}, false, 0);
+    //BasicTask   endFrameTask;
+
     @property auto onFrameExit () { return runner.onFrameExit; }
     @property auto onFrameEnter () { return runner.onFrameEnter; }
 
     this () {
         mutex = new Mutex();
-        workerTaskCv = new Condition(new Mutex());
+        workerTaskCv = new Condition(mutex);
         runner = new TGRunner(this, 1);
     }
     void run () {
@@ -270,6 +275,8 @@ private:
         }
     }
     TaskStatus nextFrameStatus () {
+        if (!frameTasks.length)
+            return TaskStatus.WAITING;
         foreach (task; frameTasks) {
             if (task.status == TaskStatus.ERROR)
                 return TaskStatus.ERROR;
@@ -313,12 +320,12 @@ private:
                     frameTasks ~= task;
                     frameTasks.sortTasks();
             }
+            workerTaskCv.notify();
         }
-        workerTaskCv.notify();
         return task;
     }
     private void waitNextTask () {
-        workerTaskCv.wait();
+        synchronized (mutex) { workerTaskCv.wait(); }
     }
 
     // Task callbacks
@@ -326,12 +333,13 @@ private:
         log.write("%s failed!: %s", task, task.err);
     }
     void notifyCompleted (BasicTask task) {
-        log.write("%s completed in %s", task.duration, task);
+        log.write("%s completed in %s", task, task.duration);
     }
 
     // TGWorker / TGRunner callbacks
     void notifyWorkerFailed (TGWorker worker, Throwable e) {
         log.write("%s failed! %s", worker.name, e);
+        killWorkers();
     }
     void handleFailedFrame (TGRunner runner) {
         log.write("gsb-frame failed!\nFailed tasks:\n\t%s",
@@ -344,7 +352,7 @@ private:
         runner.kill();
     }
     void summarizeFrame () {
-        log.write("Finished frame");
+        log.write("\n\nFinished frame\n\n");
     }
 }
 
@@ -387,7 +395,8 @@ class TGWorker : Thread {
         log.write("Thread ended: '%s'", name);
     }
     void kill () {
-        log.write("Killing thread '%s'", name);
+        if (active)
+            log.write("Killing thread '%s'", name);
         active = false;
     }
 }

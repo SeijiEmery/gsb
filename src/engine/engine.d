@@ -2,6 +2,7 @@ module gsb.engine.engine;
 import gsb.core.task;
 import gsb.core.log;
 import gsb.core.window;
+import gsb.core.uievents;
 
 import gsb.engine.graphics_thread;
 import gsb.utils.signals;
@@ -13,29 +14,38 @@ import gsb.core.uimanager;
 import gsb.gl.debugrenderer;
 import gsb.gl.graphicsmodule;
 import gsb.text.textrenderer;
+import gsb.text.font;
+import gsb.core.frametime;
+import gsb.core.stats;
+
 
 
 class GlSyncPoint {
     uint engineFrame = 0;
     uint glFrame     = 0;
     Mutex mutex;
+
+    Mutex engineMutex, glMutex;
     Condition  engineNextFrameCv;
     Condition  glNextFrameCv;
     this () {
         mutex = new Mutex();
-        engineNextFrameCv = new Condition(new Mutex());
-        glNextFrameCv     = new Condition(new Mutex());
+        engineNextFrameCv = new Condition(engineMutex = new Mutex());
+        glNextFrameCv     = new Condition(glMutex     = new Mutex());
     }
     private static bool shouldWait (uint a, uint b) {
-        return b != uint.max ?
+        return a < uint.max && b < uint.max ?
             a > b :
-            b < a;
+            a < b;
     }
     unittest {
         assert(!shouldWait(0,0));
         assert(!shouldWait(0,1));
         assert( shouldWait(1,0));
         assert(!shouldWait(1,1));
+
+        assert(!(uint.max < uint.max) && uint.max > 0);
+
         assert(!shouldWait(uint.max, uint.max));
         assert(!shouldWait(uint.max, 0));
         assert( shouldWait(0,        uint.max));
@@ -43,39 +53,44 @@ class GlSyncPoint {
 
     class ESP {
         void notifyFrameComplete () {
-            assert(!shouldWait(engineFrame, glFrame));
-            synchronized (mutex) { ++engineFrame; }
-            engineNextFrameCv.notify();
+            //assert(!shouldWait(engineFrame, glFrame));
+            //synchronized (mutex) { ++engineFrame; }
+            //engineNextFrameCv.notify();
+            synchronized (engineMutex) {
+                ++engineFrame;
+                engineNextFrameCv.notify();
+            }
         }
         void waitNextFrame () {
-            mutex.lock();
-            while (shouldWait(engineFrame, glFrame)) {
-                mutex.unlock();
-                glNextFrameCv.wait();
+            //mutex.lock();
+            log.write("SHOULD WAIT? %s (%s,%s)", shouldWait(engineFrame, glFrame), engineFrame, glFrame);
+            
+            synchronized (glMutex) {
+                while (shouldWait(engineFrame, glFrame)) {
+                    log.write("WAITING FOR GL THREAD: %d > %d", engineFrame, glFrame);
+                    glNextFrameCv.wait();
+                }
             }
-            ++engineFrame;
-            mutex.unlock();
+            log.write("STARTING FRAME %d (%d)", engineFrame, glFrame);
         }
     }
     class GSP {
         void notifyFrameComplete () {
             assert(!shouldWait(glFrame, engineFrame));
-            synchronized (mutex) { ++glFrame; }
-            glNextFrameCv.notify();
+            synchronized (glMutex) {
+                ++glFrame;
+                glNextFrameCv.notify();
+            }
         }
         void waitNextFrame () {
-            mutex.lock();
-            while (shouldWait(glFrame, engineFrame)) {
-                mutex.unlock();
-                engineNextFrameCv.wait();
+            synchronized (engineMutex) {
+                while (shouldWait(glFrame, engineFrame)) {
+                    engineNextFrameCv.wait();
+                }
             }
-            ++glFrame;
-            mutex.unlock();
         }
     }
 }
-
-
 
 class Engine {
     public Signal!(Engine) onInit;
@@ -120,15 +135,63 @@ class Engine {
     }
 
     private void engine_launchSubsystems () {
-        auto t1 = tg.createTask!"launch-gl"(TaskType.IMMED, () {
-            gthread.preInitGL();
-            gthread.start();
-        });
+        gthread.preInitGL();
+        gthread.start();
+
+        g_eventFrameTime.init();
+        setupThreadStats("main-thread");
+
         auto t2 = tg.createTask!"some-other-task"(TaskType.IMMED, () {
             log.write("other task!");
         });
+        auto setupLogging = tg.createTask!"setup-logging"(TaskType.IMMED, () {
+            g_mainWindow.onScreenScaleChanged.connect(delegate(float x, float y) {
+                log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y); 
+            });
+            g_mainWindow.onFramebufferSizeChanged.connect(delegate(float x, float y) {
+                log.write("WindowEvent: Framebuffer size set to %0.2f, %0.2f", x, y);
+            });
+            g_mainWindow.onScreenSizeChanged.connect(delegate(float x, float y) {
+                log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
+            });
 
-        auto initTasks = [ t1, t2 ];
+            UIComponentManager.onComponentRegistered.connect((UIComponent component, string name) {
+                log.write("Registered component %s (active = %s)", name, component.active ? "true" : "false");
+            });
+            UIComponentManager.onComponentActivated.connect((UIComponent component) {
+                log.write("Activated component %s", component.name);
+            });
+            UIComponentManager.onComponentDeactivated.connect((UIComponent component) {
+                log.write("Deactivated component %s", component.name);
+            });
+            UIComponentManager.onEventSourceRegistered.connect((IEventCollector collector) {
+                log.write("Registered event source");
+            });
+            UIComponentManager.onEventSourceUnregistered.connect((IEventCollector collector) {
+                log.write("Unregistered event source");
+            });
+
+            GraphicsComponentManager.onComponentLoaded.connect((string name, GraphicsComponent component) {
+                log.write("Loaded graphics component %s", name);
+            });
+            GraphicsComponentManager.onComponentUnloaded.connect((string name, GraphicsComponent component) {
+                log.write("Unloaded graphics component %s", name);
+            });
+            GraphicsComponentManager.onComponentRegistered.connect((string name, GraphicsComponent component) {
+                log.write("Registered graphics component %s", name);
+            });
+        });
+        auto loadFonts = tg.createTask!"loadFonts"(TaskType.IMMED, {
+            registerDefaultFonts();
+        });
+        auto initUIMgr = tg.createTask!"init-components"(TaskType.IMMED, [ loadFonts ], {
+            UIComponentManager.init();
+        });
+
+        // Poll once before starting frame
+        glfwPollEvents();
+
+        auto initTasks = [ t2, setupLogging, initUIMgr ];
         tg.createTask!"on-init-complete"(TaskType.IMMED, initTasks, {
             log.write("Finished init (%s)", initTasks);
 
@@ -147,20 +210,28 @@ class Engine {
                 TextRenderer.instance.updateFragments();
             });
 
-            tg.onFrameExit.connect({
-                log.write("ending frame");
-                engineSync.notifyFrameComplete();
-
-                tg.createTask!"seppuku"(TaskType.FRAME, [ textUpdate ], {
-                    throw new Exception("We're done");
-                });
+            tg.createTask!"end-frame"(TaskType.FRAME, [ textUpdate ], {
+                if (glfwWindowShouldClose(mainWindow.handle)) {
+                    tg.killWorkers();
+                } else {
+                    engineSync.notifyFrameComplete();
+                    engineSync.waitNextFrame();
+                    glfwPollEvents();
+                }
             });
-            tg.onFrameEnter.connect({
-                engineSync.waitNextFrame();
-                log.write("starting frame");
+            //tg.createTask!"seppuku"(TaskType.FRAME, [ textUpdate ], {
+            //    throw new Exception("We're done");
+            //});
+            //tg.onFrameExit.connect({
+            //    log.write("ending frame");
+            //    engineSync.notifyFrameComplete();
+            //});
+            //tg.onFrameEnter.connect({
+            //    engineSync.waitNextFrame();
+            //    log.write("starting frame");
 
-                glfwPollEvents();
-            });
+            //    glfwPollEvents();
+            //});
         });
     }
     private void engine_runMainLoop () {

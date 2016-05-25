@@ -91,7 +91,8 @@ class GraphicsThread : Thread {
             runGraphicsMainLoop();
 
         } catch (Throwable e) {
-            log.write("Thread terminated: %s", e);
+            log.write("GRAPHICS THREAD TERMINATED: %s", e);
+            engine.tg.killWorkers();
         }
     }
 
@@ -99,6 +100,7 @@ class GraphicsThread : Thread {
     private void runGraphicsMainLoop () {
         while (keepRunning) {
             glSync.waitNextFrame();
+            log.write("GTHREAD FRAME BEGIN");
             threadStats.timedCall("frame", {
                 g_graphicsFrameTime.updateFromRespectiveThread();
 
@@ -114,6 +116,7 @@ class GraphicsThread : Thread {
                 });
                 DynamicRenderer.signalFrameEnd();
             });
+            log.write("GTHREAD FRAME END");
             threadStats.timedCall("swapBuffers", {
                 glSync.notifyFrameComplete();
                 glfwSwapBuffers(engine.mainWindow.handle);
