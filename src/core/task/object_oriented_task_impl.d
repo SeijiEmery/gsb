@@ -139,13 +139,17 @@ class DependentTask : BasicTask {
         // - all COMPLETE => COMPLETE
         // - otherwise    => WAITING
         if (prereqStatus == TaskStatus.WAITING) {
-            //prereqStatus = TaskStatus.COMPLETE;
-            //foreach (prereq; prereqs) {
-            //    if (prereq.active && prereq.status == TaskStatus.ERROR)
-            //        return prereqStatus = TaskStatus.ERROR, false;
-            //    if (prereq.active && prereqStatus != TaskStatus.COMPLETE)
-            //        return prereqStatus = TaskStatus.WAITING, false;
-            //}
+            prereqStatus = TaskStatus.COMPLETE;
+            foreach (prereq; prereqs) {
+                if (prereq.active && prereq.status == TaskStatus.ERROR) {
+                    prereqStatus = TaskStatus.ERROR;
+                    break;
+                }
+                else if (prereq.active && prereq.status != TaskStatus.COMPLETE) {
+                    prereqStatus = TaskStatus.WAITING;
+                    break;
+                }
+            }
         }
 
         // otherwise, canRun true iff prereq status == COMPLETE (not ERROR or WAITING)
