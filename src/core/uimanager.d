@@ -9,6 +9,7 @@ import gsb.core.frametime;
 import gsb.core.singleton;
 
 import gl3n.linalg;
+import std.format;
 
 // UIComponent base class. Note: components should use onInit() / onShutdown() as its 
 // ctor / dtor, respectively, NOT this() / ~this().

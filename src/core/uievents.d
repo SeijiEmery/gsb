@@ -11,6 +11,9 @@ import derelict.glfw3.glfw3;
 import std.traits: isSomeString;
 import std.conv: to;
 import std.variant;
+import std.range: join;
+import std.format;
+
 
 // Events are ADTs (sum types). See std.variant and/or haskell.
 alias UIEvent = Algebraic!(

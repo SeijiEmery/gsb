@@ -2,17 +2,19 @@ module gsb.engine.engine;
 import gsb.core.task;
 import gsb.core.log;
 
-//import gsb.engine.thread_mgr;
 import gsb.engine.graphics_thread;
-//import gsb.engine.event_thread;
 import gsb.utils.signals;
 import core.sync.mutex;
 import core.sync.condition;
 
+import derelict.glfw3.glfw3;
+import gsb.core.uimanager;
+import gsb.gl.debugrenderer;
+import gsb.gl.graphicsmodule;
+import gsb.text.textrenderer;
+
+
 interface IEngine {}
-//private void launchGraphicsThread ( shared Engine engine ) {
-//    engine.graphicsMgr.runGraphicsThread();
-//}
 
 class GlSyncPoint {
     uint engineFrame = 0;

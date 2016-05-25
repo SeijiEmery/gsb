@@ -18,6 +18,8 @@ import std.math;
 
 import core.sync.mutex;
 import std.traits;
+import std.range: join;
+import std.format;
 
 mixin Color.fract;
 

@@ -8,6 +8,7 @@ import std.regex;
 import std.conv;
 import std.stdio;
 import std.math;
+import std.algorithm: min, max;
 
 private auto clamp (T) (T x, T m, T n) {
     return max(min(x, m), n);

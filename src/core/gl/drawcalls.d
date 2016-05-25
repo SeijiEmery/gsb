@@ -4,6 +4,7 @@ module gsb.gl.drawcalls;
 import gsb.glutils;
 import derelict.opengl3.gl3;
 import gl3n.linalg;
+import std.format;
 
 struct VertexAttrib {
     GLuint index;

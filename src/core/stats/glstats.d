@@ -8,6 +8,7 @@ import gsb.core.log;
 import std.range;
 import std.container.rbtree;
 import std.array;
+import std.format;
 
 private ThreadLocalTagTracker stats_localTags;
 private immutable size_t NUM_SAMPLES = 256;

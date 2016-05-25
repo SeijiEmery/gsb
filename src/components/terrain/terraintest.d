@@ -12,12 +12,15 @@ import gsb.utils.color;
 import gsb.text.font;
 import gsb.core.log;
 import gl3n.linalg;
-import std.array;
+import gl3n.math: PI;
 
+import std.array;
 import gsb.gl.algorithms;
 import gsb.gl.state;
 import gsb.glutils;
 import derelict.opengl3.gl3;
+import std.format;
+
 
 private immutable string MT_MODULE = "terrain-test";
 private immutable string GT_MODULE = "terrain-renderer";

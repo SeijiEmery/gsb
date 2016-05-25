@@ -18,6 +18,8 @@ import gsb.core.collision2d;
 
 import std.random;
 import std.algorithm;
+import std.format;
+import std.math: abs;
 
 
 shared static this () {

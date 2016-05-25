@@ -13,7 +13,7 @@ import gsb.core.ui.uielements;
 import gl3n.linalg;
 import std.array;
 import std.algorithm.iteration;
-
+import std.format;
 
 private immutable string FONT = "menlo";
 private immutable string MODULE_NAME = "module-manager";

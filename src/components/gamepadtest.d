@@ -11,6 +11,8 @@ import gsb.text.font;
 import gsb.core.log;
 import gl3n.linalg;
 import std.array;
+import std.algorithm: map;
+import std.format;
 
 private immutable string FONT = "menlo";
 private immutable string MODULE_NAME = "gamepad-test";

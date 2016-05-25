@@ -4,6 +4,7 @@ import gsb.text.font;
 import gl3n.linalg;
 import std.math;
 import std.utf;
+import std.algorithm: min, max;
 
 class TextGeometryBuffer{}
 

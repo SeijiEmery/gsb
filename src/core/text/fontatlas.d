@@ -10,10 +10,12 @@ import std.format;
 import std.container.rbtree;
 import std.range.primitives;
 import std.array;
+import std.algorithm: map, min, max;
 import core.sync.rwmutex;
 import derelict.opengl3.gl3;
 import gsb.glutils;
 import gl3n.linalg;
+import std.conv;
 
 private void DEBUG_LOG (lazy void expr) {
     static if (TEXTRENDERER_DEBUG_LOGGING_ENABLED) expr();

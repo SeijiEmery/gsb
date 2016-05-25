@@ -18,7 +18,7 @@ enum TaskType : ushort { ASYNC, FRAME, IMMED };
 struct TaskOptions {
     //private static struct Option {
         bool recurring = false;
-        uint priority  = 0;
+        ushort priority  = 0;
 
         auto opBinary(string op="|")(const Option rhs) const {
             return TaskOptions(
@@ -32,7 +32,7 @@ struct TaskOptions {
 
     static auto @property None ()      { return cast(TaskOptions)NONE; }
     static auto @property Recurring () { return cast(TaskOptions)RECURRING; }
-    static auto Priority (uint n) { return TaskOptions(false, n); }
+    static auto Priority (ushort n) { return TaskOptions(false, n); }
 }
 unittest {
     assert(TaskOptions.None.recurring == false && TaskOptions.None.priority == 0);
@@ -118,8 +118,9 @@ class DependentTask : BasicTask {
     BasicTask[] prereqs;
     TaskStatus  prereqStatus;
 
-    this (Args...)(Args args, BasicTask[] prereqs) if (__traits(compiles, super(args))) {
-        super(args);
+    this (BasicTask[] prereqs, TaskMetadata metadata, TaskType type, TaskDelegate dg, bool recurring, ushort priority)
+    {
+        super(metadata, type, dg, recurring, priority);
         this.prereqs = prereqs;
         foreach (prereq; prereqs)
             ++prereq.priority;
@@ -163,8 +164,16 @@ class TimedTask : DependentTask {
     StopWatch sw;
     TickDuration interval;
 
-    this (Args...)(Args args, TickDuration interval) if (__traits(compiles, super(args))) {
-        super(args);
+    this (
+        TickDuration interval, 
+        BasicTask[] prereqs, 
+        TaskMetadata metadata, 
+        TaskType type, 
+        TaskDelegate dg, 
+        bool recurring, 
+        ushort priority
+    ) {
+        super(prereqs, metadata, type, dg, recurring, priority);
         sw.start();
         this.interval = interval;
     }
@@ -223,22 +232,22 @@ final:
     auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
         (TaskType type, TaskDelegate dg, TaskOptions opts = TaskOptions.None) 
     {
-        return addTask(new BasicTask(TaskMetadata(name, file, line), type, dg, opts.recurring));
+        return addTask(new BasicTask(TaskMetadata(name, file, line), type, dg, opts.recurring, opts.priority));
     }
     auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
         (TaskType type, BasicTask[] prereqs, TaskDelegate dg, TaskOptions opts = TaskOptions.None)
     {
-        return addTask(new DependentTask(TaskMetadata(name, file, line), type, dg, opts.recurring, prereqs));
+        return addTask(new DependentTask(prereqs, TaskMetadata(name, file, line), type, dg, opts.recurring, opts.priority));
     }
     auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
         (TaskType type, TickDuration duration, TaskDelegate dg, TaskOptions opts = TaskOptions.None)
     {
-        return addTask(new TimedTask(TaskMetadata(name, file, line), type, dg, opts.recurring, [], duration));
+        return addTask(new TimedTask(duration, [], TaskMetadata(name, file, line), type, dg, opts.recurring));
     }
     auto createTask (string name = null, string file = __FILE__, uint line = __LINE__)
         (TaskType type, BasicTask[] prereqs, TickDuration duration, TaskDelegate dg, TaskOptions opts = TaskOptions.None)
     {
-        return addTask(new TimedTask(TaskMetadata(name, file, line), type, dg, opts.recurring, prereqs, duration));
+        return addTask(new TimedTask(duration, prereqs, TaskMetadata(name, file, line), type, dg, opts.recurring, opts.priority));
     }
 
     // Internal methods

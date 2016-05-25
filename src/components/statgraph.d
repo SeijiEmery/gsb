@@ -7,14 +7,14 @@ import gsb.core.stats;
 import gsb.core.window;
 import gsb.text.textrenderer;
 import gsb.text.font;
-
 import gsb.core.ui.uielements;
-
 import gsb.gl.algorithms: DynamicRenderer;
-
 import gl3n.linalg;
 import gsb.utils.color;
 import core.time;
+import std.conv;
+import std.algorithm: max, min, map, reduce;
+import std.format;
 
 shared static this () {
     UIComponentManager.runAtInit({

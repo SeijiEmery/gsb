@@ -10,7 +10,7 @@ import gsb.text.textrenderer;
 import gsb.text.font;
 
 import gsb.core.ui.uielements;
-
+import std.algorithm: min, max;
 import gl3n.linalg;
 
 private immutable string FONT = "menlo";

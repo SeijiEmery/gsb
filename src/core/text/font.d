@@ -16,6 +16,8 @@ import std.array;
 import std.math;
 import std.utf;
 import std.regex;
+import std.conv: to;
+import std.algorithm: min, max;
 
 private __gshared bool fontsAreRegistered = false;
 public void registerDefaultFonts () {

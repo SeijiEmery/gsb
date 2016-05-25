@@ -95,7 +95,7 @@ class GLCommandBuffer {
             if (task.id == id) {
                 synchronized (eofMutex) {
                     eofTasks[i] = eofTasks[$-1];
-                    if (--eofTasks.length)
+                    if ((--eofTasks.length) != 0)
                         eofTasks.sort!"a.priority < b.priority"();
                     return;
                 }
