@@ -31,6 +31,7 @@ class GraphicsThread : Thread {
     public Engine engine;
     private GlSyncPoint.GSP glSync;
     private bool keepRunning = true;
+    public bool running = false;
 
     this (Engine engine, GlSyncPoint.GSP glSync) {
         this.engine = engine;
@@ -67,6 +68,7 @@ class GraphicsThread : Thread {
     // should be called exactly once by the engine and on the graphics thread,
     // after preInitGL is called.
     private void runGraphicsThread () {
+        running = true;
         try {
             // setup log, thread stats, and write message
             log = g_graphicsLog = new Log("graphics-thread");
@@ -94,6 +96,7 @@ class GraphicsThread : Thread {
             log.write("GRAPHICS THREAD TERMINATED: %s", e);
             engine.tg.killWorkers();
         }
+        running = false;
     }
 
     // should be called only from graphics thread.
@@ -116,11 +119,14 @@ class GraphicsThread : Thread {
                 });
                 DynamicRenderer.signalFrameEnd();
             });
-            log.write("GTHREAD FRAME END");
-            threadStats.timedCall("swapBuffers", {
-                glSync.notifyFrameComplete();
-                glfwSwapBuffers(engine.mainWindow.handle);
-            });
+            if (keepRunning) {
+                log.write("GTHREAD FRAME END");
+                threadStats.timedCall("swapBuffers", {
+                    glSync.notifyFrameComplete();
+                    glfwSwapBuffers(engine.mainWindow.handle);
+                });
+            }
         }
+        log.write("Exiting graphics thread");
     }
 }

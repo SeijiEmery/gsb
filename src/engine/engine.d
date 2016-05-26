@@ -193,20 +193,20 @@ class Engine {
 
         auto initTasks = [ t2, setupLogging, initUIMgr ];
         tg.createTask!"on-init-complete"(TaskType.IMMED, initTasks, {
-            log.write("Finished init (%s)", initTasks);
+            //log.write("Finished init (%s)", initTasks);
 
             // Register per-frame events:
             auto updateComponents = tg.createTask!"UIComponents.update"(TaskType.FRAME, [], {
-                log.write("Running task: UIComponents.update");
+                //log.write("Running task: UIComponents.update");
                 UIComponentManager.updateFromMainThread();
                 DebugRenderer.mainThread_onFrameEnd();
             });
             auto updateGraphicsComponents = tg.createTask!"GraphicsComponents.update"(TaskType.FRAME, [], {
-                log.write("Running task: GraphicsComponents.update");
+                //log.write("Running task: GraphicsComponents.update");
                 GraphicsComponentManager.updateFromMainThread();
             });
             auto textUpdate = tg.createTask!"render-text"(TaskType.FRAME, [ updateComponents, updateGraphicsComponents ], {
-                log.write("Running task: textRenderer.update");
+                //log.write("Running task: textRenderer.update");
                 TextRenderer.instance.updateFragments();
             });
 
@@ -219,19 +219,6 @@ class Engine {
                     glfwPollEvents();
                 }
             });
-            //tg.createTask!"seppuku"(TaskType.FRAME, [ textUpdate ], {
-            //    throw new Exception("We're done");
-            //});
-            //tg.onFrameExit.connect({
-            //    log.write("ending frame");
-            //    engineSync.notifyFrameComplete();
-            //});
-            //tg.onFrameEnter.connect({
-            //    engineSync.waitNextFrame();
-            //    log.write("starting frame");
-
-            //    glfwPollEvents();
-            //});
         });
     }
     private void engine_runMainLoop () {
@@ -239,12 +226,13 @@ class Engine {
         tg.run();
     }
     private void engine_shutdownSubsystems () {
-        gthread.kill();
+        gthread.kill();   engineSync.notifyFrameComplete();
         tg.killWorkers();
-        
-        gthread.awaitDeath();
-        tg.awaitWorkerDeath();
 
+        if (gthread.running) {
+            log.write("Waiting for graphics thread");
+            while (gthread.running) {}
+        }
         if (mainWindow.handle)
             glfwDestroyWindow(mainWindow.handle);
         glfwTerminate();

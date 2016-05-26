@@ -269,8 +269,9 @@ void enterMainThread (Tid graphicsThreadId) {
 void main()
 {
 	import gsb.engine;
-	new Engine().run();
-
+	auto engine = new Engine();
+	engine.run();
+	
 	//defaultPoolThreads(16);
 	////log = g_mainLog = new Log("main-thread");
 	//log.write("launching gsb");

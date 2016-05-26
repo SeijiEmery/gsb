@@ -8,6 +8,7 @@ import std.conv;
 import std.algorithm;
 import gsb.utils.signals;
 import gsb.core.log;
+import gsb.core.stats;
 
 
 enum TaskStatus : ushort {
@@ -216,6 +217,7 @@ class TaskGraph {
     Mutex mutex;
     Condition workerTaskCv;
     TGRunner  runner;
+    StopWatch frameTimer;
 
     //auto startFrameTask = new DependentTask([], TaskMetadata("start-frame"), TaskType.FRAME, {
     //    onFrameEnter.emit();
@@ -233,6 +235,7 @@ class TaskGraph {
     void run () {
         runner.run();
         runner.kill();
+        workerTaskCv.notifyAll();
     }
     void killWorkers () { runner.kill(); }
     void awaitWorkerDeath () {}
@@ -333,7 +336,9 @@ private:
         log.write("%s failed!: %s", task, task.err);
     }
     void notifyCompleted (BasicTask task) {
-        log.write("%s completed in %s", task, task.duration);
+        //log.write("%s completed in %s", task, task.duration);
+        if (task.metadata.name)
+            perThreadStats["main-thread"].logFrame(task.metadata.name, task.duration.to!Duration);
     }
 
     // TGWorker / TGRunner callbacks
@@ -351,8 +356,9 @@ private:
         );
         runner.kill();
     }
-    void summarizeFrame () {
-        log.write("\n\nFinished frame\n\n");
+    void summarizeFrame () { 
+        //perThreadStats["main-thread"].logFrame("frame", frameTimer.peek());
+        //frameTimer.reset();
     }
 }
 
