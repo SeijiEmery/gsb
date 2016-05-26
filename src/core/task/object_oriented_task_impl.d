@@ -337,7 +337,7 @@ private:
     }
     void notifyCompleted (BasicTask task) {
         //log.write("%s completed in %s", task, task.duration);
-        if (task.metadata.name)
+        if (task.type == TaskType.FRAME && task.metadata.name)
             perThreadStats["main-thread"].logFrame(task.metadata.name, task.duration.to!Duration);
     }
 

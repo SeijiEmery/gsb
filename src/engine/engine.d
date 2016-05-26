@@ -210,14 +210,18 @@ class Engine {
                 TextRenderer.instance.updateFragments();
             });
 
-            tg.createTask!"end-frame"(TaskType.FRAME, [ textUpdate ], {
+            auto endFrame = tg.createTask!"end-frame"(TaskType.FRAME, [ textUpdate ], {
                 if (glfwWindowShouldClose(mainWindow.handle)) {
                     tg.killWorkers();
                 } else {
                     engineSync.notifyFrameComplete();
-                    engineSync.waitNextFrame();
-                    glfwPollEvents();
                 }
+            });
+            auto waitNextFrame = tg.createTask!"wait-for-gthread"(TaskType.FRAME, [ endFrame ], {
+                engineSync.waitNextFrame();
+            });
+            auto pollEvents = tg.createTask!"poll-events"(TaskType.FRAME, [ waitNextFrame ], {
+                glfwPollEvents();
             });
         });
     }
