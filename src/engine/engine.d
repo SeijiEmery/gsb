@@ -17,8 +17,8 @@ import gsb.text.textrenderer;
 import gsb.text.font;
 import gsb.core.frametime;
 import gsb.core.stats;
-
-
+import std.datetime;
+import std.conv;
 
 class GlSyncPoint {
     uint engineFrame = 0;
@@ -94,6 +94,9 @@ class GlSyncPoint {
     }
 }
 
+
+
+
 class Engine {
     public Signal!(Engine) onInit;
     public Signal!(Engine) onShutdown;
@@ -101,11 +104,13 @@ class Engine {
     public TaskGraph     tg;
     public GraphicsThread gthread;
     public Window mainWindow = null;
+    private StopWatch engineTime;
 
     GlSyncPoint.ESP  engineSync;
     GlSyncPoint.GSP  glSync;
 
     this () {
+        engineTime.start();
         tg = new TaskGraph();
 
         auto sp = new GlSyncPoint();
@@ -136,13 +141,7 @@ class Engine {
         log.write("terminated gsb");
     }
 
-    private void engine_launchSubsystems () {
-        gthread.preInitGL();
-        gthread.start();
-
-        g_eventFrameTime.init();
-        setupThreadStats("main-thread");
-
+    private auto startInitTasks () {
         auto t2 = tg.createTask!"some-other-task"(TaskType.IMMED, () {
             log.write("other task!");
         });
@@ -189,13 +188,30 @@ class Engine {
         auto initUIMgr = tg.createTask!"init-components"(TaskType.IMMED, [ loadFonts ], {
             UIComponentManager.init();
         });
+        return [ t2, setupLogging, loadFonts, initUIMgr ];
+    }
 
-        // Poll once before starting frame
-        glfwPollEvents();
+    private void engine_launchSubsystems () {
 
-        auto initTasks = [ t2, setupLogging, initUIMgr ];
+        engineTime.reset();
+
+        gthread.preInitGL();
+        gthread.start();
+
+        g_eventFrameTime.init();
+        setupThreadStats("main-thread");
+
+        auto initTasks = startInitTasks();
+
+        tg.onFrameEnter.connect({
+            engineTime.reset();
+            g_eventFrameTime.updateFromRespectiveThread();
+            threadStats.timedCall("poll-events", {
+                glfwPollEvents();
+            });
+        });
         tg.createTask!"on-init-complete"(TaskType.IMMED, initTasks, {
-            //log.write("Finished init (%s)", initTasks);
+            log.write("\n\nFinished init (%d tasks) in %s\n\n", initTasks.length, engineTime.peek.to!Duration);
 
             // Register per-frame events:
             auto updateComponents = tg.createTask!"UIComponents.update"(TaskType.FRAME, [], {
@@ -213,6 +229,7 @@ class Engine {
             });
         });
         tg.onFrameExit.connect({
+            log.write("\n\nFinished frame in %s\n\n", engineTime.peek.to!Duration);
             if (glfwWindowShouldClose(mainWindow.handle)) {
                 tg.killWorkers();
                 return;
@@ -222,17 +239,13 @@ class Engine {
                 engineSync.waitNextFrame();
             });
         });
-        tg.onFrameEnter.connect({
-            threadStats.timedCall("poll-events", {
-                glfwPollEvents();
-            });
-        });
     }
     private void engine_runMainLoop () {
         // Engine main loop handled by task graph + per-frame tasks defined above
         tg.run();
     }
     private void engine_shutdownSubsystems () {
+        engineTime.reset();
         gthread.kill();   engineSync.notifyFrameComplete();
         tg.killWorkers();
 
@@ -243,5 +256,6 @@ class Engine {
         if (mainWindow.handle)
             glfwDestroyWindow(mainWindow.handle);
         glfwTerminate();
+        log.write("\n\nShutdown in %s\n\n", engineTime.peek.to!Duration);
     }
 }
