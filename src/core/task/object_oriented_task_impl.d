@@ -224,13 +224,13 @@ class TaskGraph {
     //}, false, 0);
     //BasicTask   endFrameTask;
 
-    @property auto onFrameExit () { return runner.onFrameExit; }
-    @property auto onFrameEnter () { return runner.onFrameEnter; }
+    @property auto ref onFrameExit () { return runner.onFrameExit; }
+    @property auto ref onFrameEnter () { return runner.onFrameEnter; }
 
     this () {
         mutex = new Mutex();
         workerTaskCv = new Condition(mutex);
-        runner = new TGRunner(this, 1);
+        runner = new TGRunner(this, 6);
     }
     void run () {
         runner.run();
@@ -452,8 +452,8 @@ class TGRunner : TGWorker {
                 
                 } break;
                 case TaskStatus.COMPLETE: {
-                    tg.summarizeFrame(); onFrameExit.emit();
-                    tg.enterNextFrame(); onFrameEnter.emit();
+                    onFrameExit.emit();  tg.summarizeFrame();
+                    onFrameEnter.emit(); tg.enterNextFrame();
                 } break;
                 case TaskStatus.RUNNING: assert(0);
             }

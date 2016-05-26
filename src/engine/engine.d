@@ -73,6 +73,7 @@ class GlSyncPoint {
             }
             log.write("STARTING FRAME %d (%d)", engineFrame, glFrame);
         }
+        @property auto currentFrame () { return engineFrame; }
     }
     class GSP {
         void notifyFrameComplete () {
@@ -89,6 +90,7 @@ class GlSyncPoint {
                 }
             }
         }
+        @property auto currentFrame () { return glFrame; }
     }
 }
 
@@ -209,18 +211,19 @@ class Engine {
                 //log.write("Running task: textRenderer.update");
                 TextRenderer.instance.updateFragments();
             });
-
-            auto endFrame = tg.createTask!"end-frame"(TaskType.FRAME, [ textUpdate ], {
-                if (glfwWindowShouldClose(mainWindow.handle)) {
-                    tg.killWorkers();
-                } else {
-                    engineSync.notifyFrameComplete();
-                }
-            });
-            auto waitNextFrame = tg.createTask!"wait-for-gthread"(TaskType.FRAME, [ endFrame ], {
+        });
+        tg.onFrameExit.connect({
+            if (glfwWindowShouldClose(mainWindow.handle)) {
+                tg.killWorkers();
+                return;
+            }
+            engineSync.notifyFrameComplete();
+            threadStats.timedCall("wait-for-gl", {
                 engineSync.waitNextFrame();
             });
-            auto pollEvents = tg.createTask!"poll-events"(TaskType.FRAME, [ waitNextFrame ], {
+        });
+        tg.onFrameEnter.connect({
+            threadStats.timedCall("poll-events", {
                 glfwPollEvents();
             });
         });
