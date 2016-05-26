@@ -1,4 +1,5 @@
 module gsb.engine.engine;
+import gsb.engine.engineconfig;
 import gsb.core.task;
 import gsb.core.log;
 import gsb.core.window;
@@ -63,15 +64,18 @@ class GlSyncPoint {
         }
         void waitNextFrame () {
             //mutex.lock();
-            log.write("SHOULD WAIT? %s (%s,%s)", shouldWait(engineFrame, glFrame), engineFrame, glFrame);
+            static if (SHOW_MT_GL_SYNC_LOGGING)
+                log.write("SHOULD WAIT? %s (%s,%s)", shouldWait(engineFrame, glFrame), engineFrame, glFrame);
             
             synchronized (glMutex) {
                 while (shouldWait(engineFrame, glFrame)) {
-                    log.write("WAITING FOR GL THREAD: %d > %d", engineFrame, glFrame);
+                    static if (SHOW_MT_GL_SYNC_LOGGING)
+                        log.write("WAITING FOR GL THREAD: %d > %d", engineFrame, glFrame);
                     glNextFrameCv.wait();
                 }
             }
-            log.write("STARTING FRAME %d (%d)", engineFrame, glFrame);
+            static if (SHOW_MT_GL_SYNC_LOGGING)
+                log.write("STARTING FRAME %d (%d)", engineFrame, glFrame);
         }
         @property auto currentFrame () { return engineFrame; }
     }
@@ -211,7 +215,8 @@ class Engine {
             });
         });
         tg.createTask!"on-init-complete"(TaskType.IMMED, initTasks, {
-            log.write("\n\nFinished init (%d tasks) in %s\n\n", initTasks.length, engineTime.peek.to!Duration);
+            static if (SHOW_INIT_TASK_LOGGING)
+                log.write("\n\nFinished init (%d tasks) in %s\n\n", initTasks.length, engineTime.peek.to!Duration);
 
             // Register per-frame events:
             auto updateComponents = tg.createTask!"UIComponents.update"(TaskType.FRAME, [], {
@@ -229,7 +234,8 @@ class Engine {
             });
         });
         tg.onFrameExit.connect({
-            log.write("\n\nFinished frame in %s\n\n", engineTime.peek.to!Duration);
+            static if (SHOW_PER_FRAME_TASK_LOGGING)
+                log.write("\n\nFinished frame in %s\n\n", engineTime.peek.to!Duration);
             if (glfwWindowShouldClose(mainWindow.handle)) {
                 tg.killWorkers();
                 return;
@@ -256,6 +262,7 @@ class Engine {
         if (mainWindow.handle)
             glfwDestroyWindow(mainWindow.handle);
         glfwTerminate();
-        log.write("\n\nShutdown in %s\n\n", engineTime.peek.to!Duration);
+        static if (SHOW_INIT_TASK_LOGGING)
+            log.write("\n\nShutdown in %s\n\n", engineTime.peek.to!Duration);
     }
 }

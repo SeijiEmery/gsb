@@ -9,6 +9,7 @@ import std.algorithm;
 import gsb.utils.signals;
 import gsb.core.log;
 import gsb.core.stats;
+import gsb.engine.engineconfig;
 
 
 enum TaskStatus : ushort {
@@ -375,7 +376,8 @@ class TGWorker : Thread {
     bool runNextTask () {
         auto task = tg.fetchNextTask();
         if (task) {
-            log.write("%s executing task: %s", name, task);
+            static if (SHOW_TASK_WORKER_LOGGING)
+                log.write("%s executing task: %s", name, task);
             task.exec();
             if (task.status == TaskStatus.ERROR)
                 tg.notifyFailed(task);
@@ -392,16 +394,18 @@ class TGWorker : Thread {
         }
     }
     final void run () {
-        log.write("Starting thread '%s'", name);
+        static if (SHOW_TASK_WORKER_LOGGING)
+            log.write("Starting thread '%s'", name);
         try {
             runTasks();
         } catch (Throwable e) {
             tg.notifyWorkerFailed(this, e);
         }
-        log.write("Thread ended: '%s'", name);
+        static if (SHOW_TASK_WORKER_LOGGING)
+            log.write("Thread ended: '%s'", name);
     }
     void kill () {
-        if (active)
+        if (active && SHOW_TASK_WORKER_LOGGING)
             log.write("Killing thread '%s'", name);
         active = false;
     }

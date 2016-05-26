@@ -1,4 +1,5 @@
 module gsb.engine.graphics_thread;
+import gsb.engine.engineconfig;
 import gsb.engine.engine;
 
 import derelict.glfw3.glfw3;
@@ -103,7 +104,8 @@ class GraphicsThread : Thread {
     private void runGraphicsMainLoop () {
         while (keepRunning) {
             glSync.waitNextFrame();
-            log.write("GTHREAD FRAME BEGIN");
+            static if (SHOW_MT_GL_SYNC_LOGGING)
+                log.write("GTHREAD FRAME BEGIN");
             threadStats.timedCall("frame", {
                 g_graphicsFrameTime.updateFromRespectiveThread();
 
@@ -120,7 +122,8 @@ class GraphicsThread : Thread {
                 DynamicRenderer.signalFrameEnd();
             });
             if (keepRunning) {
-                log.write("GTHREAD FRAME END");
+                static if (SHOW_MT_GL_SYNC_LOGGING)
+                    log.write("GTHREAD FRAME END");
                 threadStats.timedCall("swapBuffers", {
                     glSync.notifyFrameComplete();
                     glfwSwapBuffers(engine.mainWindow.handle);
