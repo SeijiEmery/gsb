@@ -1,7 +1,6 @@
 
 module gsb.glstats;
 import gsb.core.singleton;
-import gsb.core.engineutils;
 import gsb.utils.signals;
 import gsb.utils.logging.tags;   // we're reusing the new logger tagging subsystem here for nested stat categories
 import gsb.core.log;
@@ -92,9 +91,9 @@ private class ThreadLocalStatsCollector {
 
     this () {
         collection.onFrameBegin(currentFrame);
-        slot = gsb_onFrameBegin.connect({
-            collection.onFrameBegin(++currentFrame);
-        });
+        //slot = gsb_onFrameBegin.connect({
+        //    collection.onFrameBegin(++currentFrame);
+        //});
     }
     ~this () {
         slot.disconnect();
