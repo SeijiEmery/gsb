@@ -3,17 +3,17 @@ module gsb.components.module_manager;
 import gsb.gl.debugrenderer;
 import gsb.core.uimanager;
 import gsb.core.uievents;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import gsb.core.log;
 import gsb.core.window;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.text.textrenderer;
 import gsb.text.font;
 import gsb.core.ui.uielements;
 import gl3n.linalg;
 import std.array;
 import std.algorithm.iteration;
-
+import std.format;
 
 private immutable string FONT = "menlo";
 private immutable string MODULE_NAME = "module-manager";

@@ -7,14 +7,14 @@ import gsb.core.stats;
 import gsb.core.window;
 import gsb.text.textrenderer;
 import gsb.text.font;
-
 import gsb.core.ui.uielements;
-
 import gsb.gl.algorithms: DynamicRenderer;
-
 import gl3n.linalg;
-import gsb.core.color;
+import gsb.utils.color;
 import core.time;
+import std.conv;
+import std.algorithm: max, min, map, reduce;
+import std.format;
 
 shared static this () {
     UIComponentManager.runAtInit({
@@ -110,10 +110,10 @@ class Graph {
         float maxSample = 1 / 60.0;
 
         float y = dim.y * 0.5;
-        drawLine(pos + vec2(0, y), pos + vec2(dim.x, y), Color("#f0f000"));
+        //drawLine(pos + vec2(0, y), pos + vec2(dim.x, y), Color("#f0f000"));
 
         drawGraph(perThreadStats[MAIN_THREAD], Color("#fe5050"), 1 / 30.0);
-        drawGraph(perThreadStats[GTHREAD], Color("#00f020"), 1 / 30.0);
+        //drawGraph(perThreadStats[GTHREAD], Color("#00f020"), 1 / 30.0);
 
         auto color = Color("#0050f0");
 
@@ -319,9 +319,9 @@ class WidgetStatGraphModule : UIComponent {
 
         root = new UIContainer(vec2(), vec2(), cast(UIElement[])[
             graph = new GraphView(vec2(0, 400), vec2(400, 300), [
-                UIGraphView.DataSet(Color("#fe9e2040"), () { return ORANGE_STATS; }),
+                //UIGraphView.DataSet(Color("#fe9e2040"), () { return ORANGE_STATS; }),
                 UIGraphView.DataSet(Color("#dede2040"), () { return YELLOW_STATS; }),
-                UIGraphView.DataSet(Color("#7efe7e40"), () { return GREEN_STATS; }),
+                //UIGraphView.DataSet(Color("#7efe7e40"), () { return GREEN_STATS; }),
                 UIGraphView.DataSet(Color("#a0a0a040"), () { return [ 0.0f, 0.0f ]; }),
                 UIGraphView.DataSet(Color("#fe202040"), () { return getStats(MAIN_THREAD, cast(size_t)(30 / 100.0 * graph.dim.x)); }),
                 UIGraphView.DataSet(Color("#20fe2040"), () { return getStats(GTHREAD,     cast(size_t)(30 / 100.0 * graph.dim.x)); }),

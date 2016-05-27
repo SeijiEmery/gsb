@@ -1,7 +1,7 @@
 /+
 module gsb.core.gl_commandbuffer;
 import gsb.core.log;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import gsb.core.singleton;
 
 class GLCommandBuffer {

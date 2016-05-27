@@ -10,10 +10,12 @@ import gsb.text.textrenderer;
 import gsb.text.font;
 
 import gl3n.linalg;
-import gsb.core.color;
+import gsb.utils.color;
 import core.time;
 import std.utf;
 import std.array;
+import std.algorithm: max, min;
+import std.conv;
 
 private immutable string FONT = "menlo";
 

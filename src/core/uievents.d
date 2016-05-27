@@ -1,9 +1,9 @@
 
 module gsb.core.uievents;
 import gsb.core.log;
-import gsb.core.pseudosignals;
+import gsb.utils.signals;
 import gsb.core.window;
-import gsb.core.gamepad;
+import gsb.core.input.gamepad;
 import gsb.core.frametime;
 import gl3n.linalg;
 import derelict.glfw3.glfw3;
@@ -11,6 +11,9 @@ import derelict.glfw3.glfw3;
 import std.traits: isSomeString;
 import std.conv: to;
 import std.variant;
+import std.range: join;
+import std.format;
+
 
 // Events are ADTs (sum types). See std.variant and/or haskell.
 alias UIEvent = Algebraic!(

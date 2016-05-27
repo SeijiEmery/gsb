@@ -7,10 +7,13 @@ import gsb.core.uievents;
 import gsb.gl.debugrenderer;
 
 import gsb.text.textrenderer;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.text.font;
 
 import gl3n.linalg;
+import std.algorithm: min, max;
+import std.math: abs;
+import std.format;
 
 private bool inBounds (vec2 pos, vec2 p1, vec2 p2) {
     return !(pos.x < p1.x || pos.x > p2.x || pos.y < p1.y || pos.y > p2.y);

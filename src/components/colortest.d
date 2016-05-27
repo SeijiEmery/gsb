@@ -1,18 +1,16 @@
-
 module gsb.components.colortest;
 import gsb.gl.debugrenderer;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.log;
 import gsb.core.window;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.text.textrenderer;
 import gsb.text.font;
-import gsb.core.colorutils;
-
 import gsb.core.ui.uielements;
-
 import gl3n.linalg;
+import std.format;
+import std.algorithm: min, max;
 
 private immutable string FONT = "menlo";
 

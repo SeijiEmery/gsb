@@ -7,8 +7,8 @@ import std.exception;
 import std.math;
 
 import gsb.core.log;
-import gsb.core.pseudosignals;
-import gsb.core.gamepad;
+import gsb.utils.signals;
+import gsb.core.input.gamepad;
 import gsb.core.uievents;
 import gsb.core.uimanager;
 
@@ -117,8 +117,6 @@ public:
     }
 
     private void updateScreenScale (vec2i screenSize, vec2i framebufferSize) {
-        log.write("Updating screen scale");
-
         vec2 newScale;
             double scale_x = cast(double)framebufferSize.x / cast(double)screenSize.x;
             double scale_y = cast(double)framebufferSize.y / cast(double)screenSize.y;
@@ -147,8 +145,6 @@ public:
         if (scaleChanged) onScreenScaleChanged.emit(cast(float)newScale.x, cast(float)newScale.y);
         if (sizeChanged) onScreenSizeChanged.emit(cast(float)screenSize.x, cast(float)screenSize.y);
         if (fbChanged) onFramebufferSizeChanged.emit(cast(float)framebufferSize.x, cast(float)framebufferSize.y);
-
-        log.write("changed: %d, %d, %d", scaleChanged, sizeChanged, fbChanged);
     }
 
     class EventCollector : IEventCollector {

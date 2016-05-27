@@ -4,13 +4,15 @@ import gsb.core.ui.uielements;
 import gsb.gl.debugrenderer;
 import gsb.core.uimanager;
 import gsb.core.uievents;
-import gsb.core.gamepad;
+import gsb.core.input.gamepad;
 import gsb.core.window;
-import gsb.core.color;
+import gsb.utils.color;
 import gsb.text.font;
 import gsb.core.log;
 import gl3n.linalg;
 import std.array;
+import std.algorithm: map;
+import std.format;
 
 private immutable string FONT = "menlo";
 private immutable string MODULE_NAME = "gamepad-test";
