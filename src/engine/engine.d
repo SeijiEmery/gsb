@@ -123,7 +123,7 @@ class Engine {
         gthread   = new GraphicsThread(this, glSync);
     }
     void run () {
-        log.write("launching gsb");
+        log.write("Launching gsb");
         try {
             engine_launchSubsystems();
             onInit.emit(this);
@@ -142,57 +142,65 @@ class Engine {
         } catch (Throwable e) {
             log.write("while shutting down engine: %s", e);
         }
-        log.write("terminated gsb");
     }
 
     private auto startInitTasks () {
-        auto t2 = tg.createTask!"some-other-task"(TaskType.IMMED, () {
-            log.write("other task!");
-        });
-        auto setupLogging = tg.createTask!"setup-logging"(TaskType.IMMED, () {
-            g_mainWindow.onScreenScaleChanged.connect(delegate(float x, float y) {
-                log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y); 
-            });
-            g_mainWindow.onFramebufferSizeChanged.connect(delegate(float x, float y) {
-                log.write("WindowEvent: Framebuffer size set to %0.2f, %0.2f", x, y);
-            });
-            g_mainWindow.onScreenSizeChanged.connect(delegate(float x, float y) {
-                log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
-            });
-
-            UIComponentManager.onComponentRegistered.connect((UIComponent component, string name) {
-                log.write("Registered component %s (active = %s)", name, component.active ? "true" : "false");
-            });
-            UIComponentManager.onComponentActivated.connect((UIComponent component) {
-                log.write("Activated component %s", component.name);
-            });
-            UIComponentManager.onComponentDeactivated.connect((UIComponent component) {
-                log.write("Deactivated component %s", component.name);
-            });
-            UIComponentManager.onEventSourceRegistered.connect((IEventCollector collector) {
-                log.write("Registered event source");
-            });
-            UIComponentManager.onEventSourceUnregistered.connect((IEventCollector collector) {
-                log.write("Unregistered event source");
-            });
-
-            GraphicsComponentManager.onComponentLoaded.connect((string name, GraphicsComponent component) {
-                log.write("Loaded graphics component %s", name);
-            });
-            GraphicsComponentManager.onComponentUnloaded.connect((string name, GraphicsComponent component) {
-                log.write("Unloaded graphics component %s", name);
-            });
-            GraphicsComponentManager.onComponentRegistered.connect((string name, GraphicsComponent component) {
-                log.write("Registered graphics component %s", name);
-            });
+        BasicTask[] tasks;
+        //tasks ~= tg.createTask!"some-other-task"(TaskType.IMMED, () {
+        //    log.write("other task!");
+        //});
+        tasks ~= tg.createTask!"setup-logging"(TaskType.IMMED, () {
+            static if (SHOW_WINDOW_EVENT_LOGGING) {
+                g_mainWindow.onScreenScaleChanged.connect(delegate(float x, float y) {
+                    log.write("WindowEvent: Screen scale changed: %0.2f, %0.2f", x, y); 
+                });
+                g_mainWindow.onFramebufferSizeChanged.connect(delegate(float x, float y) {
+                    log.write("WindowEvent: Framebuffer size set to %0.2f, %0.2f", x, y);
+                });
+                g_mainWindow.onScreenSizeChanged.connect(delegate(float x, float y) {
+                    log.write("WindowEvent: Window size set to %0.2f, %0.2f", x, y);
+                });
+            }
+            static if (SHOW_COMPONENT_REGISTRATION)
+                UIComponentManager.onComponentRegistered.connect((UIComponent component, string name) {
+                    log.write("Registered component %s (active = %s)", name, component.active ? "true" : "false");
+                });
+            static if (SHOW_COMPONENT_ACTIVATION) {
+                UIComponentManager.onComponentActivated.connect((UIComponent component) {
+                    log.write("Activated component %s", component.name);
+                });
+                UIComponentManager.onComponentDeactivated.connect((UIComponent component) {
+                    log.write("Deactivated component %s", component.name);
+                });
+            }
+            static if (SHOW_EVENT_SOURCE_LOGGING) {
+                UIComponentManager.onEventSourceRegistered.connect((IEventCollector collector) {
+                    log.write("Registered event source");
+                });
+                UIComponentManager.onEventSourceUnregistered.connect((IEventCollector collector) {
+                    log.write("Unregistered event source");
+                });
+            }
+            static if (SHOW_GRAPHICS_COMPONENT_LOGGING) {
+                GraphicsComponentManager.onComponentLoaded.connect((string name, GraphicsComponent component) {
+                    log.write("Loaded graphics component %s", name);
+                });
+                GraphicsComponentManager.onComponentUnloaded.connect((string name, GraphicsComponent component) {
+                    log.write("Unloaded graphics component %s", name);
+                });
+                GraphicsComponentManager.onComponentRegistered.connect((string name, GraphicsComponent component) {
+                    log.write("Registered graphics component %s", name);
+                });
+            }
         });
         auto loadFonts = tg.createTask!"loadFonts"(TaskType.IMMED, {
             registerDefaultFonts();
         });
-        auto initUIMgr = tg.createTask!"init-components"(TaskType.IMMED, [ loadFonts ], {
+        tasks ~= loadFonts;
+        tasks ~= tg.createTask!"init-components"(TaskType.IMMED, [ loadFonts ], {
             UIComponentManager.init();
         });
-        return [ t2, setupLogging, loadFonts, initUIMgr ];
+        return tasks;
     }
 
     private void engine_launchSubsystems () {

@@ -1,12 +1,11 @@
 
 module gsb.core.input.gamepad;
-import gsb.core.log;
+import gsb.engine.engineconfig;
 import gsb.utils.signals;
 import gsb.core.uimanager;
 import gsb.core.uievents;
-
 import derelict.glfw3.glfw3;
-
+import std.conv;
 
 GamepadManager!(GLFW_JOYSTICK_LAST+1)* g_gamepadManager = null;
 
@@ -230,12 +229,13 @@ struct GamepadManager (size_t NUM_STATES = GLFW_JOYSTICK_LAST + 1) {
     // Poll every device slot to determine what is connected and what isn't (emits onDeviceConnected/Removed)
     // Only call this every N frames, since glfwJoystickPresent(), etc., has quite a bit of overhead.
     void updateDeviceList () {
-        import std.conv;
-
-        if (wantsConnectionsResent) 
-            log.write("Resending connection events");
-        else
-            log.write("Scanning for devices...");
+        static if (SHOW_GAMEPAD_DEVICE_POLLING) {
+            import gsb.core.log;
+            if (wantsConnectionsResent) 
+                log.write("Resending connection events");
+            else
+                log.write("Scanning for devices...");
+        }
         
         foreach (int i; 0 .. states.length) {
             bool active = glfwJoystickPresent(i) != 0;

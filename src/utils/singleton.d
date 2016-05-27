@@ -6,8 +6,9 @@ mixin template LowLockSingleton () {
     private this () { 
         import std.traits;
         import gsb.core.log;
-        
-        log.write("Creating %s instance", fullyQualifiedName!(typeof(this))); 
+        import gsb.engine.engineconfig;
+        static if (SHOW_SINGLETON_LOGGING)
+            log.write("Creating %s instance", fullyQualifiedName!(typeof(this))); 
     }
     private static bool instantiated_ = false;
     private static __gshared typeof(this) instance_ = null;

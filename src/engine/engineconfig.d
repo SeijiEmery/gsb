@@ -19,3 +19,27 @@ public immutable bool SHOW_TASK_WORKER_LOGGING    = false;
 // for ensuring that they stay synchronized (each has an integer frameId).
 // Swamps logs since messages get printed every frame.
 public immutable bool SHOW_MT_GL_SYNC_LOGGING     = false;
+
+
+// Log messages for when instances of subsystems, like UIComponentManagerInstance are created.
+public immutable bool SHOW_SINGLETON_LOGGING = false;
+
+
+// Misc logging: font file loading, gamepadMgr polling, window resize, etc
+public immutable bool SHOW_FONT_MGR_LOGGING = false;
+public immutable bool SHOW_GAMEPAD_DEVICE_POLLING = false;
+public immutable bool SHOW_WINDOW_EVENT_LOGGING = false;
+public immutable bool SHOW_BDR_LOGGING = false;
+
+
+// Log UIComponent messages (registered / created / etc)
+public immutable bool SHOW_COMPONENT_REGISTRATION = false;
+public immutable bool SHOW_COMPONENT_ACTIVATION   = true;
+
+// Log IEventCollector registration
+public immutable bool SHOW_EVENT_SOURCE_LOGGING = false;
+
+// Log GraphicsComponent registration + load/unload
+public immutable bool SHOW_GRAPHICS_COMPONENT_LOGGING = false;
+
+

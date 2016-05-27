@@ -1,5 +1,6 @@
 
 module gsb.text.font;
+import gsb.engine.engineconfig;
 
 import gsb.core.log;
 import gsb.core.singleton;
@@ -48,14 +49,15 @@ public void registerDefaultFonts () {
         FontRegistry.registerFont("menlo", "your-font-file-here");
         FontRegistry.registerFont("arial", "your-font-file-here");
     }
-
-    FontLoader.instance.onFontFileLoaded.connect((string filename) {
-        log.write("Loaded font file '%s'", filename);
-    });
-    FontLoader.instance.onFontLoaded.connect((string filename, FontData fontData) {
-        log.write("Loaded font '%s', %d (filesize = %d)", 
-            filename, fontData.fontIndex, fontData.contents.length);
-    });
+    if (SHOW_FONT_MGR_LOGGING) {
+        FontLoader.instance.onFontFileLoaded.connect((string filename) {
+            log.write("Loaded font file '%s'", filename);
+        });
+        FontLoader.instance.onFontLoaded.connect((string filename, FontData fontData) {
+            log.write("Loaded font '%s', %d (filesize = %d)", 
+                filename, fontData.fontIndex, fontData.contents.length);
+        });
+    }
 }
 
 class Font {

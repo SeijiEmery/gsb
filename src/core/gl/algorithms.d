@@ -1,5 +1,6 @@
 
 module gsb.gl.algorithms;
+import gsb.engine.engineconfig;
 
 import gsb.coregl;
 public import gsb.gl.drawcalls;
@@ -52,7 +53,8 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
         if (!vbo) {
             vbo = new VBO();
 
-            log.write("Creating vbo; reserving size %d", bufferSize);
+            static if (SHOW_BDR_LOGGING)
+                log.write("Creating vbo; reserving size %d", bufferSize);
 
             vbo.bind(GL_ARRAY_BUFFER);
             glchecked!glBufferData(GL_ARRAY_BUFFER, bufferSize, null, GL_STREAM_DRAW);
@@ -62,8 +64,9 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
         if (neededLength + bufferOffset >= bufferSize) {
             // Check that our entire data set will fit within the buffer (if not, we need a bigger buffer)
             if (neededLength >= bufferSize) {
-                log.write("Large data store requested -- UMapRenderer resizing vbo from %d to %d",
-                    bufferSize, nextPow2(neededLength));
+                static if (SHOW_BDR_LOGGING)
+                    log.write("Large data store requested -- UMapRenderer resizing vbo from %d to %d",
+                        bufferSize, nextPow2(neededLength));
                 bufferSize = nextPow2(neededLength);
             }
 
@@ -91,8 +94,9 @@ private class UMapBatchedDynamicRenderer : IDynamicRenderer {
 
             auto size = nextPow2(component.length);
 
-            log.write("writing (length = %d, size = %d, offset = %d | %d / %d (%0.2f))", component.length, size, bufferOffset, 
-                size + bufferOffset, bufferSize, cast(float)(size + bufferOffset) / cast(float)bufferSize);
+            static if (SHOW_BDR_LOGGING)
+                log.write("writing (length = %d, size = %d, offset = %d | %d / %d (%0.2f))", component.length, size, bufferOffset, 
+                    size + bufferOffset, bufferSize, cast(float)(size + bufferOffset) / cast(float)bufferSize);
 
             //void* ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY) + bufferOffset;
             //void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, bufferOffset, size, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
@@ -137,7 +141,8 @@ private class BasicDynamicRenderer : IDynamicRenderer {
             foreach (i; 0..toCreate)
                 vbos ~= [ 0 ];
             glchecked!glGenBuffers(toCreate, vbos.ptr + first);
-            log.write("BDR genereated %d vbos", toCreate);
+            static if (SHOW_BDR_LOGGING)
+                log.write("BDR genereated %d vbos", toCreate);
         }
     }
 
