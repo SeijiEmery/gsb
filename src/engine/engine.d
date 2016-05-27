@@ -243,6 +243,32 @@ class Engine {
                 //log.write("Running task: textRenderer.update");
                 TextRenderer.instance.updateFragments();
             });
+
+            gsb_graphicsThread.send({
+                log.write("Hello world! (sent from main thread)");
+                gsb_mainThread.send({
+                    log.write("Hello world! (sent from graphics thread?)");
+                });
+            });
+            void sayHiRecursive (uint n) {
+                auto worker = gsb_getWorkThread(n);
+                if (worker && worker.running) {
+                    gsb_getWorkThread(n).send({
+                        log.write("Hello world! (worker %d)", n);
+                        sayHiRecursive(n+1);
+                    });
+                }
+            }
+            sayHiRecursive(0);
+
+            //for (auto i = 0; i < 6; ++i) {
+            //    if (gsb_getWorkThread(i)) {
+            //        auto message = format("Hello world! (worker %d)", i);
+            //        gsb_getWorkThread(i).send({
+            //            log.write(message);
+            //        });
+            //    }
+            //}
         });
         tg.onFrameExit.connect({
             static if (SHOW_PER_FRAME_TASK_LOGGING)

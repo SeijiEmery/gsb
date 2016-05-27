@@ -225,7 +225,6 @@ class TaskGraph {
 
     this () {
         mutex = new Mutex();
-        //workerTaskCv = new Condition(mutex);
         runner = new TGRunner(this, 6);
     }
     void killWorkers () { runner.kill(); }
@@ -319,9 +318,6 @@ private:
             onTaskAvailable();
         return task;
     }
-    //private void waitNextTask () {
-    //    synchronized (mutex) { workerTaskCv.wait(); }
-    //}
 
     // Task callbacks
     void notifyFailed (BasicTask task) {
@@ -352,7 +348,6 @@ private:
         return frameTasks.filter!((a) => a.status == TaskStatus.ERROR)
             .map!((BasicTask task) => format("Failed task: %s", task.err));
     }
-
 
     void summarizeFrame () { 
         //perThreadStats["main-thread"].logFrame("frame", frameTimer.peek());
@@ -427,154 +422,22 @@ class TGWorker : EngineThread {
     }
 }
 class TGRunner : TGWorker {
+    EngineThread[] workers;
+
     this (TaskGraph graph, uint NUM_WORKERS = 6) {
         super(EngineThreadId.MainThread, graph);
         foreach (i; 0 .. NUM_WORKERS)
-            gsb_startWorkThread!TGWorker(i, graph); 
+            workers ~= gsb_startWorkThread!TGWorker(i, graph);
+        graph.onTaskAvailable = () {
+            foreach (worker; workers) {
+                if (worker.paused) {
+                    worker.notify();
+                    break;
+                }
+            }
+        };
     }
     override void runNextTask () {
         tg.runFrameTask();
     }
 }
-
-//class TGWorker : EngineThread {
-//    TaskGraph tg;
-
-//    this (EngineThreadId threadId, TaskGraph graph) {
-//        super(threadId);
-//        this.tg = graph;
-
-//        onError.connect((Throwable e) {
-//            gsb_engineThreads[EngineThreadId.MainThread].send({
-//                throw new Exception(format("Thread chrashed: %s\n%s", this, e));
-//            });
-//        });
-//    }
-//    override void init () {
-//        if (SHOW_TASK_WORKER_LOGGING) {
-//            log.write("Starting %s", this);
-//        }
-//    }
-//    override void runNextTask () {
-//        auto task = tg.fetchNextTask();
-//        if (task) {
-//            static if (SHOW_TASK_WORKER_LOGGING)
-//                log.write("%s executing task: %s", name, task);
-//            task.exec();
-//            if (task.status == TaskStatus.ERROR)
-//                tg.notifyFailed(task)
-//            else
-//                tg.notifyCompleted(task);
-//        } else {
-//            wait();
-//        }
-//    }
-//    override void atExit () {
-//        if (SHOW_TASK_WORKER_LOGGING) {
-//            log.write("Exiting %s", this);
-//        }
-//    }
-//}
-
-//class TGWorker : EngineThread {
-//    string name;
-//    TaskGraph tg;
-//    bool active = true;
-
-//    this (string name, TaskGraph graph) {
-//        super(&run);
-//        this.name = name;
-//        tg = graph;
-//    }
-//    bool runNextTask () {
-//        auto task = tg.fetchNextTask();
-//        if (task) {
-//            static if (SHOW_TASK_WORKER_LOGGING)
-//                log.write("%s executing task: %s", name, task);
-//            task.exec();
-//            if (task.status == TaskStatus.ERROR)
-//                tg.notifyFailed(task);
-//            else
-//                tg.notifyCompleted(task);
-//            return true;
-//        }
-//        return false;
-//    }
-//    void runTasks () {
-//        while (active) {
-//            while (runNextTask()) {}
-//            tg.waitNextTask();
-//        }
-//    }
-//    final void run () {
-//        static if (SHOW_TASK_WORKER_LOGGING)
-//            log.write("Starting thread '%s'", name);
-//        try {
-//            runTasks();
-//        } catch (Throwable e) {
-//            tg.notifyWorkerFailed(this, e);
-//        }
-//        static if (SHOW_TASK_WORKER_LOGGING)
-//            log.write("Thread ended: '%s'", name);
-//    }
-//    void kill () {
-//        if (active && SHOW_TASK_WORKER_LOGGING)
-//            log.write("Killing thread '%s'", name);
-//        active = false;
-//    }
-//}
-
-//class TGRunner : TGWorker {
-//    TGWorker[] workers;
-//    public Signal!() onFrameEnter;
-//    public Signal!() onFrameExit;
-
-//    this (TaskGraph graph, uint NUM_WORKERS = 6) {
-//        super("TG-RUNNER", graph);
-//        setWorkThreadCount( NUM_WORKERS );
-//    }
-//    @property uint numWorkers () { return cast(uint)workers.length; }
-//    @property uint numWorkers (uint n) {
-//        return setWorkThreadCount(n), n;
-//    }
-
-//    void setWorkThreadCount (uint n) {
-//        if (n < workers.length) {
-//            while (n < workers.length) {
-//                workers[$-1].kill();
-//                --workers.length;
-//            }
-//        } else if (n > workers.length) {
-//            foreach (i; 0 .. (n - workers.length)) {
-//                auto worker = new TGWorker(format("TG-WORKER %d", i+1), tg);
-//                workers ~= worker;
-//                worker.start();
-//            }
-//        }
-//    }
-
-//    override void kill () {
-//        super.kill();
-//        foreach (worker; workers)
-//            worker.kill();
-//    }
-//    override void runTasks () {
-//        while (active) {
-//            final switch (tg.nextFrameStatus) {
-//                case TaskStatus.WAITING: {
-//                    runNextTask();
-//                } break;
-//                case TaskStatus.ERROR: {
-//                    tg.handleFailedFrame(this);
-                
-//                } break;
-//                case TaskStatus.COMPLETE: {
-//                    onFrameExit.emit();  tg.summarizeFrame();
-//                    onFrameEnter.emit(); tg.enterNextFrame();
-//                } break;
-//                case TaskStatus.RUNNING: assert(0);
-//            }
-//        }
-//    }
-//}
-

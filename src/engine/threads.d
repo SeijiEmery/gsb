@@ -30,6 +30,7 @@ enum EngineThreadId {
     WorkThread15,
     WorkThread16
 }
+
 enum ThreadStatus {
     INACTIVE = 0, RUNNING, PAUSED, EXITED, ERROR
 }
@@ -40,6 +41,21 @@ auto @property gsb_localThread () { return gsb__localThread; }
 auto @property gsb_localThreadId () {
     return gsb_localThread ? gsb_localThread.engineThreadId : EngineThreadId.Unknown;
 }
+
+private string[uint] workThreadNames;
+auto prettyName (EngineThreadId threadId) {
+    switch (threadId) {
+        case EngineThreadId.Unknown: return "unknown-thread";
+        case EngineThreadId.MainThread: return "main-thread";
+        case EngineThreadId.GraphicsThread: return "graphics-thread";
+        default:
+            auto n = cast(uint)(threadId - EngineThreadId.WorkThread1);
+            if (n in workThreadNames)
+                return workThreadNames[n];
+            return workThreadNames[n] = format("work-thread %s", n+1);
+    }
+}
+
 
 // special properties for accessing common threads
 auto @property gsb_mainThread ()     { return gsb_engineThreads[EngineThreadId.MainThread]; }
@@ -85,9 +101,10 @@ auto gsb_setGraphicsThread (EngineThread graphicsThread) {
     return gsb_engineThreads[EngineThreadId.GraphicsThread] = graphicsThread;
 }
 
-// Utility function for auto-starting a work thread. Returns true if started thread,
-// or false if thread already running (if thread has stopped / exited, restarts it)
-bool gsb_startWorkThread(T, Args...)(uint n, Args args)
+// Utility function for auto-starting a work thread. 
+// Only starts a thread in the given slot if none exists / is not running; otherwise does
+// nothing but does return the current active thread.
+auto gsb_startWorkThread(T, Args...)(uint n, Args args)
     // should also check for isSubclass(T, EngineThread), but idk how to do that with traits :/
     if (__traits(compiles, new T(EngineThreadId.WorkThread1, args)))
 {
@@ -95,9 +112,8 @@ bool gsb_startWorkThread(T, Args...)(uint n, Args args)
     if (!gsb_engineThreads[threadId] || gsb_engineThreads[threadId].threadStatus >= ThreadStatus.EXITED) {
         gsb_engineThreads[threadId] = new T(threadId, args);
         gsb_engineThreads[threadId].start();
-        return true;
     }
-    return false;
+    return gsb_engineThreads[threadId];
 }
 
 
@@ -156,9 +172,11 @@ class EngineThread : Thread {
     void wait () {
         synchronized (cvMutex) {
             if (!shouldDie && !messages.length) {
+                log.write("paused %s", this);
                 status = ThreadStatus.PAUSED;
                 cvCondition.wait();
             }
+            log.write("resumed %s", this);
             status = ThreadStatus.RUNNING;
         }
     }
@@ -166,9 +184,11 @@ class EngineThread : Thread {
     void waitUntil (bool delegate() pred) {
         synchronized (cvMutex) {
             while (!pred() && !shouldDie && !messages.length) {
+                log.write("paused %s", this);
                 status = ThreadStatus.PAUSED;
                 cvCondition.wait();
             }
+            log.write("resumed %s", this);
             status = ThreadStatus.RUNNING;
         }
     }
@@ -193,13 +213,14 @@ class EngineThread : Thread {
     }
 
     final void enterThread () {
-        log.write("Started thread %s", engineThreadId);
         assert(gsb_localThread is null || gsb_localThread == this,
             format("Already running thread?! (%s, %s)",
                 gsb_localThread, this));
         
         gsb__localThread = this;
         status = ThreadStatus.RUNNING;
+        log.write("Started thread %s", engineThreadId);
+
         try {
             init();
             while (!shouldDie) {
@@ -225,7 +246,7 @@ class EngineThread : Thread {
     }
 
     override string toString () {
-        return format("[gsb.%s (pid %s, status %s)]", engineThreadId, id, status);
+        return format("[%s (pid %s, status %s)]", engineThreadId, id, status);
     }
 }
 
