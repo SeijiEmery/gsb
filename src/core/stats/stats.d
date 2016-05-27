@@ -29,8 +29,25 @@ class StatsCollector {
             if (count < NUM_SAMPLES)
                 ++count;
         }
+        auto @property lastSample () {
+            return next ?
+                samples[next-1] :
+                samples[$-1];
+        }
     }
     Signal!(string) onCollectionRegistered;
+
+    // Manually create "frame" sample comprising everything else
+    // (moving to TaskGraph broke the old app.d way of doing things. We'll need
+    // to completely refactor / rewrite this + statgraph.d at some point, but
+    // in the meantime this is a hacky fix as a stopgap measure).
+    void accumulateFrame () {
+        import std.algorithm;
+        logFrame("frame", collection.byKeyValue
+            .filter!`a.key != "frame" && a.key != "wait-for-gl"`
+            .map!`a.value.lastSample`
+            .reduce!`a + b`);
+    }
 
     void logFrame (string name, Duration sample) {
         if (name !in collection)

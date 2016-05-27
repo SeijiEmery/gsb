@@ -220,11 +220,6 @@ class TaskGraph {
     TGRunner  runner;
     StopWatch frameTimer;
 
-    //auto startFrameTask = new DependentTask([], TaskMetadata("start-frame"), TaskType.FRAME, {
-    //    onFrameEnter.emit();
-    //}, false, 0);
-    //BasicTask   endFrameTask;
-
     @property auto ref onFrameExit () { return runner.onFrameExit; }
     @property auto ref onFrameEnter () { return runner.onFrameEnter; }
 

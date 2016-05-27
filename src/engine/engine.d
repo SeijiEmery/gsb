@@ -249,6 +249,8 @@ class Engine {
                 return;
             }
             engineSync.notifyFrameComplete();
+
+            perThreadStats["main-thread"].accumulateFrame();
             threadStats.timedCall("wait-for-gl", {
                 engineSync.waitNextFrame();
             });
