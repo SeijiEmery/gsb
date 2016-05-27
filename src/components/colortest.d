@@ -89,10 +89,18 @@ private class TestModule : UIComponent {
                 ctext.color = color_;
                 ctext.backgroundColor = color_;
 
-                cstats.text = format("rgb: %s\nhsv: %s\nrgb2: %s\n", 
+                auto clamp (T)(T a, T m, T n) {
+                    return a > m ? m : a < n ? n : a;
+                }
+                cstats.text = format("rgb: %s\nhsv: %s\nrgb2: %s\n%s", 
                     fmtVec(color),
                     fmtVec(vec4(rgb_to_hsv(color.xyz), color.w)),
-                    fmtVec(vec4(rgb_to_hsv(color.xyz).hsv_to_rgb, color.w)));
+                    fmtVec(vec4(rgb_to_hsv(color.xyz).hsv_to_rgb, color.w)),
+                    format("#%02x%02x%02x%02x", 
+                        cast(int)(clamp(color.r, 1.0, 0.0) * 255),
+                        cast(int)(clamp(color.g, 1.0, 0.0) * 255),
+                        cast(int)(clamp(color.b, 1.0, 0.0) * 255),
+                        cast(int)(clamp(color.a, 1.0, 0.0) * 255)));
                 root.render();
             },
             (MouseButtonEvent ev) {
