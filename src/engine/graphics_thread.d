@@ -1,5 +1,6 @@
 module gsb.engine.graphics_thread;
 import gsb.engine.engineconfig;
+import gsb.engine.threads;
 import gsb.engine.engine;
 
 import derelict.glfw3.glfw3;
@@ -20,7 +21,6 @@ import gsb.core.log;
 import std.exception: enforce;
 import std.concurrency;
 import std.format;
-import core.thread;
 
 
 private auto todstr(inout(char)* cstr) {
@@ -28,19 +28,16 @@ private auto todstr(inout(char)* cstr) {
     return cstr ? cstr[0 .. strlen(cstr)] : "";
 }
 
-class GraphicsThread : Thread {
+class GraphicsThread : EngineThread {
     public Engine engine;
     private GlSyncPoint.GSP glSync;
-    private bool keepRunning = true;
-    public bool running = false;
 
     this (Engine engine, GlSyncPoint.GSP glSync) {
+        super(EngineThreadId.GraphicsThread);
+
         this.engine = engine;
         this.glSync = glSync;
-        super(&runGraphicsThread);
     }
-    void kill () { keepRunning = false; }
-    void awaitDeath () {}
 
     // should be called exactly once by engine and on the main thread,
     // and before runGraphicsThread is called.
@@ -66,70 +63,55 @@ class GraphicsThread : Thread {
         enforce(engine.mainWindow, format("Failed to create glfw window"));
     }
 
-    // should be called exactly once by the engine and on the graphics thread,
-    // after preInitGL is called.
-    private void runGraphicsThread () {
-        running = true;
-        try {
-            // setup log, thread stats, and write message
-            log = g_graphicsLog = new Log("graphics-thread");
-            log.write("Launched graphics thread");
-            setupThreadStats("graphics-thread");
-            g_graphicsFrameTime.init();
+    override void init () {
+        // setup log, thread stats, and write message
+        log = g_graphicsLog = new Log("graphics-thread");
+        log.write("Launched graphics thread");
+        setupThreadStats("graphics-thread");
+        g_graphicsFrameTime.init();
 
-            // finish gl init
-            glfwMakeContextCurrent(engine.mainWindow.handle);
-            glfwSwapInterval(1);
-            DerelictGL3.reload();
+        // finish gl init
+        glfwMakeContextCurrent(engine.mainWindow.handle);
+        glfwSwapInterval(1);
+        DerelictGL3.reload();
 
-            log.write("Running GLSandbox");
-            log.write("Renderer: %s", todstr(glGetString(GL_RENDERER)));
-            log.write("Opengl version: %s", todstr(glGetString(GL_VERSION)));
+        log.write("Running GLSandbox");
+        log.write("Renderer: %s", todstr(glGetString(GL_RENDERER)));
+        log.write("Opengl version: %s", todstr(glGetString(GL_VERSION)));
 
-            // setup initial gl state
-            glState.enableDepthTest(true, GL_LESS);
-            glState.enableTransparency(true);
-
-            // and enter gthread main loop
-            runGraphicsMainLoop();
-
-        } catch (Throwable e) {
-            log.write("GRAPHICS THREAD TERMINATED: %s", e);
-            engine.tg.killWorkers();
-        }
-        running = false;
+        // setup initial gl state
+        glState.enableDepthTest(true, GL_LESS);
+        glState.enableTransparency(true);
     }
+    override void runNextTask () {
+        glSync.waitNextFrame();
+        static if (SHOW_MT_GL_SYNC_LOGGING)
+            log.write("GTHREAD FRAME BEGIN");
+        threadStats.timedCall("frame", {
+            g_graphicsFrameTime.updateFromRespectiveThread();
 
-    // should be called only from graphics thread.
-    private void runGraphicsMainLoop () {
-        while (keepRunning) {
-            glSync.waitNextFrame();
-            static if (SHOW_MT_GL_SYNC_LOGGING)
-                log.write("GTHREAD FRAME BEGIN");
-            threadStats.timedCall("frame", {
-                g_graphicsFrameTime.updateFromRespectiveThread();
-
-                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                threadStats.timedCall("GraphicsComponents.updateAndRender", {
-                    GraphicsComponentManager.updateFromGraphicsThread();
-                });
-                threadStats.timedCall("DebugRenderer.render", {
-                    DebugRenderer.renderFromGraphicsThread();
-                });
-                threadStats.timedCall("TextRenderer.renderFragments", {
-                    TextRenderer.instance.renderFragments();
-                });
-                DynamicRenderer.signalFrameEnd();
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            threadStats.timedCall("GraphicsComponents.updateAndRender", {
+                GraphicsComponentManager.updateFromGraphicsThread();
             });
-            if (keepRunning) {
-                static if (SHOW_MT_GL_SYNC_LOGGING)
-                    log.write("GTHREAD FRAME END");
-                threadStats.timedCall("swapBuffers", {
-                    glSync.notifyFrameComplete();
-                    glfwSwapBuffers(engine.mainWindow.handle);
-                });
-            }
+            threadStats.timedCall("DebugRenderer.render", {
+                DebugRenderer.renderFromGraphicsThread();
+            });
+            threadStats.timedCall("TextRenderer.renderFragments", {
+                TextRenderer.instance.renderFragments();
+            });
+            DynamicRenderer.signalFrameEnd();
+        });
+        if (running) {
+            static if (SHOW_MT_GL_SYNC_LOGGING)
+                log.write("GTHREAD FRAME END");
+            threadStats.timedCall("swapBuffers", {
+                glSync.notifyFrameComplete();
+                glfwSwapBuffers(engine.mainWindow.handle);
+            });
         }
+    }
+    override void atExit () {
         log.write("Exiting graphics thread");
     }
 }

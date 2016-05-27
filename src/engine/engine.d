@@ -1,5 +1,6 @@
 module gsb.engine.engine;
 import gsb.engine.engineconfig;
+import gsb.engine.threads;
 import gsb.core.task;
 import gsb.core.log;
 import gsb.core.window;
@@ -98,9 +99,6 @@ class GlSyncPoint {
     }
 }
 
-
-
-
 class Engine {
     public Signal!(Engine) onInit;
     public Signal!(Engine) onShutdown;
@@ -115,12 +113,18 @@ class Engine {
 
     this () {
         engineTime.start();
-        tg = new TaskGraph();
+
+        // Setup main thread, task graph, and the task graph runner
+        // that will run on this thread.
+        gsb_setMainThread(new TGRunner(tg = new TaskGraph()));
 
         auto sp = new GlSyncPoint();
         engineSync = sp.new ESP();
         glSync     = sp.new GSP();
-        gthread   = new GraphicsThread(this, glSync);
+
+        // Create + assign graphics thread (see engine.threads)
+        gthread = new GraphicsThread(this, glSync);
+        gsb_setGraphicsThread(gthread);
     }
     void run () {
         log.write("Launching gsb");
@@ -204,7 +208,6 @@ class Engine {
     }
 
     private void engine_launchSubsystems () {
-
         engineTime.reset();
 
         gthread.preInitGL();
@@ -245,33 +248,58 @@ class Engine {
             static if (SHOW_PER_FRAME_TASK_LOGGING)
                 log.write("\n\nFinished frame in %s\n\n", engineTime.peek.to!Duration);
             if (glfwWindowShouldClose(mainWindow.handle)) {
-                tg.killWorkers();
-                return;
-            }
-            engineSync.notifyFrameComplete();
+                gsb_mainThread.kill();
+            } else {
+                engineSync.notifyFrameComplete();
 
-            perThreadStats["main-thread"].accumulateFrame();
-            threadStats.timedCall("wait-for-gl", {
-                engineSync.waitNextFrame();
-            });
+                perThreadStats["main-thread"].accumulateFrame();
+                threadStats.timedCall("wait-for-gl", {
+                    engineSync.waitNextFrame();
+                });
+            }
         });
     }
     private void engine_runMainLoop () {
         // Engine main loop handled by task graph + per-frame tasks defined above
-        tg.run();
+        gsb_runMainThread();
     }
     private void engine_shutdownSubsystems () {
         engineTime.reset();
-        gthread.kill();   engineSync.notifyFrameComplete();
-        tg.killWorkers();
 
+        log.write("Killing threads");
+        foreach (thread; gsb_engineThreads) {
+            if (thread)
+                thread.kill();
+        }
+        engineSync.notifyFrameComplete();
         if (gthread.running) {
             log.write("Waiting for graphics thread");
             while (gthread.running) {}
         }
+        
         if (mainWindow.handle)
             glfwDestroyWindow(mainWindow.handle);
         glfwTerminate();
+
+        uint threadsStillRunning = 0;
+        foreach (thread; gsb_engineThreads) {
+            if (thread && thread.running) {
+                log.write("Waiting on %s (%s)", thread.engineThreadId, thread.threadStatus);
+                ++threadsStillRunning;
+            }
+        }
+        if (threadsStillRunning) {
+            log.write("Waiting on %d threads", threadsStillRunning);
+            bool keepWaiting () {
+                foreach (thread; gsb_engineThreads) {
+                    if (thread && thread.running)
+                        return true;
+                }
+                return false;
+            }
+            while (keepWaiting) {}
+        }
+
         static if (SHOW_INIT_TASK_LOGGING)
             log.write("\n\nShutdown in %s\n\n", engineTime.peek.to!Duration);
     }
