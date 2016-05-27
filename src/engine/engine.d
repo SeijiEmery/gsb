@@ -244,37 +244,31 @@ class Engine {
                 TextRenderer.instance.updateFragments();
             });
 
-            gsb_graphicsThread.send({
-                log.write("Hello world! (sent from main thread)");
-                gsb_mainThread.send({
-                    log.write("Hello world! (sent from graphics thread?)");
+            // Test messenging system
+            static if (RUN_THREAD_MESSAGING_SYSTEM_TEST) {
+                gsb_graphicsThread.send({
+                    log.write("Hello world! (sent from main thread)");
+                    gsb_mainThread.send({
+                        log.write("Hello world! (sent from graphics thread?)");
+                    });
                 });
-            });
 
-            void pingBack (uint n, EngineThreadId from) {
-                (cast(EngineThreadId)(gsb_localThreadId - 1)).broadcastMessage({
-                    log.write("ping back: %d (sent from %s)", n, from);
-                    pingBack(n, gsb_localThreadId);
-                });
+                void pingBack (uint n, EngineThreadId from) {
+                    (cast(EngineThreadId)(gsb_localThreadId - 1)).broadcastMessage({
+                        log.write("ping back: %d (sent from %s)", n, from);
+                        pingBack(n, gsb_localThreadId);
+                    });
+                }
+
+                void sayHiRecursive (uint n) {
+                    gsb_getWorkThreadId(n).broadcastMessage({
+                        log.write("Hello world! (worker %d)", n);
+                        sayHiRecursive(n+1);
+                        pingBack(n, gsb_localThreadId);
+                    });
+                }
+                sayHiRecursive(0);
             }
-
-            void sayHiRecursive (uint n) {
-                gsb_getWorkThreadId(n).broadcastMessage({
-                    log.write("Hello world! (worker %d)", n);
-                    sayHiRecursive(n+1);
-                    pingBack(n, gsb_localThreadId);
-                });
-            }
-            sayHiRecursive(0);
-
-            //for (auto i = 0; i < 6; ++i) {
-            //    if (gsb_getWorkThread(i)) {
-            //        auto message = format("Hello world! (worker %d)", i);
-            //        gsb_getWorkThread(i).send({
-            //            log.write(message);
-            //        });
-            //    }
-            //}
         });
         tg.onFrameExit.connect({
             static if (SHOW_PER_FRAME_TASK_LOGGING)

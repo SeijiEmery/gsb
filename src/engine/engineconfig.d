@@ -20,6 +20,17 @@ public immutable bool SHOW_TASK_WORKER_LOGGING    = false;
 // Swamps logs since messages get printed every frame.
 public immutable bool SHOW_MT_GL_SYNC_LOGGING     = false;
 
+// Log when engine-thread paused / unpaused
+public immutable bool SHOW_THREAD_PAUSE_RESUME_LOGGING = false;
+// log when engine-thread created / killed
+public immutable bool SHOW_THREAD_CREATE_TERM_LOGGING = false;
+
+// test inter-thread messaging at engine startup (minor log flooding).
+// If all is well nothing will crash (and should get a lot of "Hello World from X"
+// and "ping back" messages; see engine.d).
+public immutable bool RUN_THREAD_MESSAGING_SYSTEM_TEST = false;
+
+
 
 // Log messages for when instances of subsystems, like UIComponentManagerInstance are created.
 public immutable bool SHOW_SINGLETON_LOGGING = false;

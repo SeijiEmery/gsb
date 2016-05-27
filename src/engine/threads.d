@@ -1,4 +1,5 @@
 module gsb.engine.threads;
+import gsb.engine.engineconfig;
 import core.thread;
 import core.sync.mutex;
 import core.sync.condition;
@@ -61,7 +62,7 @@ auto prettyName (EngineThreadId threadId) {
 bool broadcastMessage (EngineThreadId threadId, void delegate() message) {
     if (threadId == EngineThreadId.Unknown)
         return false;
-    
+
     auto thread = gsb_engineThreads[threadId];
     if (thread && thread.running) {
         thread.send(message);
@@ -166,7 +167,8 @@ class EngineThread : Thread {
         cvMutex      = new Mutex();
         cvCondition  = new Condition(cvMutex);
 
-        log.write("Created thread %s", threadId);
+        if (SHOW_THREAD_CREATE_TERM_LOGGING)
+            log.write("Created thread %s", threadId);
         //assert(!g_engineThreads[threadId], format("already registered %s", threadId));
         //g_engineThreads[threadId] = this;
     }
@@ -187,11 +189,13 @@ class EngineThread : Thread {
     void wait () {
         synchronized (cvMutex) {
             if (!shouldDie && !messages.length) {
-                log.write("paused %s", this);
+                if (SHOW_THREAD_PAUSE_RESUME_LOGGING)
+                    log.write("paused %s", this);
                 status = ThreadStatus.PAUSED;
                 cvCondition.wait();
             }
-            log.write("resumed %s", this);
+            if (SHOW_THREAD_PAUSE_RESUME_LOGGING)
+                log.write("resumed %s", this);
             status = ThreadStatus.RUNNING;
         }
     }
@@ -199,11 +203,13 @@ class EngineThread : Thread {
     void waitUntil (bool delegate() pred) {
         synchronized (cvMutex) {
             while (!pred() && !shouldDie && !messages.length) {
-                log.write("paused %s", this);
+                if (SHOW_THREAD_PAUSE_RESUME_LOGGING)
+                    log.write("paused %s", this);
                 status = ThreadStatus.PAUSED;
                 cvCondition.wait();
             }
-            log.write("resumed %s", this);
+            if (SHOW_THREAD_PAUSE_RESUME_LOGGING)
+                log.write("resumed %s", this);
             status = ThreadStatus.RUNNING;
         }
     }
@@ -234,8 +240,8 @@ class EngineThread : Thread {
         
         gsb__localThread = this;
         status = ThreadStatus.RUNNING;
-        log.write("Started thread %s", engineThreadId);
-
+        if (SHOW_THREAD_CREATE_TERM_LOGGING)
+            log.write("Started thread %s", engineThreadId);
         try {
             init();
             while (!shouldDie) {
