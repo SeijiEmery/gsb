@@ -56,6 +56,21 @@ auto prettyName (EngineThreadId threadId) {
     }
 }
 
+// Tries to send a message to a target thread (message sent if the target thread 
+// exists and is running; returns true if the message was sent or false otherwise).
+bool broadcastMessage (EngineThreadId threadId, void delegate() message) {
+    if (threadId == EngineThreadId.Unknown)
+        return false;
+    
+    auto thread = gsb_engineThreads[threadId];
+    if (thread && thread.running) {
+        thread.send(message);
+        return true;
+    }
+    return false;
+}
+
+
 
 // special properties for accessing common threads
 auto @property gsb_mainThread ()     { return gsb_engineThreads[EngineThreadId.MainThread]; }

@@ -250,14 +250,20 @@ class Engine {
                     log.write("Hello world! (sent from graphics thread?)");
                 });
             });
+
+            void pingBack (uint n, EngineThreadId from) {
+                (cast(EngineThreadId)(gsb_localThreadId - 1)).broadcastMessage({
+                    log.write("ping back: %d (sent from %s)", n, from);
+                    pingBack(n, gsb_localThreadId);
+                });
+            }
+
             void sayHiRecursive (uint n) {
-                auto worker = gsb_getWorkThread(n);
-                if (worker && worker.running) {
-                    gsb_getWorkThread(n).send({
-                        log.write("Hello world! (worker %d)", n);
-                        sayHiRecursive(n+1);
-                    });
-                }
+                gsb_getWorkThreadId(n).broadcastMessage({
+                    log.write("Hello world! (worker %d)", n);
+                    sayHiRecursive(n+1);
+                    pingBack(n, gsb_localThreadId);
+                });
             }
             sayHiRecursive(0);
 
