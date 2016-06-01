@@ -11,16 +11,17 @@ import gsb.core.ui.uielements;
 import gl3n.linalg;
 import std.format;
 import std.algorithm: min, max;
+import gsb.utils.husl;
 
 private immutable string FONT = "menlo";
 
 shared static this () {
     UIComponentManager.runAtInit({
-        UIComponentManager.registerComponent(new TestModule(), "color-test", false);
+        UIComponentManager.registerComponent(new TestModule(), "color-test", true);
     });
 }
 
-enum ColorType { RGB, HSL, HSV };
+enum ColorType { RGB, HSV, HUSL };
 
 private class TestModule : UIComponent {
     UIElement root;
@@ -53,8 +54,9 @@ private class TestModule : UIComponent {
                 new UILayoutContainer(LayoutDir.VERTICAL, Layout.CENTER, vec2(10,10), 0.0, [
                         new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.TOP_LEFT, vec2(10,10), 0.0, [
                             buttons[ColorType.RGB] = new UITextElement(vec2(),vec2(),vec2(3,3), "RGB", new Font(FONT,fontSize), ACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
+                            buttons[ColorType.HUSL] = new UITextElement(vec2(),vec2(),vec2(3,3), "HUSL", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
                             buttons[ColorType.HSV] = new UITextElement(vec2(),vec2(),vec2(3,3), "HSV", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
-                            buttons[ColorType.HSL] = new UITextElement(vec2(),vec2(),vec2(3,3), "HSL", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
+                            
                         ]),
                         sliders[0] = new UISlider(vec2(), vec2(300,40), vec2(5,5), vec2(40,30), 1, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
                         sliders[1] = new UISlider(vec2(), vec2(300,40), vec2(5,5), vec2(40,30), 0, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
@@ -80,27 +82,28 @@ private class TestModule : UIComponent {
 
                 string fmtVec (vec4 v) { return format("(%0.3f,%0.3f,%0.3f,%0.3f)", v.x, v.y, v.z, v.w); }
 
-                auto color = vec4(sliders[0].value, sliders[1].value, sliders[2].value,sliders[3].value);
-                if (inputType == ColorType.HSV)      color = vec4(hsv_to_rgb(color.xyz), color.w);
-                else if (inputType == ColorType.HSL) color = vec4(hsl_to_rgb(color.xyz), color.w);
-
-                auto color_ = Color(color);
-                cbox.color  = color_;
-                ctext.color = color_;
-                ctext.backgroundColor = color_;
-
-                auto clamp (T)(T a, T m, T n) {
-                    return a > m ? m : a < n ? n : a;
+                auto inputs = vec4(sliders[0].value, sliders[1].value, sliders[2].value, sliders[3].value);
+                vec4 rgba = inputs;
+                final switch (inputType) {
+                    case ColorType.RGB: break;
+                    case ColorType.HSV:  rgba = vec4(hsv_to_rgb(inputs.xyz), inputs.w); break;
+                    case ColorType.HUSL: break;//rgba = vec4(huslpct_to_rgb(inputs.xyz), inputs.w); break;
                 }
+                auto color = Color(rgba);
+                cbox.color = color;
+                ctext.color = color;
+                ctext.backgroundColor = color;
+
+                rgba.x = max(0.0, min(1.0, rgba.x));
+                rgba.y = max(0.0, min(1.0, rgba.y));
+                rgba.z = max(0.0, min(1.0, rgba.z));
+
                 cstats.text = format("rgb: %s\nhsv: %s\nrgb2: %s\n%s", 
-                    fmtVec(color),
-                    fmtVec(vec4(rgb_to_hsv(color.xyz), color.w)),
-                    fmtVec(vec4(rgb_to_hsv(color.xyz).hsv_to_rgb, color.w)),
-                    format("#%02x%02x%02x%02x", 
-                        cast(int)(clamp(color.r, 1.0, 0.0) * 255),
-                        cast(int)(clamp(color.g, 1.0, 0.0) * 255),
-                        cast(int)(clamp(color.b, 1.0, 0.0) * 255),
-                        cast(int)(clamp(color.a, 1.0, 0.0) * 255)));
+                    fmtVec(rgba),
+                    fmtVec(vec4(rgb_to_hsv(rgba.xyz), rgba.w)),
+                    fmtVec(vec4(rgb_to_hsv(rgba.xyz).hsv_to_rgb, rgba.w)),
+                    rgb_to_hex(rgba.xyz)
+                );
                 root.render();
             },
             (MouseButtonEvent ev) {
@@ -108,16 +111,30 @@ private class TestModule : UIComponent {
                     auto color = vec4(sliders[0].value, sliders[1].value, sliders[2].value, sliders[3].value);
                     if (buttons[ColorType.RGB].mouseover && inputType != ColorType.RGB) {
                         final switch (inputType) {
-                            case ColorType.HSV: color = vec4(hsv_to_rgb(color.xyz), color.w); break;
-                            case ColorType.HSL: color = vec4(hsl_to_rgb(color.xyz), color.w); break;
+                            case ColorType.HSV:  color = vec4(hsv_to_rgb(color.xyz), color.w); break;
+                            case ColorType.HUSL: color = vec4(husl_to_rgb(color.xyz), color.w); break;
                             case ColorType.RGB: break;
                         }
                         buttons[inputType].color = INACTIVE_BUTTON_COLOR;
                         buttons[inputType = ColorType.RGB].color = ACTIVE_BUTTON_COLOR;
+
+                    //} else if (buttons[ColorType.HUSL].mouseover && inputType != ColorType.HUSL) {
+                    //    if (inputType == ColorType.HSV)
+                    //        color = vec4(hsv_to_rgb(color.xyz), color.w);
+
+                    //    color.x = max(0.0, min(1.0, color.x));
+                    //    color.y = max(0.0, min(1.0, color.y));
+                    //    color.z = max(0.0, min(1.0, color.z));
+
+                    //    color = vec4(rgb_to_husl(color.xyz), color.w);
+
+                    //    buttons[inputType].color = INACTIVE_BUTTON_COLOR;
+                    //    buttons[inputType = ColorType.HUSL].color = ACTIVE_BUTTON_COLOR;
+
                     } else if (buttons[ColorType.HSV].mouseover && inputType != ColorType.HSV) {
                         final switch (inputType) {
-                            case ColorType.RGB: color = vec4(rgb_to_hsv(color.xyz), color.w); break;
-                            case ColorType.HSL: color = vec4(rgb_to_hsv(hsl_to_rgb(color.xyz)), color.w); break;
+                            case ColorType.RGB:  color = vec4(rgb_to_hsv(color.xyz), color.w); break;
+                            case ColorType.HUSL: color = vec4(rgb_to_hsv(husl_to_rgb(color.xyz)), color.w); break;
                             case ColorType.HSV: break;
                         }
                         buttons[inputType].color = INACTIVE_BUTTON_COLOR;
@@ -129,6 +146,13 @@ private class TestModule : UIComponent {
                 } else {
                     root.handleEvents(event);
                 }
+            },
+            (MouseMoveEvent ev) {
+                root.handleEvents(event);
+                buttons[ColorType.HUSL].color = 
+                    buttons[ColorType.HUSL].mouseover ?
+                        ACTIVE_BUTTON_COLOR :
+                        INACTIVE_BUTTON_COLOR;
             },
             () {
                 root.handleEvents(event);

@@ -7,6 +7,22 @@ import std.conv;
 import std.exception: enforce;
 import std.math: isNaN;
 
+auto huslpct_to_rgb (vec3 hsl_pct) {
+    return husl_to_rgb(vec3(
+        hsl_pct.x * 360.0,
+        hsl_pct.y * 100.0,
+        hsl_pct.z * 100.0,
+    ));
+}
+auto rgb_to_huslpct (vec3 rgb) {
+    auto hsl = rgb_to_husl(rgb);
+    return vec3(
+        hsl.x / 360.0,
+        hsl.y / 100.0,
+        hsl.z / 100.0
+    );
+}
+
 auto husl_to_rgb (vec3 hsl) {
     return lch_to_rgb(husl_to_lch(hsl));
 }
@@ -146,7 +162,7 @@ auto hex_to_rgb (string hex) {
 }
 auto rgb_to_hex (vec3 v) {
     v = rgb_prepare(v);
-    return format("#%02x02x02x", v.x, v.y, v.z);
+    return format("#%02x%02x%02x", v.x.roundTo!uint, v.y.roundTo!uint, v.z.roundTo!uint);
 }
 private auto xyz_to_rgb (vec3 v) {
     return vec3(
