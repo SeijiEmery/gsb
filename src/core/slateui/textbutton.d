@@ -89,8 +89,8 @@ mixin template UITextButtonFactory () {
     TextButtonRenderer textbutton_defaultRenderer = &DEFAULT_RENDERER;
 
     auto textbutton () {
-        class PropertyWrapper : UIElementWrapper!(TextButton, PropertyWrapper) {
-            this (TextButton target) { super(target); }
+        class PropertyWrapper {
+            mixin UIElementWrapper!UITextButton; // ctor + base properties
 
             auto renderer (TextButtonRenderer v) {
                 return target.m_renderer = v, this;

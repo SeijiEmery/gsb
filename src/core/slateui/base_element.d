@@ -8,15 +8,21 @@ struct FrameInfo {
     double dt;
 }
 
-class UIElementWrapper (Element, T) {
-    Element target;
-    this (Element target) { this.target = target; }
+mixin template UIElementWrapper (T) {
+    T target;
+    this (T target) { this.target = target; }
 
-    auto pos (vec2 v) {
-        return target.pos = v, cast(T)this;
+    auto pos (typeof(target.pos) v) {
+        return target.pos = v, this;
     }
-    auto mass (float v) {
-        return target.mass = v, cast(T)this;
+    auto mass (typeof(target.mass) v) {
+        return target.border = v, this;
+    }
+    auto damping (typeof(target.damping) v) {
+        return target.border = v, this;
+    }
+    auto border (typeof(target.border) v) {
+        return target.border = v, this;
     }
 }
 
