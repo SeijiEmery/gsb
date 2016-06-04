@@ -229,6 +229,16 @@ struct ScrollEvent {
     static UIEvent create (T...)(T args) nothrow { return UIEvent(ScrollEvent(args)); }
 }
 
+// new hybrid mouse event
+struct MouseEvent {
+    vec2 pos, prevPos;
+    vec2 scroll;
+
+    bool pressed; // will need to work on this...
+}
+
+
+
 struct GamepadButtonEvent {
     int id;
     GamepadButton button;
