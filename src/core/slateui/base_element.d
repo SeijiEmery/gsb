@@ -1,29 +1,13 @@
 module gsb.core.slateui.base_element;
 public import gl3n.linalg;
 public import gsb.core.uievents;
+public import gsb.utils.attrib;
+public import gsb.utils.signals;
 
 interface GlBatch {}
 interface SlateEvh {}
 struct FrameInfo {
     double dt;
-}
-
-mixin template UIElementWrapper (T) {
-    T target;
-    this (T target) { this.target = target; }
-
-    auto pos (typeof(target.pos) v) {
-        return target.pos = v, this;
-    }
-    auto mass (typeof(target.mass) v) {
-        return target.border = v, this;
-    }
-    auto damping (typeof(target.damping) v) {
-        return target.border = v, this;
-    }
-    auto border (typeof(target.border) v) {
-        return target.border = v, this;
-    }
 }
 
 class UIElement {
@@ -41,6 +25,27 @@ class UIElement {
 
     bool withinBounds (vec2 pt) {
         return true;
+    }
+}
+
+mixin template UIElementWrapper (T) {
+    T target;
+    this (T target) { this.target = target; }
+
+    auto get () { return target; }
+    auto get (out T tref) { return tref = target, this; }
+
+    auto pos (typeof(target.pos) v) {
+        return target.pos = v, this;
+    }
+    auto mass (typeof(target.mass) v) {
+        return target.border = v, this;
+    }
+    auto damping (typeof(target.damping) v) {
+        return target.border = v, this;
+    }
+    auto border (typeof(target.border) v) {
+        return target.border = v, this;
     }
 }
 
