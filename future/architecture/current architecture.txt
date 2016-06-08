@@ -1,0 +1,193 @@
+Current architecture (as of 6/7/16)
+===================================
+
+gsb.engine: (std, utils, gsb.core.log, gsb.core.window, gsb.core.uievents)
+    – gsb.engine.engineconfig
+    – gsb.engine.threads
+    – gsb.engine.graphics_thread
+    – gsb.engine.engine
+        – gsb.core.task
+        – gsb.core.frametime (==REFACTOR==)
+        - gsb.core.stats     (==REFACTOR==)
+        – {gsb.core.uimanager}     (=> sbmodule)
+        – {gsb.gl.graphicsmodule}  (=> remove / refactor into gl tasks)
+        – {gsb.gl.debugrenderer}   (=> slate2d)
+        – {gsb.text.textrenderer, gsb.text.font}  (=> slate2d / gsb.core.text)
+
+
+gsb.core.task:
+    – gsb.core.task.task
+    – [[ gsb.core.task.ptaskgraph ]]
+
+gsb.core.uievents
+    – gsb.core.window (glfw3, --engine--)
+    – gsb.core.input.gamepad
+        - {gsb.engine}
+        - {gsb.core.uimanager}
+    – gsb.core.frametime
+        – {gsb.engine}
+        == NEEDS REFACTOR == (too much global state)
+
+gsb.core.uimanager
+    – {gsb.core.window}
+    – {gsb.core.input.gamepad}
+    – {gsb.core.frametime}
+
+gsb.gl.graphicsmodule
+    – {gsb.core.stats}
+    ( no actual gl state; this deals module deals solely with scheduling gl tasks )
+
+gsb.text.textrenderer (engineconfig, gsb.core.errors, stb.truetype)
+    – gsb.text.font
+    – gsb.text.textshader
+        – {dglsl, gsb.glutils}
+    – gsb.text.geometrybuffer
+        – {gsb.gl.state}
+        – {gsb.gl.algorithms}
+        – {gsb.gl.drawcalls}
+        – {gsb.glutils}
+    – gsb.text.fontatlas
+        – {gsb.glutils}
+
+gsb.gl.debugrenderer
+    – {gsb.gl.algorithms}
+    – {gsb.gl.state}
+    – {gsb.gl.drawcalls}
+    – {dglsl, gsb.glutils}
+    – {gsb.core.window}
+
+gsb.gl (missing package.d)
+    – gsb.glutils
+        – derelict.opengl3.gl3
+    – gsb.gl.state
+        – gsb.coregl.glstate
+        – gsb.coregl.vao
+        – gsb.coregl.vbo
+        – gsb.coregl.sharedimpl
+            – {gsb.coregl.batch}
+            – {gsb.coregl.batchpool}
+            – {gsb.coregl.glerrors}
+            – {gsb.coregl.interfaces}
+    – gsb.gl.algorithms
+        – gsb.gl.drawcalls
+        – gsb.coregl          (coregl ok; old gl (gsb.gl, glutils) needs to be merged with this)
+            – gsb.coregl.glerrors  (== Partially replaces glutils.d ==)
+            – gsb.coregl.batch
+                – {gsb.core.stats}
+                – {gsb.core.window}
+            – gsb.coregl.glstate    (== SHOULD MERGE WITH gsb.gl.state ==)
+            – gsb.coregl.interfaces (== REFACTOR? Just defines GLResource interface atm ==)
+            – gsb.coregl.texture
+            – gsb.coregl.vao
+            – gsb.coregl.vbo
+            – TODO:
+                – gsb.coregl.shader
+                – gsb.coregl.glstats
+
+        – {gsb.core.window}
+        – {gsb.utils.mathutils}
+        – {gsb.utils.color}
+        – {dglsl}
+
+gsb.core.ui
+    – gsb.core.ui.uielements
+        – gsb.core.ui.uilayout
+        – {gsb.core.uievents}
+        – {gsb.gl.debugrenderer}
+        – {gsb.text.textrenderer, gsb.text.font}
+        – {gsb.utils.color}
+
+gsb.utils
+    – gsb.utils.signals
+    – gsb.utils.singleton
+    – gsb.utils.color, gsb.utils.husl
+    – gsb.utils.mathutils
+
+external:
+    ext/stb
+        – stb.truetype
+
+
+USEFUL / UNFINISHED DEADCODE
+    gsb.utils.logging (very _potentially_ useful; never got around to integrating)
+        – gsb.utils.logging.logger
+        – gsb.utils.logging.tags
+        – gsb.utils.ringbuffer
+    gsb.utils.attrib (== MAYBE USE AND/OR REFACTOR ==)
+
+MASSIVELY UNFINISHED / WIP
+    gsb.sbmodule
+        – gsb.sbmodule.sandbox_module
+    gsb.slate.text                (will probably scrap this; roll it into gsb.core.text)
+        – gsb.slate.text.packing
+        – gsb.slate.text.renderer
+        – gsb.slate.text.text
+
+    gsb.slate / gsb.slateui revisions
+        – everything else in src/core/slate and src/core/slateui
+
+    gsb.slate2d tbd; should build from gsb.gl.debugrenderer
+
+
+DEADCODE
+    gsb.core.threadstate
+    gsb.glstats
+    gsb.text.backend
+    gsb.text.console
+    gsb.components.console
+    gsb.triangles_test (seems unfinished; definitely not used now)
+    gsb.utils.arrayheap
+
+
+
+===================================
+== COMPONENTS                   ===
+===================================
+
+default:
+    – gsb.gl.debugrenderer
+    – gsb.core.uimanager
+    – gsb.core.uievents
+    – gsb.core.window
+    – gsb.utils.color
+    – gsb.text.textrenderer, gsb.text.font
+    – gsb.core.ui.uielements
+
+gsb.components.module_manager (uimanager frontend; controls all components)
+
+gsb.components.widgettest     (uielements test)
+
+gsb.shadowgun.gametest (comprehensive test)
+    – gsb.core.input.gamepad
+
+gsb.components.terraintest
+    – gsb.gl.graphicsmodule
+    – gsb.gl.algorithms, gsb.gl.state, gsb.glutils
+
+gsb.components.statgraph (stats frontend)
+    – gsb.core.stats
+    – gsb.gl.algorithms: DynamicRenderer  (used to switch render backend w/ keypress event?!)
+
+gsb.components.collisiontest (collision2d test)
+    – gsb.core.collision2d
+
+gsb.components.colortest (utils.color + uielements test)
+    – gsb.utils.husl
+
+gsb.components.gamepadtest (gamepad test)
+    – gsb.core.input.gamepad
+
+UNFINISHED / INCOMPLETE:
+    – gsb.triangles_test (unfinished; definitely unused)
+    – gsb.components.console (burn it with fire)
+    – gsb.components.shadertoy
+    – 
+
+
+
+
+
+
+
+
+
