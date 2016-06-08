@@ -10,7 +10,7 @@ import gsb.coregl;             // this is a mess... xD
 import gsb.gl.graphicsmodule;
 import gsb.gl.algorithms;
 import gsb.gl.debugrenderer;
-import gsb.text.textrenderer;
+import gsb.core.text;
 
 import gsb.core.window;
 import gsb.core.frametime;

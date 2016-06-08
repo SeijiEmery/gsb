@@ -6,8 +6,7 @@ import gsb.core.uievents;
 import gsb.core.log;
 import gsb.core.window;
 import gsb.utils.color;
-import gsb.text.textrenderer;
-import gsb.text.font;
+import gsb.core.text;
 
 import gsb.core.ui.uielements;
 import std.algorithm: min, max;

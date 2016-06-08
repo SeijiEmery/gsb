@@ -6,9 +6,8 @@ import gsb.core.log;
 import gsb.core.uievents;
 import gsb.gl.debugrenderer;
 
-import gsb.text.textrenderer;
+import gsb.core.text;
 import gsb.utils.color;
-import gsb.text.font;
 
 import gl3n.linalg;
 import std.algorithm: min, max;

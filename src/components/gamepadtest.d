@@ -7,7 +7,7 @@ import gsb.core.uievents;
 import gsb.core.input.gamepad;
 import gsb.core.window;
 import gsb.utils.color;
-import gsb.text.font;
+import gsb.core.text;
 import gsb.core.log;
 import gl3n.linalg;
 import std.array;
