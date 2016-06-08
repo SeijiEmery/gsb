@@ -117,12 +117,10 @@ USEFUL / UNFINISHED DEADCODE
 
 MASSIVELY UNFINISHED / WIP
     gsb.sbmodule
-        – gsb.sbmodule.sandbox_module
     gsb.slate.text                (will probably scrap this; roll it into gsb.core.text)
         – gsb.slate.text.packing
         – gsb.slate.text.renderer
         – gsb.slate.text.text
-
     gsb.slate / gsb.slateui revisions
         – everything else in src/core/slate and src/core/slateui
 
@@ -130,14 +128,7 @@ MASSIVELY UNFINISHED / WIP
 
 
 DEADCODE
-    gsb.core.threadstate
-    gsb.glstats
-    gsb.text.backend
-    gsb.text.console
-    gsb.components.console
     gsb.triangles_test (seems unfinished; definitely not used now)
-    gsb.utils.arrayheap
-
 
 
 ===================================
@@ -179,7 +170,6 @@ gsb.components.gamepadtest (gamepad test)
 
 UNFINISHED / INCOMPLETE:
     – gsb.triangles_test (unfinished; definitely unused)
-    – gsb.components.console (burn it with fire)
     – gsb.components.shadertoy
     – 
 
