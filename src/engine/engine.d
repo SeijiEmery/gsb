@@ -115,13 +115,24 @@ private struct EngineTime {
         engineTimer.reset();
     }
     void onFrameEnd () {
-        ft.dt = engineTimer.peek.to!("seconds", double);
+        auto dt = engineTimer.peek; engineTimer.reset();
+
+        ft.dt = dt.to!("seconds", double);
         ft.time += ft.dt;
 
         framerateSampler.addSample( ft.dt );
         ft.framerate = framerateSampler.getFramerate(1.0); // get framerate over 1 sec
+    }
 
-        engineTimer.reset();
+    // Window framerate hack
+    private immutable double WINDOW_UPDATE_INTERVAL = 100e-3; // 100 ms
+    private double timeToNextUpdate = 0;
+    void setWindowFramerate (Window window) {
+        import derelict.glfw3.glfw3;
+        if ((timeToNextUpdate -= ft.dt) < 0) {
+            timeToNextUpdate = WINDOW_UPDATE_INTERVAL;
+            window.setTitle(format("GLSandbox -- %s (%s)\0", ft.framerate, framerateSampler.current));
+        }
     }
 }
 
@@ -262,6 +273,7 @@ class Engine : IEngine {
 
             // Calculate / record dt + framerate
             time.onFrameEnd();
+            time.setWindowFramerate(mainWindow);
 
             static if (SHOW_PER_FRAME_TASK_LOGGING)
                 log.write("\n\nFinished frame in %s\n\n", currentTime.dt.seconds);

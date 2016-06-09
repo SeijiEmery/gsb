@@ -82,7 +82,8 @@ public:
 
     // State changing methods
     void setTitle (string title) {
-        glfwSetWindowTitle(m_window, title.ptr);
+        if (title && title.ptr)
+            glfwSetWindowTitle(m_window, title.ptr);
     }
 
     // Basic ctor. In the future, would like to have this driven by a config file instead.
