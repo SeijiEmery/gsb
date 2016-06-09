@@ -1,13 +1,12 @@
 
 module gsb.shadowgun.gametest;
 import gsb.gl.debugrenderer;
-import gsb.gl.debugrenderer;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.utils.signals;
 import gsb.core.log;
 import gsb.core.ui.uielements;
-import gsb.text.font;
+import gsb.core.text;
 import gsb.core.input.gamepad;
 import gsb.utils.color;
 import gsb.core.window;
@@ -490,6 +489,8 @@ private class PlayerController : IGameController {
     float timeUntilRespawn = 0.0;
     float desiredSimSpeed  = 1.0;
 
+    bool spawnEnemies = false;
+
     @property float energy () { return agent && agent.isAlive ? agent.energy : 0; }
     @property float hp     () { return agent && agent.isAlive ? agent.hp     : 0; }
     @property float maxHp  () { return agent && agent.isAlive ? agent.maxHp  : PLAYER_INITIAL_HP; }
@@ -540,6 +541,8 @@ private class PlayerController : IGameController {
                     // Y: spawn enemy at origin
                     else if (ev.button == BUTTON_Y && ev.pressed)
                         gameState.createEnemy(vec2(0, 0));
+                    else if (ev.button == BUTTON_B)
+                        spawnEnemies = ev.pressed;
 
                     // Dpad left,right,down, L/R bumpers: time controls (set baseSimSpeed)
                     else if (ev.pressed && (ev.button == BUTTON_DPAD_LEFT || ev.button == BUTTON_LBUMPER) && gameState.baseSimSpeed >= 0.25)
@@ -553,6 +556,10 @@ private class PlayerController : IGameController {
                     else if (ev.pressed && ev.button == BUTTON_START)
                         agent.position = vec2(0, 0);
                 }
+            },
+            (FrameUpdateEvent ev) {
+                if (spawnEnemies)
+                    gameState.createEnemy( vec2(0, 0) );
             },
             () {});
     }
@@ -773,7 +780,9 @@ private class GameModule : UIComponent {
                             alivePlayers, activePlayers);
                         ui.update();
                     });
-                    return true;
+
+                    return false;
+                    //return true;
                 },
                 (ScrollEvent ev) {
                     log.write("set zoom = %0.2f", gameState.zoom += ev.dir.y * 0.05);
