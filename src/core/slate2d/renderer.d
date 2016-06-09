@@ -289,29 +289,6 @@ class DebugLineRenderer2D {
             palettedTris.data.length = 0;
         }
 
-        //protected void render (ref mat4 transform) {
-        //    if (!vbuffer.length)
-        //        return;
-
-        //    glState.enableDepthTest(false);
-        //    glState.enableTransparency(true);
-
-        //    //DynamicRenderer.drawArrays(vao, GL_TRIANGLES, 0, cast(int)vbuffer.length / 4, [
-        //    //    VertexData(vbuffer.ptr, vbuffer.length * float.sizeof, [
-        //    //        VertexAttrib(0, 4, GL_FLOAT, GL_FALSE, 0, null)
-        //    //    ])
-        //    //]);
-
-        //    //if (tris) {
-        //    //    DynamicRenderer.drawArrays(triVao, GL_TRIANGLES, 0, cast(int)tris.length, [
-        //    //        VertexData(tris.ptr, tris.length * PackedVertexData.sizeof, [
-        //    //            VertexAttrib(0, 3, GL_FLOAT,        GL_FALSE, PackedVertexData.sizeof, cast(void*)(0)),
-        //    //            VertexAttrib(1, 1, GL_UNSIGNED_INT, GL_FALSE, PackedVertexData.sizeof, cast(void*)(float.sizeof * 3)),
-        //    //        ])
-        //    //    ]);
-        //    //}
-        //}
-
         protected void releaseResources () {
             vao.release();
         }
@@ -346,19 +323,6 @@ class DebugLineRenderer2D {
             PackedVertex_attribColor(c.x, c.y, 0, 1, color.r, color.g, color.b, color.a),
         ];
     }
-
-    //private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, Color color) {
-    //    auto index = cast(int)palette.getCoord(color);
-    //    states[fstate].palettedTris.data ~= [
-    //        PackedVertex_palettedColor(a.x, a.y, 0, index),
-    //        PackedVertex_palettedColor(b.x, b.y, 0, index),
-    //        PackedVertex_palettedColor(d.x, d.y, 0, index),
-
-    //        PackedVertex_palettedColor(a.x, a.y, 0, index),
-    //        PackedVertex_palettedColor(d.x, d.y, 0, index),
-    //        PackedVertex_palettedColor(c.x, c.y, 0, index),
-    //    ];
-    //}
 
     private void pushQuad (vec2 a, vec2 b, vec2 c, vec2 d, float color, float edgeFactor) {
         states[fstate].vbuffer ~= [
@@ -550,40 +514,6 @@ class DebugLineRenderer2D {
         drawPolygon(points, color, width, samples);
         //drawLineRect(center - vec2(radius, radius), center + vec2(radius, radius), color, width, samples);
     }
-
-    void drawTri (vec2 pt, Color color, float size, float edgeSamples = 2.0) {
-        import std.math: sqrt;
-        immutable float k = 1 / sqrt(3.0);
-
-        float packedColor = color.toPackedFloat();
-        synchronized {
-            //states[fstate].vbuffer ~= [
-            //    pt.x,              pt.y + k * size,       0.0, packedColor,
-            //    pt.x + 0.5 * size, pt.y - k * size * 0.5, 0.0, packedColor,
-            //    pt.x - 0.5 * size, pt.y - k * size * 0.5, 0.0, packedColor,
-            //];
-
-            float edgeFactor = 1.0 + edgeSamples / (size - edgeSamples);
-            float[6] verts = [
-                pt.x,              pt.y + k * size,      
-                pt.x + 0.5 * size, pt.y - k * size * 0.5,
-                pt.x - 0.5 * size, pt.y - k * size * 0.5,
-            ];
-            //states[fstate].vbuffer ~= [
-            //    verts[0], verts[1], edgeFactor, packedColor + 40 / 255.0,
-            //    verts[2], verts[3], edgeFactor, packedColor + 40 / 255.0,
-            //    pt.x,     pt.y,    0, packedColor + 40 / 255.0,
-
-            //    verts[2], verts[3], edgeFactor, packedColor + 40 / (255.0 * 255.0),
-            //    verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0),
-            //    pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0),
-
-            //    verts[4], verts[5], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
-            //    verts[0], verts[1], edgeFactor, packedColor + 40 / (255.0 * 255.0 * 255.0),
-            //    pt.x,     pt.y,    0, packedColor + 40 / (255.0 * 255.0 * 255.0),
-            //];
-        }
-    }
     void drawRect (vec2 a, vec2 b, Color color) {
         //pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(b.x, b.y), vec2(a.x, b.y), color.toPackedFloat(), 1.0);
         pushQuad(vec2(a.x, a.y), vec2(b.x, a.y), vec2(a.x, b.y), vec2(b.x, b.y), color);
@@ -613,12 +543,7 @@ class DebugLineRenderer2D {
     Shader!(PalettedFragmentShader, PalettedVertexShader) paletteShader;
     Shader!(BasicFragmentShader, BasicVertexShader) basicShader;
 
-    //ColoredFragmentShader fs = null;
-    //ColoredVertexShader   vs = null;
-    //Program!(ColoredVertexShader,ColoredFragmentShader) program = null;
     void renderFromGraphicsThread () {
-        //log.write("rendering!");
-
         synchronized {
             if (fstate) fstate = 0, gstate = 1;
             else        fstate = 1, gstate = 0;
@@ -626,14 +551,6 @@ class DebugLineRenderer2D {
             states[fstate].clearForNextFrame();
             //states[fstate].vbuffer.length = 0;
         }
-
-        //paletteTexture.bind(GL_TEXTURE0);
-        //palette.updateTextureAndSwapState(GL_TEXTURE0, paletteTexture);
-
-        //paletteShader.bind();
-        //paletteShader.transform = g_mainWindow.screenSpaceTransform(true);
-        //paletteShader.paletteSampler   = GL_TEXTURE0;
-        //states[gstate].drawPaletted();
 
         glState.enableTransparency(true);
         glState.enableDepthTest(true, GL_LEQUAL);
@@ -643,91 +560,8 @@ class DebugLineRenderer2D {
         states[gstate].drawAttribTris();
 
         glState.bindShader(0);
-
-
-        //if (states[gstate].vbuffer.length) {
-        //    //if (!program) {
-        //    //    fs = new ColoredFragmentShader(); fs.compile(); CHECK_CALL("compiling fragment shader");
-        //    //    vs = new ColoredVertexShader(); vs.compile(); CHECK_CALL("compiling vertex shader");
-        //    //    program = makeProgram(vs, fs); CHECK_CALL("compiling/linking shader program");
-        //    //}
-        //    //glState.bindShader(program.id);
-
-        //    oldShader.bind();
-        //    oldShader.transform = g_mainWindow.screenSpaceTransform(true);
-        //    auto transform = g_mainWindow.screenSpaceTransform(false); // non-transposed
-        //    states[gstate].render(transform);
-        //    glState.bindShader(0);
-        //}
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
