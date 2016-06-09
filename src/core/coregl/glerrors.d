@@ -1,20 +1,19 @@
-
 module gsb.coregl.glerrors;
 import gsb.core.log;
 import std.format;
 import std.conv;
 
-public import derelict.opengl3.gl3;
+import derelict.opengl3.gl3;
 
 public immutable bool GL_RUNTIME_ERROR_CHECKING_ENABLED = true;
 
-class GLException : Exception {
+class GlException : Exception {
     this (string msg, string file = __FILE__, ulong line = __LINE__, string fcn = __PRETTY_FUNCTION__) {
         super(msg, file, line);
     }
 }
 
-private string glGetMessage (GLenum err) {
+public string glGetMessage (GLenum err) {
     switch (err) {
         case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
         case GL_INVALID_ENUM:      return "GL_INVALID_ENUM";
@@ -44,7 +43,7 @@ public auto glchecked (T, string file = __FILE__, ulong line = __LINE__, string 
                 msg ~= ", ";
                 msg ~= glGetMessage(err);
             }
-            throw new GLException(
+            throw new GlException(
                 format("%s in %s", msg, externalFunc),
                 file, line);
         }
@@ -73,7 +72,7 @@ public auto glchecked (alias F, string file = __FILE__, ulong line = __LINE__, s
     static if (GL_RUNTIME_ERROR_CHECKING_ENABLED) {
         auto err = glGetError();
         if (err != GL_NO_ERROR) {
-            throw new GLException(
+            throw new GlException(
                 format("%s while calling %s(%s) in %s", glGetMessage(err), F.stringof, args.joinArgs(), externalFunc),
                 file, line);
         }

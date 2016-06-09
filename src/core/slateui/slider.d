@@ -1,6 +1,7 @@
 module gsb.core.slateui.slider;
 import gsb.core.slateui.base_element;
 import gsb.utils.signals;
+import gl3n.math: clamp;
 
 alias SliderRenderer = void delegate(UISlider, GlBatch);
 private auto DEFAULT_RENDERER (UISlider btn, GlBatch batch) {
@@ -49,7 +50,7 @@ public:
     @property auto valuePix () { return valuePct * sliderWidth; }
     @property auto sliderWidth () { return dim.x - border.x * 2.0; }
 
-    bool onEvent (UIEvent event) {
+    override bool onEvent (UIEvent event) {
         return super.onEvent(event) || event.handle!(
             (MouseEvent ev) {
                 m_dragging = ev.pressed && (m_dragging || withinBounds(ev.pos));

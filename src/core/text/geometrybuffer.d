@@ -1,14 +1,10 @@
-
 module gsb.text.geometrybuffer;
-import gsb.gl.state;
-import gsb.gl.algorithms;
-import gsb.gl.drawcalls;
-import gsb.utils.color;
+import gsb.coregl;
+import gsb.coregl.gl;
 
+import gsb.utils.color;
 import gsb.core.log;
 import stb.truetype;
-import gsb.glutils;
-import derelict.opengl3.gl3;
 import core.sync.rwmutex;
 
 private void DEBUG_LOG (lazy void expr) {

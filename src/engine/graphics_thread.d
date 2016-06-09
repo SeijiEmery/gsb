@@ -3,12 +3,11 @@ import gsb.engine.engineconfig;
 import gsb.engine.threads;
 import gsb.engine.engine;
 
-import derelict.glfw3.glfw3;
+import gsb.coregl;
 import derelict.opengl3.gl3;
+import derelict.glfw3.glfw3;
 
-import gsb.coregl;             // this is a mess... xD
 import gsb.gl.graphicsmodule;
-import gsb.gl.algorithms;
 import gsb.gl.debugrenderer;
 import gsb.core.text;
 

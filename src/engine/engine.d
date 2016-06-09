@@ -20,6 +20,7 @@ import gsb.gl.debugrenderer;
 import gsb.gl.graphicsmodule;
 import gsb.core.text;
 import gsb.core.stats;
+import std.format;
 import std.datetime;
 import core.time;
 import std.conv;

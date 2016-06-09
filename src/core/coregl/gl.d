@@ -1,14 +1,15 @@
-
-module gsb.glutils;
+module gsb.coregl.gl;
+public import gsb.coregl.glerrors;
+public import derelict.opengl3.gl3;
+public import gl3n.linalg;
+public import gl3n.math;
 
 import std.stdio;
 import std.format;
 import std.traits;
 import std.conv;
 import std.array: join;
-
-public import derelict.opengl3.gl3;
-import dglsl;
+import std.exception: enforce;
 
 class Camera {
     float viewportWidth = 800, viewportHeight = 600;
@@ -23,67 +24,24 @@ class Camera {
         return projection = mat4.perspective(viewportWidth, viewportHeight, fov, near, far);
     }
 }
-
-
-static string[GLenum] glErrors;
-static this () {
-    glErrors = [
-                GL_INVALID_OPERATION: "INVALID OPERATION",
-                GL_INVALID_ENUM: "INVALID ENUM",
-                GL_INVALID_VALUE: "INVALID VALUE",
-                GL_INVALID_FRAMEBUFFER_OPERATION: "INVALID FRAMEBUFFER OPERATION",
-                GL_OUT_OF_MEMORY: "GL OUT OF MEMORY"
-            ];
-}
-
-void CHECK_CALL (lazy void expr) {
-    auto err = glGetError();
-    while (err != GL_NO_ERROR) {
-        throw new Exception(format("%s while calling %s", glErrors[err]));
-    }
-}
-
 void CHECK_CALL (string msg) {
     auto err = glGetError();
     if (err != GL_NO_ERROR) {
-        throw new Exception(format("%s (%s)", glErrors[err], msg));
+        throw new Exception(format("%s (%s)", glGetMessage(err), msg));
     }
 }
-
-void CHECK_CALL (F,Args...) (F f, Args args) {
-    if (!__ctfe) {
-        f(args);
-        //CHECK_CALL(f.stringof);
-        CHECK_CALL(fullyQualifiedName!(f));
-    }   
-}
-
 private void checkForGlErrors (string fname, Args...)(Args args) {
     auto fmtMessage (GLenum err) {
         string[] sargs;
         foreach (arg; args)
             sargs ~= to!string(arg);
-        return format("%s(%s): %s", fname, sargs.join(", "), glErrors[err]);
+        return format("%s(%s): %s", fname, sargs.join(", "), glGetMessage(err));
     }
     if (!__ctfe) {
         auto err = glGetError();
-        if (err != GL_NO_ERROR) {
-            throw new Exception(fmtMessage(err));
-        }
+        enforce!GlException(err == GL_NO_ERROR, fmtMessage(err));
     }
 }
-
-//template hasGlPrefix (string fname) {
-//    immutable bool hasGlPrefix = fname[0..2] == "gl";
-//}
-
-
-
-//bool isFcnWithReturnValue (string fname, Args...)(Args args) {
-//    return __traits(compiles, to!bool(mixin(fname)(args)));
-//}
-
-void takesAnyArg (T)(T arg) {}
 
 // Wraps a gl function w/ error checking code that will:
 // - throw an exception w/ a useful stack trace
@@ -105,7 +63,7 @@ void takesAnyArg (T)(T arg) {}
 //    - f(arg-types) is undefined but maybe you meant f(other-arg-types) instead
 //    - etc
 //    The resulting compiler errors are wierd + verbose, but they _are_ useful.
-auto checked (string fname, Args...)(Args args) if (
+public auto checked (string fname, Args...)(Args args) if (
     __traits(compiles, mixin(fname)(args)) &&
     !is(typeof(mixin(fname)(args)) == void) &&
     fname[0..2] == "gl"
@@ -114,7 +72,7 @@ auto checked (string fname, Args...)(Args args) if (
     checkForGlErrors!fname(args);
     return r;
 }
-void checked (string fname, Args...)(Args args) if (
+public void checked (string fname, Args...)(Args args) if (
     __traits(compiles, mixin(fname)(args)) &&
     is(typeof(mixin(fname)(args)) == void) &&
     fname[0..2] == "gl"
@@ -125,53 +83,11 @@ void checked (string fname, Args...)(Args args) if (
 
 // If 'fname' is not a function or cannot be compiled (wrong arguments), we'll default to this fallback
 // where we'll invoke it anyways to generate a useful error message
-void checked (string fname, Args...)(Args args) if (
+public void checked (string fname, Args...)(Args args) if (
     !__traits(compiles, mixin(fname)(args))
 ) {
     mixin(fname)(args);
 }
-
-
-
-
-
-//void checked (string fname, Args...)(Args args) if (__traits(compiles, mixin(fname)(args)) && !__traits(compiles, to!bool(mixin(fname)(args))) && fname[0..2] == "gl") {
-//    mixin(fname)(args);
-//    checkForGlErrors!fname(args);
-//}
-
-
-
-
-
-
-//auto checked (string fname, Args...)(Args args) if (isGLFunction(fname) && 
-
-
-
-//auto checked (string fname, Args...)(Args args) if (fname[0..2] == "gl" && __traits(compiles, mixin) )
-
-
-
-
-
-//auto checked (string fname, Args...)(Args args) if (fname[0..2] == "gl" && __traits(compiles, mixin(fname)(args)))
-//body {
-//    auto f = mixin(fname);
-//    static if (!is(ReturnType!f == void))
-//        auto r = f(args);
-//    else
-//        f(args);
-
-//    checkForGlErrors();
-    
-//    static if (!is(ReturnType!f == void))
-//        return r;
-//}
-
-// find: \n(gl\w+)\s*([^\n]*)
-// repl: \nalias checked_$1 = checked!("$1", $2);
-
 
 // From opengl 4.1 function listings
 
@@ -213,11 +129,6 @@ alias checked_glSamplerParameteriv = checked!("glSamplerParameteriv", GLuint, GL
 alias checked_glSamplerParameterfv = checked!("glSamplerParameterfv", GLuint, GLenum, const(GLfloat)*);
 alias checked_glSamplerParameterIiv = checked!("glSamplerParameterIiv", GLuint, GLenum, const(GLint)*);
 alias checked_glSamplerParameterIuiv = checked!("glSamplerParameterIuiv", GLuint, GLenum, const(GLuint)*);
-
-
-
-
-
 
 alias checked_glCreateShader = checked!("glCreateShader", GLenum);
 alias checked_glShaderSource = checked!("glShaderSource", GLuint, GLsizei, const(GLchar*)*, const(GLint)*);
@@ -268,45 +179,4 @@ alias checked_glUniform4f = checked!("glUniform4f", GLint, GLfloat, GLfloat, GLf
 
 
 
-
-
-
-//auto checked_glUseProgram = checked!"glUseProgram";
-
-//alias checked_glUseProgram = checked!"glUseProgram";
-
-
-
-
-//auto makeChecked (string fname) {
-//    auto f = mixin(fname);
-//    void impl (Args...)(Args args) {
-//        if (!__ctfe) {
-//             f(args);
-//            CHECK_CALL(fname);
-//        }
-//    }
-//    return impl;
-//}
-
-//auto checked_glUseProgram = makeChecked!("glUseProgram");
-
-
-
-
-
-//void CHECK_CALL(F)(F fcn) {
-//    auto err = glGetError();
-//    while (err != GL_NO_ERROR) {
-//        writefln("%s while calling %s", glErrors[err], F.stringof);
-//        err = glGetError();
-//    }
-//}
-//void CHECK_CALL(string context) {
-//    auto err = glGetError();
-//    while (err != GL_NO_ERROR) {
-//        writefln("%s while calling %s", glErrors[err], context);
-//        err = glGetError();
-//    }
-//}
 

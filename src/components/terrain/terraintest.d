@@ -4,6 +4,9 @@ import gsb.core.ui.uielements;
 import gsb.gl.debugrenderer;
 import gsb.gl.graphicsmodule;
 
+import gsb.coregl;
+import gsb.coregl.gl;
+
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.input.gamepad;
@@ -15,10 +18,6 @@ import gl3n.linalg;
 import gl3n.math: PI;
 
 import std.array;
-import gsb.gl.algorithms;
-import gsb.gl.state;
-import gsb.glutils;
-import derelict.opengl3.gl3;
 import std.format;
 
 

@@ -1,15 +1,9 @@
-
 module gsb.text.textshader;
-import gsb.gl.state;
-import gsb.core.window;
-import gsb.glutils;
-import derelict.opengl3.gl3;
+import gsb.coregl;
+import gsb.coregl.gl;
 import dglsl;
 
-import gl3n.linalg;
-
-
-
+import gsb.core.window;
 
 class TextVertexShader: Shader!Vertex {
     @layout(location=0)

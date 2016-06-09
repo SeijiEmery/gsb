@@ -1,6 +1,4 @@
-
 module gsb.ui.testui;
-
 import gsb.gl.debugrenderer;
 import gsb.core.window;
 import gsb.utils.signals;
@@ -8,9 +6,8 @@ import gsb.core.log;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.input.gamepad;
+import gsb.coregl.gl;
 
-import gl3n.linalg;
-import gsb.glutils;
 import gsb.utils.color;
 import derelict.glfw3.glfw3;
 

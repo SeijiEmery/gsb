@@ -1,9 +1,5 @@
-
-module gsb.gl.drawcalls;
-
-import gsb.glutils;
-import derelict.opengl3.gl3;
-import gl3n.linalg;
+module gsb.coregl.render.drawcalls;
+import gsb.coregl.gl;
 import std.format;
 
 struct VertexAttrib {

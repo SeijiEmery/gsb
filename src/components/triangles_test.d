@@ -1,11 +1,7 @@
-
 module gsb.triangles_test;
-
 import std.stdio;
-
+import gsb.coregl.gl;
 import dglsl;
-import derelict.opengl3.gl3;
-import gsb.glutils;
 
 class VertexShader : Shader!Vertex {
     @layout(location=0)

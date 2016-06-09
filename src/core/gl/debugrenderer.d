@@ -1,17 +1,13 @@
 
 module gsb.gl.debugrenderer;
-import gsb.gl.algorithms;
-import gsb.gl.state;
-import gsb.gl.drawcalls;
+import gsb.coregl;
+import gsb.coregl.gl;
+import dglsl;
 
 import gsb.core.log;
 import gsb.utils.color;
 import gsb.core.singleton;
 import gsb.core.window;
-import gsb.glutils;
-import derelict.opengl3.gl3;
-import dglsl;
-import gl3n.linalg;
 
 import std.algorithm.comparison;
 import std.math;

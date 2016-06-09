@@ -1,7 +1,7 @@
-
-module gsb.coregl.vbo;
-import gsb.coregl.sharedimpl;
+module gsb.coregl.resource.vbo;
+import gsb.coregl.resource.interfaces;
 import gsb.coregl.glstate;
+import gsb.coregl.gl;
 
 private bool isValidGlTarget (GLenum target) {
     return target == GL_ARRAY_BUFFER ||

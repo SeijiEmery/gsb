@@ -1,21 +1,16 @@
+module gsb.coregl.render.dynamic_renderer;
+import gsb.coregl.render.drawcalls;
+import gsb.coregl.resource;
+import gsb.coregl.glstate;
+import gsb.coregl.gl;
 
-module gsb.gl.algorithms;
 import gsb.engine.engineconfig;
-
-import gsb.coregl;
-public import gsb.gl.drawcalls;
-
 import gsb.utils.mathutils;
 import gsb.core.log;
 import gsb.utils.color;
 import gsb.core.singleton;
 import gsb.core.window;
-import derelict.opengl3.gl3;
-import dglsl;
-import gl3n.linalg;
 import std.traits;
-
-
 
 interface IDynamicRenderer {
     void drawArrays   (VADrawCall batch);

@@ -1,7 +1,7 @@
-
-module gsb.coregl.vao;
-import gsb.coregl.sharedimpl;
+module gsb.coregl.resource.vao;
+import gsb.coregl.resource.interfaces;
 import gsb.coregl.glstate;
+import gsb.coregl.gl;
 
 class VAO : GLResource {
     private GLuint handle = 0;

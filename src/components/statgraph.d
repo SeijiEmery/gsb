@@ -1,4 +1,6 @@
 module gsb.components.statgraph;
+import gsb.coregl: DynamicRenderer;
+
 import gsb.gl.debugrenderer;
 import gsb.core.uimanager;
 import gsb.core.uievents;
@@ -8,7 +10,6 @@ import gsb.core.window;
 import gsb.text.textrenderer;
 import gsb.text.font;
 import gsb.core.ui.uielements;
-import gsb.gl.algorithms: DynamicRenderer;
 import gl3n.linalg;
 import gsb.utils.color;
 import core.time;

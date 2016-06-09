@@ -1,5 +1,5 @@
-
 module gsb.text.textrenderer;
+import gsb.coregl;
 
 import gsb.core.log;
 import gsb.core.window;
@@ -25,9 +25,6 @@ import std.math: approxEqual;
 import core.sync.rwmutex;
 
 import stb.truetype;
-import gsb.glutils;
-import derelict.opengl3.gl3;
-import dglsl;
 
 private void DEBUG_LOG (lazy void expr) {
     static if (TEXTRENDERER_DEBUG_LOGGING_ENABLED) expr();

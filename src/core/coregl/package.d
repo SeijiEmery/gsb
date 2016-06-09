@@ -1,17 +1,14 @@
-
 module gsb.coregl;
 
-public import gsb.coregl.glerrors;
-//public import gsb.coregl.batch;
+public import gsb.coregl.render.dynamic_renderer;
+public import gsb.coregl.render.drawcalls;
+
+public import gsb.coregl.resource.vao;
+public import gsb.coregl.resource.vbo;
+
 public import gsb.coregl.glstate;
-//public import gsb.coregl.glstats;
-public import gsb.coregl.interfaces;
+public import gsb.coregl.glerrors;
 
-//public import gsb.coregl.texture;
-//public import gsb.coregl.shader;
-public import gsb.coregl.vao;
-public import gsb.coregl.vbo;
-
-
-
+public import gl3n.linalg;
+public import gl3n.math;
 

@@ -5,6 +5,7 @@ import gsb.core.log;
 import gsb.core.errors;
 import gsb.core.window;
 import stb.truetype;
+import gsb.coregl.gl;
 
 import std.format;
 import std.container.rbtree;
@@ -12,8 +13,6 @@ import std.range.primitives;
 import std.array;
 import std.algorithm: map, min, max;
 import core.sync.rwmutex;
-import derelict.opengl3.gl3;
-import gsb.glutils;
 import gl3n.linalg;
 import std.conv;
 

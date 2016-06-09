@@ -1,4 +1,3 @@
-
 module gsb.text.textrendertest;
 import gsb.text.textrenderer;
 import std.file;
@@ -11,12 +10,9 @@ import std.algorithm.mutation;
 import gsb.core.window;
 import gsb.core.log;
 import gsb.core.errors;
-import gsb.glutils;
-
-import stb.truetype;
-import gl3n.linalg;
-import derelict.opengl3.gl3;
+import gsb.coregl.gl;
 import dglsl;
+import stb.truetype;
 
 
 private class VertexShader : Shader!Vertex {
