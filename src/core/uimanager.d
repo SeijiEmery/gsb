@@ -5,8 +5,8 @@ import gsb.core.log;
 import gsb.utils.signals;
 import gsb.core.window;
 import gsb.core.input.gamepad;
-import gsb.core.frametime;
 import gsb.core.singleton;
+import gsb.engine.engine_interface;
 
 import gl3n.linalg;
 import std.format;
@@ -40,6 +40,7 @@ public @property auto UIComponentManager () {
 private class UIComponentManagerInstance {
     mixin LowLockSingleton;
 
+    private IEngine engine = null;
     private UIEventDispatcher dispatcher;
 
     private UIComponent[string] registeredComponents;
@@ -57,12 +58,17 @@ private class UIComponentManagerInstance {
     public Signal!(IEventCollector) onEventSourceRegistered;
     public Signal!(IEventCollector) onEventSourceUnregistered;
 
+    void setEngine (IEngine engine) {
+        assert(this.engine is null, "already has engine reference!");
+        this.engine = engine;
+    }
+
     // Dispatch events on components
-    void updateFromMainThread () {
+    void updateFromMainThread (FrameTime ft) {
         if (activeComponents.length) {
-            dispatcher.dispatchEvents(activeComponents);
+            dispatcher.dispatchEvents(activeComponents, ft);
         } else {
-            dispatcher.dispatchEvents([]);
+            dispatcher.dispatchEvents([], ft);
         }
     }
 
@@ -184,16 +190,12 @@ private struct UIEventDispatcher {
         throw new Exception("Event source was not registered");
     }
 
-    void dispatchEvents (UIComponent[] components) {
+    void dispatchEvents (UIComponent[] components, FrameTime ft) {
         eventList.length = 0;
         foreach (ev; eventSources)
             eventList ~= ev.getEvents();
         
-        eventList ~= FrameUpdateEvent.create(
-            g_eventFrameTime.current,
-            g_eventFrameTime.dt,
-            g_eventFrameTime.frameCount
-        );
+        eventList ~= FrameUpdateEvent.create( ft.time, ft.dt );
 
         //log.write("Dispatching %d events to %d components",
         //    eventList.length, components.length);

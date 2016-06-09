@@ -4,6 +4,7 @@ import gsb.core.log;
 import gsb.utils.signals;
 import gsb.core.singleton;
 import gsb.core.stats;
+import gsb.engine.engine_interface: FrameTime;
 import std.format;
 import std.algorithm.sorting;
 
@@ -92,7 +93,7 @@ private class GraphicsComponentManagerInstance {
         }
     }
 
-    void updateFromMainThread () {
+    void updateFromMainThread ( FrameTime ft ) {
         if (pendingComponentLoadSignals.length || pendingComponentUnloadSignals.length) {
             GraphicsComponent[] recentlyLoaded, recentlyUnloaded;
             synchronized {

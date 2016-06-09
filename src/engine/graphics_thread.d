@@ -13,7 +13,6 @@ import gsb.gl.debugrenderer;
 import gsb.core.text;
 
 import gsb.core.window;
-import gsb.core.frametime;
 import gsb.core.uimanager;
 import gsb.core.stats;
 import gsb.core.log;
@@ -68,7 +67,6 @@ class GraphicsThread : EngineThread {
         log = g_graphicsLog = new Log("graphics-thread");
         log.write("Launched graphics thread");
         setupThreadStats("graphics-thread");
-        g_graphicsFrameTime.init();
 
         // finish gl init
         glfwMakeContextCurrent(engine.mainWindow.handle);
@@ -88,8 +86,6 @@ class GraphicsThread : EngineThread {
         static if (SHOW_MT_GL_SYNC_LOGGING)
             log.write("GTHREAD FRAME BEGIN");
         threadStats.timedCall("frame", {
-            g_graphicsFrameTime.updateFromRespectiveThread();
-
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             threadStats.timedCall("GraphicsComponents.updateAndRender", {
                 GraphicsComponentManager.updateFromGraphicsThread();

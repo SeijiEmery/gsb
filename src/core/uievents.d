@@ -4,7 +4,6 @@ import gsb.core.log;
 import gsb.utils.signals;
 import gsb.core.window;
 import gsb.core.input.gamepad;
-import gsb.core.frametime;
 import gl3n.linalg;
 import derelict.glfw3.glfw3;
 
@@ -32,7 +31,6 @@ interface IEventCollector {
 
 struct FrameUpdateEvent {
     double time, dt;
-    ulong  frame;
 
     static UIEvent create (T...)(T args) { return UIEvent(FrameUpdateEvent(args)); }
 }

@@ -35,7 +35,7 @@ gsb.core.uimanager
 
 gsb.gl.graphicsmodule
     – {gsb.core.stats}
-    ( no actual gl state; this deals module deals solely with scheduling gl tasks )
+    ( no actual gl state; this module deals solely with scheduling gl tasks )
 
 gsb.text.textrenderer (engineconfig, gsb.core.errors, stb.truetype)
     – gsb.text.font
