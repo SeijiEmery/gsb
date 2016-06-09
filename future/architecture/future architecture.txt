@@ -1,0 +1,101 @@
+Future Architecture
+==================================
+
+High-level
+    common/utils/src (shared)
+        (from gsb.utils)
+
+    hot/config/
+        engineconfig.d, ...
+    hot/shaders/
+        *.fs, *.vs, *.gs
+
+    engine/src        (engine impl)   => engine.so
+    engine/interfaces (sandbox interfaces)
+
+    coregl/src        (pure gl impl; runs on graphics thread) => coregl.so
+    coregl/interfaces (abstracts gl impl for engine + glsandbox)
+
+    slate2d/src        (2d canvas implemented on top of coregl) => slate2d.so
+    slate2d/interfaces (frontend interfaces)
+
+    ui/src             (ui implemented on top of slate2d)  => ui.so
+    ui/interfaces      (frontend interfaces)
+
+    hot/modules/       (frontend modules; should be hotloaded if possible)
+
+    eg.
+    hot/modules/game_test/game_test.d
+    hot/modules/statgraph/statgraph.d
+    hot/modules/ui/gsb_ui.d
+    hot/modules/shadertoy/shadertoy.d
+    etc...
+
+    coregl.so  => slate2d.so, engine.so
+    slate2d.so => ui.so, engine.so
+    engine.so  => gsb_app
+
+    runtime:
+    ~/Library/Application Support/gsb/cache/modules/game_test/game_test.so, ...
+
+
+
+
+
+
+
+
+
+gsb/engine/src
+    gsb.engine.engineconfig
+    gsb.engine.threading    (gsb.engine.threads)
+    gsb.engine.graphics_thread
+    gsb.engine.task_engine  (gsb.core.task)
+
+gsb/engine/interfaces
+    gsb.engine.engine_interface
+    gsb.engine.module_interface
+
+
+gsb/coregl/src
+    coregl.glconfig
+    coregl.resource
+        – coregl.resource.resource_mgr
+        – coregl.resource.shader
+        – coregl.resource.texture
+
+gsb/coregl/interfaces
+    coregl.resource
+        – coregl.resource.resource_mgr
+        – coregl.resource.shader
+        – coregl.resource.texture
+        – coregl.resource.buffers
+    coregl.context
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

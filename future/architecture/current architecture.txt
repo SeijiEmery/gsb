@@ -6,8 +6,8 @@ gsb.engine: (std, utils, gsb.core.log, gsb.core.window, gsb.core.uievents)
     – gsb.engine.threads
     – gsb.engine.graphics_thread
     – gsb.engine.engine
+        – gsb.engine.engine_interface
         – gsb.core.task
-        – gsb.core.frametime (==REFACTOR==)
         - gsb.core.stats     (==REFACTOR==)
         – {gsb.core.uimanager}     (=> sbmodule)
         – {gsb.gl.graphicsmodule}  (=> remove / refactor into gl tasks)
@@ -24,14 +24,11 @@ gsb.core.uievents
     – gsb.core.input.gamepad
         - {gsb.engine}
         - {gsb.core.uimanager}
-    – gsb.core.frametime
-        – {gsb.engine}
-        == NEEDS REFACTOR == (too much global state)
 
 gsb.core.uimanager
     – {gsb.core.window}
     – {gsb.core.input.gamepad}
-    – {gsb.core.frametime}
+    – {gsb.engine.engine_interface}
 
 gsb.gl.graphicsmodule
     – {gsb.core.stats}
