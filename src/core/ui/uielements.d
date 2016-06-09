@@ -366,7 +366,7 @@ class UILayoutContainer : UIContainer {
         }
     }
     override void render () {
-        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe202050"), 1);
+        DebugRenderer.drawLineRect(pos, pos + dim, Color("#fe202050"), 0.5);
         foreach (elem; elements)
             elem.render();
     }

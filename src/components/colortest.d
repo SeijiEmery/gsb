@@ -33,7 +33,8 @@ private class TestModule : UIComponent {
     UITextElement[ColorType] buttons;
 
     UISlider[4] sliders;
-    float fontSize = 30.0;
+    float fontSize = 22.0;
+    float smallFontSize = 16.0;
 
     auto ACTIVE_BUTTON_COLOR   = Color(0.85, 0.85, 0.85, 0.95);
     auto INACTIVE_BUTTON_COLOR = Color(0.35, 0.35, 0.35, 0.95);
@@ -50,19 +51,20 @@ private class TestModule : UIComponent {
                     ctext = new UITextElement(vec2(), vec2(), vec2(10,10), "Color Demo", new Font(FONT, fontSize), Color(1,0,0,1), Color(1,0,0,1)),
                     cbox = new UIBox(vec2(0,0), vec2(200,180), Color(1,0,0,1)),
                 ]),
-                cstats = new UITextElement(vec2(), vec2(), vec2(0,0), "", new Font(FONT,fontSize), Color(1,1,1,0.97), Color(0,0,0,0)),
                 new UILayoutContainer(LayoutDir.VERTICAL, Layout.CENTER, vec2(10,10), 0.0, [
-                        new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.TOP_LEFT, vec2(10,10), 0.0, [
-                            buttons[ColorType.RGB] = new UITextElement(vec2(),vec2(),vec2(3,3), "RGB", new Font(FONT,fontSize), ACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
-                            buttons[ColorType.HUSL] = new UITextElement(vec2(),vec2(),vec2(3,3), "HUSL", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
-                            buttons[ColorType.HSV] = new UITextElement(vec2(),vec2(),vec2(3,3), "HSV", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
-                            
-                        ]),
-                        sliders[0] = new UISlider(vec2(), vec2(300,40), vec2(5,5), vec2(40,30), 1, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
-                        sliders[1] = new UISlider(vec2(), vec2(300,40), vec2(5,5), vec2(40,30), 0, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
-                        sliders[2] = new UISlider(vec2(), vec2(300,40), vec2(5,5), vec2(40,30), 0, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
-                        sliders[3] = new UISlider(vec2(), vec2(300,40), vec2(5,5), vec2(40,30), 1, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
-                    ])
+                    new UILayoutContainer(LayoutDir.HORIZONTAL, Layout.TOP_LEFT, vec2(2,2), 0.0, [
+                        buttons[ColorType.RGB]  = new UITextElement(vec2(),vec2(),vec2(3,3), "RGB", new Font(FONT,fontSize), ACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
+                        buttons[ColorType.HUSL] = new UITextElement(vec2(),vec2(),vec2(3,3), "HUSL", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
+                        buttons[ColorType.HSV]  = new UITextElement(vec2(),vec2(),vec2(3,3), "HSV", new Font(FONT,fontSize), INACTIVE_BUTTON_COLOR, INACTIVE_BUTTON_COLOR),
+                        
+                    ]),
+                    sliders[0] = new UISlider(vec2(), vec2(250,24), vec2(5,5), vec2(24,15), 1, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
+                    sliders[1] = new UISlider(vec2(), vec2(250,24), vec2(5,5), vec2(24,15), 0, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
+                    sliders[2] = new UISlider(vec2(), vec2(250,24), vec2(5,5), vec2(24,15), 0, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
+                    sliders[3] = new UISlider(vec2(), vec2(250,24), vec2(5,5), vec2(24,15), 1, 0, 1, SLIDER_COLOR, BACKGROUND_COLOR),
+
+                    cstats = new UITextElement(vec2(), vec2(), vec2(0,0), "", new Font(FONT, smallFontSize), Color(1,1,1,0.97), Color(0,0,0,0)),
+                ])
             ]);
     }
     override void onComponentShutdown () {
