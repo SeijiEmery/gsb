@@ -40,7 +40,7 @@ public:
     }
     @property auto timeSinceLastState () { return m_timeSinceLastState; }
 
-    bool onEvent (UIEvent event) {
+    override bool onEvent (UIEvent event) {
         return super.onEvent(event) || event.handle!(
             (MouseEvent ev) {
                 bool mouseover = withinBounds(ev.pos);
@@ -73,6 +73,7 @@ public:
                             m_pressAction.emit();
                     }
                 }
+                return false;
             },  
             () { return false; }
         );

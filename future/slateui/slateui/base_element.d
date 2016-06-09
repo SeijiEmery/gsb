@@ -17,11 +17,13 @@ class UIElement {
     vec2 dim, border;
 
     // call these three in sequence to relayout + rerender
-    abstract void recalcDimensions ();
-    abstract void relayout ();
-    abstract void render   (GlBatch, ref FrameInfo);
+    void recalcDimensions () {}
+    void relayout () {}
+    void render   (GlBatch, ref FrameInfo) {}
 
-    abstract bool onEvent (UIEvent);
+    bool onEvent (UIEvent) {
+        return false;
+    }
 
     bool withinBounds (vec2 pt) {
         return true;

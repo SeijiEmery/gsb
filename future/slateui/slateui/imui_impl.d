@@ -103,6 +103,22 @@ public:
         if (allocId(id))
             m_hoverExitActions  ~= tuple(*id, cb);
     }
+
+
+    // unimplemented
+    void slider (uint*, ref int, int, int) {}
+    void textfield (uint*, ref string) {}
+    void textfield (uint*, ref double) {}
+    void textfield (uint*, ref float) {}
+    void textfield (uint*, ref uint) {}
+    void textfield (uint*, ref int) {}
+    void textarea (uint*, ref string) {}
+
+    void dropdown (Enum)(uint*, ref Enum) {}
+    void frame (uint*, string, void delegate()) {}
+    void panel (uint*, string, void delegate()) {}
+    void canvas (uint*, vec2i, void delegate(SCanvas)) {}
+    void glcanvas (uint*, vec2i, void delegate(GlCanvas)) {}
 }
 
 struct ImPane {
