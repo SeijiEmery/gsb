@@ -1,5 +1,5 @@
 module gsb.ui.testui;
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 import gsb.core.window;
 import gsb.utils.signals;
 import gsb.core.log;

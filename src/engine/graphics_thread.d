@@ -8,7 +8,7 @@ import derelict.opengl3.gl3;
 import derelict.glfw3.glfw3;
 
 import gsb.gl.graphicsmodule;
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 import gsb.core.text;
 
 import gsb.core.window;

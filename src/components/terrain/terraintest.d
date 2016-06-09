@@ -1,7 +1,7 @@
 
 module gsb.components.terraintest;
 import gsb.core.ui.uielements;
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 import gsb.gl.graphicsmodule;
 
 import gsb.coregl;

@@ -1,5 +1,4 @@
-
-module gsb.gl.debugrenderer;
+module gsb.core.slate2d.renderer;
 import gsb.coregl;
 import gsb.coregl.gl;
 import dglsl;

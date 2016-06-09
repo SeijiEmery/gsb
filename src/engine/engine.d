@@ -16,7 +16,7 @@ import core.sync.condition;
 
 import derelict.glfw3.glfw3;
 import gsb.core.uimanager;
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 import gsb.gl.graphicsmodule;
 import gsb.core.text;
 import gsb.core.stats;

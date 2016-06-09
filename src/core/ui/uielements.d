@@ -4,7 +4,7 @@ import gsb.core.ui.uilayout;
 
 import gsb.core.log;
 import gsb.core.uievents;
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 
 import gsb.core.text;
 import gsb.utils.color;

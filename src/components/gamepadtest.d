@@ -1,7 +1,7 @@
 
 module gsb.components.gamepadtest;
 import gsb.core.ui.uielements;
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.input.gamepad;

@@ -1,6 +1,6 @@
 
 module gsb.components.module_manager;
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.utils.signals;

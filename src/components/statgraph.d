@@ -1,7 +1,7 @@
 module gsb.components.statgraph;
 import gsb.coregl: DynamicRenderer;
 
-import gsb.gl.debugrenderer;
+import gsb.core.slate2d;
 import gsb.core.uimanager;
 import gsb.core.uievents;
 import gsb.core.log;
