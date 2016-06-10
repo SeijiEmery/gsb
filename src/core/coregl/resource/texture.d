@@ -4,6 +4,7 @@ import gsb.coregl.resource.interfaces;
 import gsb.coregl.resource.vbo: VBO;
 import gsb.coregl.glstate;
 import gsb.engine.threads;
+import gsb.engine.engineconfig;
 import gsb.core.log;
 
 import std.exception: enforce;
@@ -156,12 +157,14 @@ class GlTexture : ITexture {
     // If this fails, client code should bind the default / "null" texture instead.
     bool bind (uint slot) {
         if (m_handle) {
-            log.write("Binding texture %s", m_handle);
+            static if (SHOW_GL_TEXTURE_BINDING)
+                log.write("Binding texture %s", m_handle);
             checked_glActiveTexture(GL_TEXTURE0 + slot);
             checked_glBindTexture(GL_TEXTURE_2D, m_handle);
             return true;
         } else {
-            log.write("Null texture!");
+            static if (SHOW_GL_TEXTURE_BINDING)
+                log.write("Null texture!");
         }
         return false;
     }
@@ -171,7 +174,8 @@ class GlTexture : ITexture {
     //
     private void createTexture () {
         if (!m_handle) {
-            log.write("Generated texture %s", m_handle);
+            static if (SHOW_GL_TEXTURE_OPERATIONS)
+                log.write("Generated texture %s", m_handle);
 
             checked_glGenTextures(1, &m_handle);
             //atomicStore(m_dirtyAttribs, 0xff);
@@ -190,8 +194,9 @@ class GlTexture : ITexture {
     }
     private void updateAttribs () {
         if (m_handle && m_dirtyAttribs) {
-            log.write("Setting attribs: %s (minfilter = %s, magfilter = %s)", m_handle, 
-                m_minFilter, m_magFilter);
+            static if (SHOW_GL_TEXTURE_OPERATIONS)
+                log.write("Setting attribs: %s (minfilter = %s, magfilter = %s)", m_handle, 
+                    m_minFilter, m_magFilter);
 
             checked_glBindTexture(GL_TEXTURE_2D, m_handle);
 
@@ -205,8 +210,9 @@ class GlTexture : ITexture {
     }
     private void setData (TextureDataFormat dataFmt, vec2i size, ubyte[] data) {
 
-        log.write("Setting data: %s (size %s, %s bytes, format %s)", m_handle,
-            size, data.length, dataFmt);
+        static if (SHOW_GL_TEXTURE_OPERATIONS)
+            log.write("Setting data: %s (size %s, %s bytes, format %s)", m_handle,
+                size, data.length, dataFmt);
 
         checked_glBindTexture(GL_TEXTURE_2D, m_handle);
         checked_glTexImage2D (GL_TEXTURE_2D, 0, m_internalFormat = dataFmt.internal, 
@@ -214,7 +220,8 @@ class GlTexture : ITexture {
     }
     private void doRelease () {
         if (m_handle) {
-            log.write("Releasing texture %s", m_handle);
+            static if (SHOW_GL_TEXTURE_RELEASE)
+                log.write("Releasing texture %s", m_handle);
             checked_glDeleteTextures(1, &m_handle);
             m_handle = 0;
         }

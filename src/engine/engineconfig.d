@@ -54,3 +54,9 @@ public immutable bool SHOW_EVENT_SOURCE_LOGGING = false;
 public immutable bool SHOW_GRAPHICS_COMPONENT_LOGGING = false;
 
 
+// Show gl texture logging
+public immutable bool SHOW_GL_TEXTURE_OPERATIONS = true;
+public immutable bool SHOW_GL_TEXTURE_BINDING    = false;
+public immutable bool SHOW_GL_TEXTURE_RELEASE    = true;
+
+
