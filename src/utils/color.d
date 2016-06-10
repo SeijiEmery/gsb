@@ -67,10 +67,7 @@ struct Color {
                 1.0 );
     }
     this (string colorHash) {
-        static auto ctr = ctRegex!("#([0-9a-fA-F]+)");
-        auto m = matchFirst(colorHash, ctr);
-        if (!m.empty && m[1].length == 6 || m[1].length == 8) {
-            //string s = colorHash[1..$];
+        if ((colorHash.length == 7 || colorHash.length == 9) && colorHash[0] == '#') {
             string s;
             this.components = vec4(
                 cast(float)parse!int((s = colorHash[1..3], s), 16) * (1 / 255.0),
