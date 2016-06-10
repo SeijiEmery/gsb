@@ -60,4 +60,17 @@ public immutable bool SHOW_GL_TEXTURE_BINDING    = false;
 public immutable bool SHOW_GL_TEXTURE_RELEASE    = true;
 public immutable bool SHOW_GL_TEXTURE_SKIPPED_OPERATIONS = false;
 
+// Checksum types. If enabled (not Checksum.None), will filter texture data calls
+// with the provided checksum (see gsb.utils.checksum, gsb.coregl.resource.texture).
+import gsb.utils.checksum;
+//public alias GL_TEXTURE_DATA_CHECKSUM = Checksum.None;
+//public alias GL_TEXTURE_DATA_CHECKSUM = Checksum.CRC32;
+public alias GL_TEXTURE_DATA_CHECKSUM = Checksum.Xor64;
+
+
+
+
+
+
+
 

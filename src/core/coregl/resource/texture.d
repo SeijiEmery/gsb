@@ -7,7 +7,6 @@ import gsb.engine.threads;
 import gsb.engine.engineconfig;
 import gsb.core.log;
 
-import std.digest.crc;
 import std.exception: enforce;
 import std.format: format;
 import core.atomic;
@@ -95,10 +94,12 @@ bool isValidTextureInternalType (GLenum type) {
     }
 }
 
-
 class GlTexture : ITexture {
     GLuint m_handle = 0;
-    ubyte[4] m_dataHash;  // crc32 hash of texture data, used to eliminate redundant setData() calls
+    ulong m_dataLen = 0;
+
+    import gsb.utils.checksum;
+    GL_TEXTURE_DATA_CHECKSUM.HashType m_dataHash;
 
     GLint  m_internalFormat = GL_RGBA;
     GLenum m_magFilter = GL_LINEAR;
@@ -123,9 +124,8 @@ class GlTexture : ITexture {
     }
 
     ITexture pixelData (TextureDataFormat fmt, vec2i size, ubyte[] data) {
-        auto hash = crc32Of(data);
-        if (hash != m_dataHash || size != m_size) {
-            m_dataHash = hash;
+
+        if (hashDiff!GL_TEXTURE_DATA_CHECKSUM(m_dataHash, data) || size != m_size) {
             m_size = size;
 
             gsb_graphicsThread.send({
@@ -141,9 +141,8 @@ class GlTexture : ITexture {
     ITexture pixelData (TextureDataFormat fmt, vec2i size, ubyte[] delegate() get) {
         gsb_graphicsThread.send({
             auto data = get();
-            auto hash = crc32Of(data);
-            if (hash != m_dataHash || size != m_size) {
-                m_dataHash = hash;
+
+            if (hashDiff!GL_TEXTURE_DATA_CHECKSUM(m_dataHash, data) || size != m_size) {
                 m_size = size;
 
                 if (!m_handle) createTexture();
