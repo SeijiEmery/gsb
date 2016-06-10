@@ -7,6 +7,7 @@ import gsb.engine.threads;
 import gsb.engine.engineconfig;
 import gsb.core.log;
 
+import std.digest.crc;
 import std.exception: enforce;
 import std.format: format;
 import core.atomic;
@@ -97,6 +98,8 @@ bool isValidTextureInternalType (GLenum type) {
 
 class GlTexture : ITexture {
     GLuint m_handle = 0;
+    ubyte[4] m_dataHash;  // crc32 hash of texture data, used to eliminate redundant setData() calls
+
     GLint  m_internalFormat = GL_RGBA;
     GLenum m_magFilter = GL_LINEAR;
     GLenum m_minFilter = GL_LINEAR;
@@ -120,16 +123,35 @@ class GlTexture : ITexture {
     }
 
     ITexture pixelData (TextureDataFormat fmt, vec2i size, ubyte[] data) {
-        gsb_graphicsThread.send({
-            if (!m_handle) createTexture();
-            setData(fmt, size, data);
-        });
+        auto hash = crc32Of(data);
+        if (hash != m_dataHash || size != m_size) {
+            m_dataHash = hash;
+            m_size = size;
+
+            gsb_graphicsThread.send({
+                if (!m_handle) createTexture();
+                setData(fmt, size, data);
+            });
+        } else {
+            static if (SHOW_GL_TEXTURE_SKIPPED_OPERATIONS)
+                log.write("Skipped update (hash %s)", hash);
+        }
         return this;
     }
     ITexture pixelData (TextureDataFormat fmt, vec2i size, ubyte[] delegate() get) {
         gsb_graphicsThread.send({
-            if (!m_handle) createTexture();
-            setData(fmt, size, get());
+            auto data = get();
+            auto hash = crc32Of(data);
+            if (hash != m_dataHash || size != m_size) {
+                m_dataHash = hash;
+                m_size = size;
+
+                if (!m_handle) createTexture();
+                setData(fmt, size, data);
+            } else {
+                static if (SHOW_GL_TEXTURE_SKIPPED_OPERATIONS)
+                    log.write("Skipped update (hash %s)", hash);
+            }
         });
         return this;
     }
@@ -174,10 +196,11 @@ class GlTexture : ITexture {
     //
     private void createTexture () {
         if (!m_handle) {
+            checked_glGenTextures(1, &m_handle);
+
             static if (SHOW_GL_TEXTURE_OPERATIONS)
                 log.write("Generated texture %s", m_handle);
 
-            checked_glGenTextures(1, &m_handle);
             //atomicStore(m_dirtyAttribs, 0xff);
             m_dirtyAttribs = 0xff;  // should be fine, since we're writing all flags
             updateAttribs();
@@ -211,8 +234,8 @@ class GlTexture : ITexture {
     private void setData (TextureDataFormat dataFmt, vec2i size, ubyte[] data) {
 
         static if (SHOW_GL_TEXTURE_OPERATIONS)
-            log.write("Setting data: %s (size %s, %s bytes, format %s)", m_handle,
-                size, data.length, dataFmt);
+            log.write("Setting data: %s (size %s, %s bytes, hash %s, format %s)", m_handle,
+                size, data.length, m_dataHash, dataFmt);
 
         checked_glBindTexture(GL_TEXTURE_2D, m_handle);
         checked_glTexImage2D (GL_TEXTURE_2D, 0, m_internalFormat = dataFmt.internal, 

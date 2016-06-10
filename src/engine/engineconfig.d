@@ -58,5 +58,6 @@ public immutable bool SHOW_GRAPHICS_COMPONENT_LOGGING = false;
 public immutable bool SHOW_GL_TEXTURE_OPERATIONS = true;
 public immutable bool SHOW_GL_TEXTURE_BINDING    = false;
 public immutable bool SHOW_GL_TEXTURE_RELEASE    = true;
+public immutable bool SHOW_GL_TEXTURE_SKIPPED_OPERATIONS = false;
 
 
