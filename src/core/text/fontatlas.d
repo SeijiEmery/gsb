@@ -162,51 +162,33 @@ class PackedFontAtlas {
     }
 
     class GraphicsBackend {
-        GLuint texture = 0;
+        import gsb.coregl.resource.texture;
+        ITexture texture;
 
+        this () {
+            texture = new GlTexture()
+                .setFilter( GL_LINEAR, GL_LINEAR );
+        }
         void update () {
             synchronized (read) {
-                if (shouldRelease) {
-                    releaseResources();
-                    dirtyTexture = false;
-                } else if (dirtyTexture) {
-                    dirtyTexture = false;
-                    if (!texture) {
-                        DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend: creating texture"));
-                        checked_glGenTextures(1, &texture);
-                    }
-                    DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend: uploading bitmap data"));
-                    checked_glActiveTexture(GL_TEXTURE0);
-                    checked_glBindTexture(GL_TEXTURE_2D, texture);
-                    checked_glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, BITMAP_WIDTH, BITMAP_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, bitmapData.ptr);
-                    checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    checked_glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    //checked_glBindTexture(GL_TEXTURE_2D, 0);
-                }
+                texture.pixelData(
+                    TextureDataFormat( GL_RED, GL_RED, GL_UNSIGNED_BYTE ),
+                    vec2i( BITMAP_WIDTH, BITMAP_HEIGHT ),
+                    bitmapData 
+                );
             }
         }
         void bindTexture () {
-            if (texture) {
-                checked_glActiveTexture(GL_TEXTURE0);
-                checked_glBindTexture(GL_TEXTURE_2D, texture);
-            } else {
-                DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend.bindTexture(): No texture!"));
-            }
+            // Bind to texture 0
+            (cast(GlTexture)texture).bind( 0 );
         }
         void releaseResources () {
-            if (texture) {
-                DEBUG_LOG(log.write("PackedFontAtlas.GraphicsBackend: releasing texture"));
-                checked_glDeleteTextures(1, &texture);
-                texture = 0;
-            }
+            texture.release();
         }
         ~this () {
             releaseResources();
         }
     }
-
-
-
 }
 
 

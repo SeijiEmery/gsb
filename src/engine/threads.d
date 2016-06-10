@@ -42,6 +42,9 @@ auto @property gsb_localThread () { return gsb__localThread; }
 auto @property gsb_localThreadId () {
     return gsb_localThread ? gsb_localThread.engineThreadId : EngineThreadId.Unknown;
 }
+auto @property gsb_isMainThread     () { return gsb_localThreadId == EngineThreadId.MainThread; }
+auto @property gsb_isGraphicsThread () { return gsb_localThreadId == EngineThreadId.GraphicsThread; }
+auto @property gsb_isWorkThread     () { return gsb_localThreadId >= EngineThreadId.WorkThread1; }
 
 private string[uint] workThreadNames;
 auto prettyName (EngineThreadId threadId) {
