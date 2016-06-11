@@ -47,38 +47,90 @@ module gsb.text.tr2;
 
 
 
-enum RTCmd { END = 0, TEXT, NEWLINE, SET_FONT, SET_SIZE, SET_COLOR, POP_FONT, POP_SIZE, POP_COLOR }
+enum RTCmd { END = 0, TEXT, NEWLINE, 
+    SET_ITALIC, SET_BOLD, SET_FONT, SET_SIZE, SET_COLOR, 
+    END_ITALIC, END_BOLD, POP_FONT, POP_SIZE, POP_COLOR 
+}
 struct RTResult { RTCmd cmd; string content; }
 
 
 private struct RichTextParser {
     import std.regex;
 
-    private auto r = ctRegex!(`([^<>]|(?:\\[<>]))+|(<[^\>]+>|</\d*>)|(\n+)`);
+    immutable string MATCH_NEWLINE = `\n+`;
+    immutable string MATCH_TEXT    = `(?:\\<|[^<\n])+`; // match any non-'<' or escaped '<'
+    immutable string MATCH_TAG     = `</?(\w+)(?:=([^>]+))?>`;
+    private auto r = ctRegex!(MATCH_TAG ~ `|` ~ MATCH_NEWLINE ~ `|` ~ MATCH_TEXT);
 
     void setInput ( string text ) { m_input = text; }
     RTResult getNext () { 
-        auto c = matchFirst( m_input, r );
+        if (!m_input.length)
+            return RTResult(RTCmd.END, "");
 
-        return RTResult( RTCmd.END, "" );
+        auto c = matchFirst( m_input, r );
+        m_input = c.post;
+
+        if (c.hit[0] == '\n') {
+            return RTResult(RTCmd.NEWLINE, c.hit);
+        } else if (c.hit[0] == '<' && c.hit[1] != '/') {
+            switch (c[1]) {
+                case "b": return RTResult(RTCmd.SET_BOLD, "");
+                case "i": return RTResult(RTCmd.SET_ITALIC, "");
+                case "font": return RTResult(RTCmd.SET_FONT, c[2]);
+                case "color": return RTResult(RTCmd.SET_COLOR, c[2]);
+                case "size":  return RTResult(RTCmd.SET_SIZE, c[2]);
+                default:
+            }
+        } else if (c.hit[0] == '<') {
+            switch (c[1]) {
+                case "b": return RTResult(RTCmd.END_BOLD, "");
+                case "i": return RTResult(RTCmd.END_ITALIC, "");
+                case "font": return RTResult(RTCmd.POP_FONT, "");
+                case "color": return RTResult(RTCmd.POP_COLOR, "");
+                case "size": return RTResult(RTCmd.POP_SIZE, "");
+                default:
+            }
+        }
+        return RTResult(RTCmd.TEXT, c.hit);
     }
 
     string m_input;
 }
 
 unittest {
-    RichTextParser p;
-    p.setInput("Foo \nbar<font=\"foo\">baz<size=\"10px\">bar</size></>Borg\\<foo\\>Blarg\n\nfoob");
-
-    void assertEq (T)(T a, T b) {
+    void assertEq (T)(T a, T b, string file = __FILE__, uint line = __LINE__) {
         if (a != b) {
             import std.format;
             import core.exception: AssertError;
-            throw new AssertError(format("%s != %s", a, b));
+            throw new AssertError(format("%s != %s", a, b), file, line);
         }
     }
-
+    RichTextParser p;
+    
+    p.setInput("Foob\nBlarg<i>Foo</i>Bar<i><b>\nBaz\n</i>Borg</b>foo");
+    assertEq( p.getNext, RTResult(RTCmd.TEXT, "Foob"));
+    assertEq( p.getNext, RTResult(RTCmd.NEWLINE, "\n"));
+    assertEq( p.getNext, RTResult(RTCmd.TEXT, "Blarg"));
+    assertEq( p.getNext, RTResult(RTCmd.SET_ITALIC, ""));
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "Foo"));
+    assertEq( p.getNext, RTResult(RTCmd.END_ITALIC, ""));
+    assertEq( p.getNext, RTResult(RTCmd.TEXT, "Bar"));
+    assertEq( p.getNext, RTResult(RTCmd.SET_ITALIC, ""));
+    assertEq( p.getNext, RTResult(RTCmd.SET_BOLD, ""));
+    assertEq( p.getNext, RTResult(RTCmd.NEWLINE, "\n"));
+    assertEq( p.getNext, RTResult(RTCmd.TEXT, "Baz"));
+    assertEq( p.getNext, RTResult(RTCmd.NEWLINE, "\n"));
+    assertEq( p.getNext, RTResult(RTCmd.END_ITALIC, ""));
+    assertEq( p.getNext, RTResult(RTCmd.TEXT, "Borg"));
+    assertEq( p.getNext, RTResult(RTCmd.END_BOLD, ""));
+    assertEq( p.getNext, RTResult(RTCmd.TEXT, "foo"));
+    assertEq( p.getNext, RTResult(RTCmd.END, ""));
+    assertEq( p.getNext, RTResult(RTCmd.END, ""));
+    assertEq( p.getNext, RTResult(RTCmd.END, ""));
+
+
+    p.setInput("Foo \nbar<font=foo>baz<size=10px>bar</size></font>Borg\\<foo\\><b>Blarg<i>\n\nfoob</b></i>");
+    assertEq( p.getNext, RTResult(RTCmd.TEXT, "Foo "));
     assertEq( p.getNext, RTResult(RTCmd.NEWLINE, "\n"));
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "bar"));
     assertEq( p.getNext, RTResult(RTCmd.SET_FONT, "foo"));
