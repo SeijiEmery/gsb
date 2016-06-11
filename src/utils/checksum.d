@@ -39,7 +39,7 @@ struct Checksum {
             if (bytes.length % 8) {
                 ulong k = 0;
                 for (auto i = bytes.length % 8; i --> 0; ) {
-                    k = (k << 8) | bytes[i];
+                    k = (k << 8) | bytes[$-i];
                 }
                 s ^= k;
             }
