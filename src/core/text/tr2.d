@@ -62,7 +62,6 @@ private struct RichTextParser {
     immutable string MATCH_TEXT    = `[^<\n\\]+`;
     immutable string MATCH_TAG     = `</?(\w+)(?:=([^>]+))?>`;
     private auto r = ctRegex!(`^` ~ MATCH_TAG ~ `|` ~ MATCH_NEWLINE ~ `|`~ MATCH_ESCAPE ~ `|` ~ MATCH_TEXT);
-    private auto r_justText = ctRegex!(`^` ~ MATCH_ESCAPE ~ `|` ~ MATCH_TEXT );
 
     void setInput ( string text ) { m_input = text; }
     RTResult getNext () { 
@@ -96,25 +95,22 @@ private struct RichTextParser {
             return RTResult(RTCmd.NEWLINE, c.hit);
         }
         // Otherwise...
-
-        import gsb.core.log;
-
         auto unescape (string s) {
             if (s[0] == '\\' && (s[1] == '>' || s[1] == '<'))
                 return s[1..$];
             return s;
         }
 
-        // Accumulate remaining text + escapes
+        // Accumulate remaining text + escapes (each capture.hit returns either a string of text with no
+        // escapes, or a 2-character string '\\', <some char>. We merge all of these together into one
+        // string, either including or excluding '\\' depending on the char that follows (unescape '<' and '>',
+        // for example; leave everything else as is).
         auto text = unescape(c.hit);
-        log.write("Text! %s", text);
-
         while (m_input.length) {
             auto c2 = matchFirst( m_input, r );
             if (c2.hit[0] != '<' && c2.hit[0] != '\n') {
                 m_input = c2.post;
                 text ~= unescape(c2.hit);
-                log.write("Text! %s (%s)", text, c2.hit);
             } else break;
         }
         return RTResult(RTCmd.TEXT, text);
