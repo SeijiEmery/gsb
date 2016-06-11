@@ -61,7 +61,7 @@ private struct RichTextParser {
     immutable string MATCH_ESCAPE  = `\\[<>tn]`;
     immutable string MATCH_TEXT    = `[^<\n\\]+`;
     immutable string MATCH_TAG     = `</?(\w+)(?:=([^>]+))?>`;
-    private auto r = ctRegex!(`^` ~ MATCH_TAG ~ `|` ~ MATCH_NEWLINE ~ `|`~ MATCH_ESCAPE ~ `|` ~ MATCH_TEXT);
+    private auto r = regex(`^` ~ MATCH_TAG ~ `|` ~ MATCH_NEWLINE ~ `|`~ MATCH_ESCAPE ~ `|` ~ MATCH_TEXT);
 
     void setInput ( string text ) { m_input = text; }
     RTResult getNext () { 
@@ -158,13 +158,14 @@ unittest {
     assertEq( p.getNext, RTResult(RTCmd.END, ""));
 
 
-    p.setInput("Foo \nbar<font=foo>baz<size=10px>bar</size></font>Borg\\<foo\\><b>Blarg<i>\n\nfoob</b></i>");
+    p.setInput("Foo \nbar<font=foo>baz<size=10px><color=#ffaa2cef>bar</size></font>Borg\\<foo\\><b>Blarg<i>\n\nfoob</b></i></color>");
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "Foo "));
     assertEq( p.getNext, RTResult(RTCmd.NEWLINE, "\n"));
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "bar"));
     assertEq( p.getNext, RTResult(RTCmd.SET_FONT, "foo"));
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "baz"));
     assertEq( p.getNext, RTResult(RTCmd.SET_SIZE, "10px"));
+    assertEq( p.getNext, RTResult(RTCmd.SET_COLOR, "#ffaa2cef"));
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "bar"));
     assertEq( p.getNext, RTResult(RTCmd.POP_SIZE, ""));
     assertEq( p.getNext, RTResult(RTCmd.POP_FONT, ""));
@@ -176,6 +177,7 @@ unittest {
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "foob"));
     assertEq( p.getNext, RTResult(RTCmd.END_BOLD, ""));
     assertEq( p.getNext, RTResult(RTCmd.END_ITALIC, ""));
+    assertEq( p.getNext, RTResult(RTCmd.POP_COLOR, ""));
     assertEq( p.getNext, RTResult(RTCmd.END, ""));
 }
 
