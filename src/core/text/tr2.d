@@ -1,50 +1,9 @@
 module gsb.text.tr2;
-
-
-
-//class SbFont { // font family
-//    SbFontInstance[] m_fonts;
-//    float            m_size;
-//    //ChrInfo[] m_cachedCharInfo;
-
-//    private ChrInfo getCharInfo (dchar chr) {
-//        ChrInfo info;
-//        foreach (font; m_fonts) {
-//            if (font.getChrInfo(chr, info))
-//                return info;
-//        }
-//        return getChrInfo(' ');
-//    }
-
-//    @property auto size (float size) {
-//        size *= g_currentScreenScaleFactor;
-//        foreach (font; m_fonts) {
-//            font.setSize(size);
-//        }
-//    }
-//}
-
-
-//private struct SbFontInstance {
-//    FontData m_data;
-//    float    m_size;  // size in total pixels
-
-//    // computed data
-//    float m_computedScale;
-//    float m_ascent, m_descent, m_lineGap;
-
-//    bool getChrInfo (dchar chr, ref ChrInfo info) {
-//        int glyph = m_data.getGlyphIndex(chr);
-//        if (glyph != 0) {
-
-
-//            return true;
-//        }
-//        return false;
-//    }
-//}
-
-
+import gsb.utils.color;
+import gsb.core.log;
+import std.conv;
+import std.math;
+import std.format;
 
 
 enum RTCmd { END = 0, TEXT, NEWLINE, 
@@ -54,6 +13,19 @@ enum RTCmd { END = 0, TEXT, NEWLINE,
 struct RTResult { RTCmd cmd; string content; }
 
 
+// Parses unity-style richtext into sequences of "commands" for:
+// - plaintext, containing no newlines or parseable tags (unregcognized tags will show up here)
+// - a variable number of endlines (content.length => # of endlines)
+// - begin/end commands for various kinds of tags.
+//      "<color=#ff293a>" => SET_COLOR, "#ff293a"
+//      "</color>"        => POP_COLOR, ""
+// - invalid / ill-formed tags do NOT throw exceptions, but are instead rendered as plaintext
+//   (as mentioned above). If you see tags showing up in the text displayed by TextRenderer,
+//   then they either contain syntax errors or there is a bug in RichTextParser / TextRenderer.
+//
+// RichTextParser is a state machine; input is set with setInput() and results are obtained
+// via either getNext() or the ForwardRange interface (empty(), front(), popFront).
+//
 private struct RichTextParser {
     import std.regex;
 
@@ -63,7 +35,19 @@ private struct RichTextParser {
     immutable string MATCH_TAG     = `</?(\w+)(?:=([^>]+))?>`;
     private auto r = regex(`^` ~ MATCH_TAG ~ `|` ~ MATCH_NEWLINE ~ `|`~ MATCH_ESCAPE ~ `|` ~ MATCH_TEXT);
 
-    void setInput ( string text ) { m_input = text; }
+    // Range interface
+    auto ref parse (string text) {
+        setInput(text);
+        m_front = getNext();
+        return this;
+    }
+    bool empty () { return m_front.cmd == RTCmd.END; }
+    auto front () { return m_front; }
+    void popFront () { m_front = getNext(); }
+
+
+    // Non-range interface
+    void setInput ( string text ) { m_input = text; m_front = RTResult(RTCmd.END, ""); }
     RTResult getNext () { 
         if (!m_input.length)
             return RTResult(RTCmd.END, "");
@@ -116,7 +100,9 @@ private struct RichTextParser {
         return RTResult(RTCmd.TEXT, text);
     }
 
+private:
     string m_input;
+    RTResult m_front = RTResult(RTCmd.END);
 }
 
 unittest {
@@ -135,7 +121,15 @@ unittest {
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "\\nborg>"));
     assertEq( p.getNext, RTResult(RTCmd.END, ""));
 
-    
+    import std.array;
+    assertEq( p.parse("foo\n<i>bar</i>").array, [ 
+        RTResult(RTCmd.TEXT, "foo"),
+        RTResult(RTCmd.NEWLINE, "\n"),
+        RTResult(RTCmd.SET_ITALIC),
+        RTResult(RTCmd.TEXT, "bar"),
+        RTResult(RTCmd.END_ITALIC)
+    ]);
+
     p.setInput("Foob\nBlarg<i>Foo</i>Bar<i><b>\nBaz\n</i>Borg</b>foo");
     assertEq( p.getNext, RTResult(RTCmd.TEXT, "Foob"));
     assertEq( p.getNext, RTResult(RTCmd.NEWLINE, "\n"));
@@ -182,21 +176,153 @@ unittest {
 }
 
 
+class TRContext {}
+class SbFont {}
+private class FontManager {
+    SbFont getFont (string name) {
+        return new SbFont();
+    }
+}
 
+class TextRenderer {
+    RichTextParser m_rtp;
+    FontManager    m_fontMgr;
+    mixin TRState;
+    TRContext      m_lastContext;
 
+    void renderRichString (string text, TRContext ctx) {
+        auto s = saveState();
+        m_lastContext = ctx;
+        foreach (result; m_rtp.parse(text)) {
+            final switch (result.cmd) {
+                case RTCmd.TEXT: renderPlainString(result.content, ctx); break;
+                case RTCmd.NEWLINE: {
+                    // wrap line back on next line
+                } break;
+                
+                // Will implement bold/italic later
+                case RTCmd.SET_ITALIC: break;
+                case RTCmd.END_ITALIC: break;
 
+                case RTCmd.SET_BOLD: break;
+                case RTCmd.END_BOLD: break;
+                
+                case RTCmd.SET_FONT:  pushFont (result.content); break;
+                case RTCmd.SET_COLOR: pushColor(result.content); break;
+                case RTCmd.SET_SIZE:  pushSize (result.content); break;
 
-//class TextRenderer {
+                case RTCmd.POP_FONT:  popFont(); break;
+                case RTCmd.POP_COLOR: popColor(); break;
+                case RTCmd.POP_SIZE:  popSize(); break;
+                case RTCmd.END: assert(0);
+            }
+        }
+        m_lastContext = null;
+        restoreState(s);
+    }
 
-//    immutable richTextRegex = ctRegex!(`([^<>]|(?:\\[<>]))+|(<[^\>]+>|</\d*>)|(\n+)`);
+    void renderPlainString (string text, TRContext ctx) {
 
-//    void renderRichString( string text, TRContext context ) {
-//        auto s = saveState();
+    }
 
-//        restoreState(s);
-//    }
-//}
+    private float parseSize (string size) {
+        try {
+            return to!float(size);
+        } catch (ConvException _) {
+            return float.nan;
+        }
+    }
 
+    // called by TRState push/pop impl
+    private void onInvalidColor (string color) {
+        log.write("Invalid color string: '%s'", color);
+        renderPlainString(format("<color=%s>", color), m_lastContext);
+    }
+    private void onInvalidFont (string font) {
+        log.write("Invalid font string: '%s'", font);
+        renderPlainString(format("<font=%s>", font), m_lastContext);
+    }
+    private void onInvalidSize (string size) {
+        log.write("Invalid font string: '%s'", size);
+        renderPlainString(format("<size=%s>", size), m_lastContext);
+    }    
+}
+
+private auto popLast (T)(ref T[] array) {
+    auto v = array[$-1];
+    --array.length;
+    return v;
+}
+
+// Push/pop + state impl for TextRenderer.
+// Code is a bit disgusting so it's been moved into a mixin template.
+private mixin template TRState() {
+    SbFont m_font;
+    Color  m_color;
+    float  m_size;
+
+    private static struct StateFrame {
+        SbFont[] fonts;
+        Color [] colors;
+        float[]  sizes;
+    }
+    StateFrame[] m_frames;
+
+    private auto saveState () {
+        m_frames[$-1].fonts  ~= m_font;
+        m_frames[$-1].colors ~= m_color;
+        m_frames[$-1].sizes  ~= m_size;
+        m_frames ~= StateFrame([ m_font ], [ m_color ], [ m_size ]);
+        return m_frames.length-1;
+    }
+    private void restoreState (ulong n) {
+        while (m_frames.length > n)
+            m_frames.length--;
+        m_font  = m_frames[$-1].fonts.popLast;
+        m_color = m_frames[$-1].colors.popLast;
+        m_size  = m_frames[$-1].sizes.popLast;
+    }
+
+    private void pushFont (string name) {
+        m_frames[$-1].fonts ~= m_font;
+        auto font = m_fontMgr.getFont( name );
+        if (font) {        
+            m_font = font;
+        } else {
+            onInvalidFont(name);
+        }
+    }
+    private void pushColor (string color) {
+        try {
+            m_frames[$-1].colors ~= m_color;
+            m_color = to!Color(color);
+        } catch (Exception e) {
+            onInvalidColor(color);
+        }
+    }    
+    private void pushSize (string size) {
+        m_frames[$-1].sizes ~= m_size;
+        auto sz = parseSize( size );
+        if (!sz.isNaN) {
+            m_size = sz;
+        } else {
+            onInvalidSize(size);
+        }
+    }
+
+    private void popFont () {
+        if (m_frames[$-1].fonts.length)
+            m_font = m_frames[$-1].fonts.popLast;
+    }
+    private void popColor () {
+        if (m_frames[$-1].colors.length)
+            m_color = m_frames[$-1].colors.popLast;
+    }
+    private void popSize () { 
+        if (m_frames[$-1].colors.length) 
+            m_color = m_frames[$-1].colors.popLast; 
+    }
+}
 
 
 
