@@ -1,4 +1,5 @@
 module gsb.core.text2.tr2;
+import gsb.core.text2.rtp: RichTextParser;
 import gsb.core.text2.glyph;
 import gsb.utils.color; 
 import gsb.core.log;
