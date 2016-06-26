@@ -1,4 +1,5 @@
-module gsb.core.tr2.font;
+module gsb.core.text2.font;
+import gsb.core.text2.font_registry;
 
 struct FontData {
     stbtt_fontinfo fontInfo;
@@ -102,48 +103,3 @@ private class FontMgr : IFontManager {
         return m_fonts[name];
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

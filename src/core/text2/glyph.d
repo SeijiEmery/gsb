@@ -1,5 +1,5 @@
-module gsb.text.glyph;
-import gsb.text.font;
+module gsb.core.text2.glyph;
+import gsb.core.text2.font;
 import gl3n.linalg;
 import stb.truetype;
 import core.sync.mutex;
@@ -7,7 +7,7 @@ import gl3n.linalg;
 
 struct LGlyph {
     GlyphPtr glyph;
-    vec2 pos;
+    vec3 pos;
     alias this glyph;
 }
 
