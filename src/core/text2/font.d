@@ -1,36 +1,139 @@
 module gsb.core.text2.font;
 import gsb.core.text2.font_registry;
 
-struct FontData {
-    stbtt_fontinfo fontInfo;
-    // attribs...
-    uint id;
-}
-class FontFamily {
-    string m_name;
-    uint[] m_fonts;
+interface IFontManager {
+    FontFamily getFont (string);
 }
 
-class SbFont {
-    FontFamily m_font;
-    GlyphSet   m_glyphs;
+struct GlyphInfo {
+    stbtt_fontinfo* font;
+    int             index;
+    float scale;
+    float ascent, descent, linegap, advance, lsb; // scaled values
+    private vec2i size0; // unscaled glyph size
+    public  vec2  dim;   // scaled glyph size
+
+    void renderBitmap (vec2i pos, ref uint[] bitmap, vec2i bitmapSize) {
+        auto offset = pos.x + pos.y * bitmapSize.y;
+        assert(offset + glyphSize.x + glyphSize.y * bitmapSize.y < bitmap.length,
+            format("glyph dimensions exceed bitmap size! (bitmap %s, glyph pos %s, size %s",
+                bitmapSize, glyphSize, pos));
+
+        stbtt_MakeGlyphBitmap(
+            bitmap.ptr + offset,  // bitmap ptr
+            size0.x, size0.y,     // unscaled glyph dimensions
+            bitmapSize.x,         // stride
+            scale, scale,         // scale factor
+            index                 // glyph index
+        );
+    }
 }
 
+class FontData {
+    FontPath        m_path;
+    stbtt_fontinfo  m_fontData;
+    FontData        m_fallback = null;
+    bool            m_loaded = false;
+    float m_ascent, m_descent, m_linegap;
 
-struct FontInfo {
+    this (FontPath path) {
+        m_path = path;
+    }
+    private @property auto fallback (FontData v) {
+        return m_fallback = v;
+    }
+    void doLoad (string[] fileContents) {
+        if (m_loaded)
+            return; // disable hotloading for now
+
+        stbtt_InitFont(&m_fontData, fileContents.ptr, 
+            stbtt_GetFontOffsetForIndex(fileContents.ptr, m_path.index));
+
+        int ascent, descent, linegap;
+        stbtt_GetFontVMetrics(&m_fontData, &ascent, &descent, &lineGap);
+        m_ascent  = cast!typeof(m_ascent)(ascent);
+        m_descent = cast!typeof(m_descent)(descent);
+        m_linegap = cast!typeof(m_linegap)(lineGap);
+
+        m_loaded = true;
+    }
+    private void assertLoaded () {
+        assert(m_loaded, format("Non-loaded font %s!", m_path));
+    }
+    GlyphInfo getGlyph (dchar chr, float scale) {
+        assertLoaded();
+        auto index = stbtt_FindGlyphIndex(&m_fontData, chr);
+        if (index < 0)
+            return m_fallback ?
+                m_fallback.getGlyph(chr) :
+                GlyphInfo(null, index);
+
+        int advanceWidth, lsb, kern1, kern2, x0, y0, x1, y1;
+        stbtt_GetGlyphHMetrics(&m_fontData, index, &advanceWidth, &lsb);
+        stbtt_GetGlyphKernAdvance(&m_fontData, &kern1, &kern2);
+        stbtt_GetGlyphBox(&m_fontData, &x0, &y0, &x1, &y1);
+
+        return GlyphInfo( 
+            &m_fontData, index, 
+            scale,
+            m_ascent * scale, m_descent * scale, m_linegap * scale,
+            advanceWidth * scale, lsb * scale,
+            vec2i(x1-x0, y1-y0),
+            vec2((x1-x0) * scale, (y1-y0) * scale)
+        );
+    }
+}
+
+class FontInstance {
+    FontData m_fontData;
+    float    m_fontScale, m_pixelSize;
+
+    this (FontData font, float pixelSize) {
+        m_pixelSize = pixelsize;
+        m_fontScale = stbtt_ScaleForPixelHeight(m_fontData.ptr, pixelSize);
+    }
+    auto getGlyph (dchar chr) { return m_fontData.getGlyph(chr); }
+}
+
+struct FontPath {
     string path;
     int    index = 0;
     
     @property auto strid () { return format("%s:%d", path, index); }
 }
 
-class FontRegistry {
-    FontInfo[string] fontPaths;
-    string[][string] fonts;
-}
+class FontRegistry : IFontRegistry {
+    FontPath[FT_COUNT][string] m_fontPaths;
+    string[string]        m_fontFallbacks;
+    Tuple!(string,string) m_fontAliases;
 
-interface IFontManager {
-    FontFamily getFont (string);
+    void registerFont (string name, FontTypeface typeface, string path, int index = 0) {
+        m_fontPaths[typeface][name] = FontPath(path, index);
+    }
+    void fontAlias (string name, string existing) {
+        m_fontAliases ~= tuple(name, existing);
+    }
+    void fontFallback (string name, string fallback) {
+        m_fontFallbacks[name] = fallback;
+    }
+
+    //void registerFonts (FontMgr fm) {
+    //    import gsb.core.log;
+
+    //    auto i = f.beginFontLoad();
+    //    uint[string] fonts;
+    //    foreach (k, v; m_fontPaths[FT_DEFAULT]) {
+    //        fonts[k] = fm.addUniqueFont(v);
+    //    }
+    //    foreach (p; m_fontFallbacks) {
+    //        if (p[0] in fonts && p[1] in fonts)
+    //            fm.setFallback(fonts[p[0]], fonts[p[1]]);
+    //        else
+    //            log.write("Invalid font fallback: '%s' => '%s'", p[0], p[1]);
+    //    }
+
+    //    f.endLoad(i);
+    //}
 }
 
 private class FontMgr : IFontManager {
