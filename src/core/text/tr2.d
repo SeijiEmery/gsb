@@ -1,9 +1,11 @@
 module gsb.text.tr2;
-import gsb.utils.color;
+import gsb.text.glyph;
+import gsb.utils.color; 
 import gsb.core.log;
 import std.conv;
 import std.math;
 import std.format;
+import gl3n.linalg;
 
 
 enum RTCmd { END = 0, TEXT, NEWLINE, 
@@ -30,7 +32,7 @@ private struct RichTextParser {
     import std.regex;
 
     immutable string MATCH_NEWLINE = `\n+`;
-    immutable string MATCH_ESCAPE  = `\\[<>tn]`;
+    immutable string MATCH_ESCAPE  = `\\.`;
     immutable string MATCH_TEXT    = `[^<\n\\]+`;
     immutable string MATCH_TAG     = `</?(\w+)(?:=([^>]+))?>`;
     private auto r = regex(`^` ~ MATCH_TAG ~ `|` ~ MATCH_NEWLINE ~ `|`~ MATCH_ESCAPE ~ `|` ~ MATCH_TEXT);
@@ -184,11 +186,61 @@ private class FontManager {
     }
 }
 
+private struct LGlyph {
+    GlyphPtr glyph;
+    vec3     pos;
+
+    alias glyph this;   
+}
+
 class TextRenderer {
     RichTextParser m_rtp;
     FontManager    m_fontMgr;
     mixin TRState;
     TRContext      m_lastContext;
+
+    GlyphSetMgr    m_glyphCollection;
+    GlyphSet       m_glyphs = null;
+    float          m_fontScale;
+    TextLayout     m_layout;
+
+    // called at end of frame
+    void renderSubmit (GlBatch batch) {
+        foreach (i, bitmap; m_bitmaps) {
+            if (bitmap.active) {
+                m_textures[i].setPixels( bitmap, bitmap.size );
+            }
+        }
+        m_tempGbuf.clear();
+        m_renderedGlyphs.sort!"a.texId";
+
+        uint prevTex = uint.max;
+
+        batch.activeShader( m_textShader );
+        batch.activeTexture( 1, m_colorPalette.texture );
+
+        foreach ( glyph; m_renderedGlyphs ) {
+            if (glyph.texId != prevTex) {
+
+                batch.loadGeometry ( 0, m_tempGbuf );
+                batch.drawArrays( GL_TRIANGLES, m_tempGbuf.length );
+                m_tempGbuf.clear();
+
+                prevTex = glyph.texId;
+                batch.activeTexture( 0, m_textures[glyph.texId] );
+            }
+
+            pushQuad( m_tempGbuf, 
+                glyph.pos, glyph.bounds, 
+                glyph.uv0, glyph.uvBounds,
+                glyph.colorIndex 
+            );
+        }
+        if (m_tempGbuf.length) {
+            batch.loadGeometry ( 0, m_tempGbuf );
+            batch.drawArrays( GL_TRIANGLES, m_tempGbuf.length );
+        }
+    }
 
     void renderRichString (string text, TRContext ctx) {
         auto s = saveState();
@@ -221,10 +273,50 @@ class TextRenderer {
         restoreState(s);
     }
 
-    void renderPlainString (string text, TRContext ctx) {
-
+    void setFont (SbFont font) {
+        m_glyphs = m_glyphCollection.getCollection(font, m_fontScale);
     }
+    void renderPlainString (string text, TRContext ctx) {
+        //Glyph*[] glyphsToRender;
 
+        LGlyph[] glyphGeometry;
+        RedBlackTree!(GlyphPtr, "a.id < b.id") usedGlyphs;
+
+        foreach (chr; text.byDchar) {
+            auto glyph = m_glyphs[chr];
+            if (glyph && layouter.advGlyphVisible(glyph)) {
+                glyphGeometry ~= LGlyph(glyph, layouter.screenPos);
+                m_usedGlyphs.insert(glyph);
+            }
+        }
+        renderGlyphs( m_usedGlyphs.array );
+        m_usedGlyphs.clear();
+
+        foreach (glyph; glyphGeometry) {
+            auto dim = layouter.toScreenspace(vec3(glyph.dim, 0));
+            m_batchGeometry.pushQuad(
+                glyph.pos,       glyph.uv0, m_colorIndex,
+                glyph.pos + dim, glyph.uv1, m_colorIndex
+            );
+        }
+    }
+    private final void writeGlyph (Glyph* glyph) {
+        auto pos    = m_layout.pos + toScreenCoords( glyph.layoutOffset );
+        auto bounds = toScreenCoords( glyph.bounds * m_scaleTweak );
+
+        if (inScreenBounds( pos, pos + bounds ))
+            m_gbuf.push( pos, bounds, glyph.texId, m_colorIndex );
+    }
+    private final void packAndRenderGlyphs (Glyph* glyphs) {
+        //foreach (glyph; glyphs) {
+        //    m_fontPacker.packGlyph( glyph.bounds, glyph.texId, glyph.uv0 );
+        //}
+        //foreach (glyph; glyphs) {
+        //    auto bitmap = m_bitmaps[ glyph.texId ];
+        //    stbtt_MakeGlyphBitmap( bitmap.pixels, glyph.fontInfo, glyph.index, ... )
+        //    bitmap.needsUpdate = true;
+        //}
+    }
     private float parseSize (string size) {
         try {
             return to!float(size);
