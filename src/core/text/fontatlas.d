@@ -149,8 +149,10 @@ class PackedFontAtlas {
             stbtt_PackSetOversampling(&packContext, 4, 4);
         }
     }
-    void releaseResources () {
-        shouldRelease = true;
+    void release () {
+        if (_backend)
+            _backend.texture.release();
+
         if (bitmapData) {
             DEBUG_LOG(log.write("PackedFontAtlas: releasing resources!"));
             stbtt_PackEnd(&packContext);
@@ -158,7 +160,7 @@ class PackedFontAtlas {
         }
     }
     ~this () {
-        releaseResources();
+        release();
     }
 
     class GraphicsBackend {
@@ -182,11 +184,8 @@ class PackedFontAtlas {
             // Bind to texture 0
             (cast(GlTexture)texture).bind( 0 );
         }
-        void releaseResources () {
-            texture.release();
-        }
         ~this () {
-            releaseResources();
+            texture.release();
         }
     }
 }

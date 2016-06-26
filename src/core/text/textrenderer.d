@@ -213,6 +213,7 @@ class TextRenderer {
             s.atlas = new PackedFontAtlas();
             return s;
         }
+        void release () { atlas.release(); }
     }
     private SharedAtlas[] atlases;
     private size_t[string] atlasLookup;
@@ -330,6 +331,27 @@ class TextRenderer {
                     sharedAtlas.atlas.insertCharset(fragment.font, tmp_charset);
                 }
             }
+
+            //// clear non-referenced atlas textures
+            //for (auto i = atlases.length; i --> 0; ) {
+            //    if (atlases[i].refcount < 0) {
+            //        log.write("Removing atlas %s: %s", i, atlases[i]);
+            //        atlases[i].release();
+
+            //        auto k = atlases.length - 1;
+            //        if (k != i) {
+            //            log.write("Replace index occurances: %s => %s (length %s)", k, i, atlases.length);
+            //            atlases[i] = atlases[k];
+            //            foreach (kv; atlasLookup.byKeyValue) {
+            //                if (kv.value == k) {
+            //                    log.write("Updating index: %s => %s", k, i);
+            //                    atlasLookup[kv.key] = i;
+            //                }
+            //            }
+            //        }
+            //        atlases.length--;
+            //    }
+            //}
 
             // write buffers
             addList.sort!((a,b) => a.currentAtlas < b.currentAtlas);
