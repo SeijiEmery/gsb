@@ -1,6 +1,7 @@
 module gsb.core.text2.tr2;
 import gsb.core.text2.rtp: RichTextParser;
-import gsb.core.text2.glyph;
+import gsb.core.text2.font;
+import gsb.core.text2.glyphset;
 import gsb.utils.color; 
 import gsb.core.log;
 import std.conv;
@@ -10,19 +11,6 @@ import gl3n.linalg;
 
 
 class TRContext {}
-class SbFont {}
-private class FontManager {
-    SbFont getFont (string name) {
-        return new SbFont();
-    }
-}
-
-private struct LGlyph {
-    GlyphPtr glyph;
-    vec3     pos;
-
-    alias glyph this;   
-}
 
 class TextRenderer {
     RichTextParser m_rtp;
