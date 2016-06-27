@@ -1,8 +1,13 @@
 module gsb.core.text2.font;
 import gsb.core.text2.font_registry;
+import stb.truetype;
+import gl3n.linalg;
+import core.sync.mutex;
+import std.typecons: Tuple, tuple;
+import gsb.core.log;
 
 interface IFontManager {
-    FontFamily getFont (string);
+    FontInstance getFont (string, float);
 }
 
 struct GlyphInfo {
@@ -14,8 +19,8 @@ struct GlyphInfo {
     public  vec2  dim;   // scaled glyph size
 
     void renderBitmap (vec2i pos, ref uint[] bitmap, vec2i bitmapSize) {
-        auto offset = pos.x + pos.y * bitmapSize.y;
-        assert(offset + glyphSize.x + glyphSize.y * bitmapSize.y < bitmap.length,
+        auto offset = pos.x + pos.y * bitmapSize.x;
+        assert(offset + glyphSize.x + glyphSize.y * bitmapSize.x < bitmap.length,
             format("glyph dimensions exceed bitmap size! (bitmap %s, glyph pos %s, size %s",
                 bitmapSize, glyphSize, pos));
 
@@ -44,16 +49,16 @@ class FontData {
     }
     void doLoad (string[] fileContents) {
         if (m_loaded)
-            return; // disable hotloading for now
+            return; // no hotloading
 
         stbtt_InitFont(&m_fontData, fileContents.ptr, 
             stbtt_GetFontOffsetForIndex(fileContents.ptr, m_path.index));
 
         int ascent, descent, linegap;
         stbtt_GetFontVMetrics(&m_fontData, &ascent, &descent, &lineGap);
-        m_ascent  = cast!typeof(m_ascent)(ascent);
-        m_descent = cast!typeof(m_descent)(descent);
-        m_linegap = cast!typeof(m_linegap)(lineGap);
+        m_ascent  = cast(typeof(m_ascent))ascent;
+        m_descent = cast(typeof(m_descent))descent;
+        m_linegap = cast(typeof(m_linegap))lineGap;
 
         m_loaded = true;
     }
@@ -82,6 +87,7 @@ class FontData {
             vec2((x1-x0) * scale, (y1-y0) * scale)
         );
     }
+    auto @property path () { return m_path.path; }
 }
 
 class FontInstance {
@@ -103,106 +109,101 @@ struct FontPath {
 }
 
 class FontRegistry : IFontRegistry {
-    FontPath[FT_COUNT][string] m_fontPaths;
-    string[string]        m_fontFallbacks;
-    Tuple!(string,string) m_fontAliases;
+    FontPath[FT_COUNT][string] fontPaths;
+    string[string]        fontFallbacks;
+    Tuple!(string,string) fontAliases;
 
     void registerFont (string name, FontTypeface typeface, string path, int index = 0) {
-        m_fontPaths[typeface][name] = FontPath(path, index);
+        fontPaths[typeface][name] = FontPath(path, index);
     }
     void fontAlias (string name, string existing) {
-        m_fontAliases ~= tuple(name, existing);
+        fontAliases ~= tuple(name, existing);
     }
     void fontFallback (string name, string fallback) {
-        m_fontFallbacks[name] = fallback;
+        fontFallbacks[name] = fallback;
     }
-
-    //void registerFonts (FontMgr fm) {
-    //    import gsb.core.log;
-
-    //    auto i = f.beginFontLoad();
-    //    uint[string] fonts;
-    //    foreach (k, v; m_fontPaths[FT_DEFAULT]) {
-    //        fonts[k] = fm.addUniqueFont(v);
-    //    }
-    //    foreach (p; m_fontFallbacks) {
-    //        if (p[0] in fonts && p[1] in fonts)
-    //            fm.setFallback(fonts[p[0]], fonts[p[1]]);
-    //        else
-    //            log.write("Invalid font fallback: '%s' => '%s'", p[0], p[1]);
-    //    }
-
-    //    f.endLoad(i);
-    //}
 }
 
-private class FontMgr : IFontManager {
-    //
-    // Internals
-    //
-    GlyphSetMgr        m_glyphs;
-    FontData[]         m_fontData;
-    FontFamily[string] m_fonts;
-    ubyte[][string]    m_fontFileContents;
-    uint[string]       m_fontDataLookup;
+class FontManager : IFontManager {
+    class FontEntry {
+        FontData       font;
+        FontInstance[] instances;
+
+        this (FontData font) { this.font = font; }
+    }
+    ubyte[][string]   m_loadedFiles;
+    FontEntry[string] m_fonts;
     Mutex m_mutex;
     uint m_nextUniqueFontId = 0;
 
     this () { m_mutex = new Mutex(); }
-    void lock   () { m_mutex.lock(); }
-    void unlock () { m_mutex.unlock(); }
 
-    private uint addUniqueFont (FontInfo info) {
-        auto id = cast(uint)m_fontData.length;
-        m_fontData ~= FontData(info, id);
-        return m_fontDataLookup[info.strid] = id;
-    }
-    private void loadFonts (uint from) {
-        auto toLoad = m_fontData[ from .. $ ];
-        auto files  = toLoad.map!"a.path".filter!((path) =>
-            path in m_fontFileContents ? 
-                false : (m_fontFileContents[path] = null, true));
+    FontInstance getFont (string name, float size) {
+        if (name !in m_fonts) {
+            log.write("Unknown font: '%s'! (returning 'default')", name);
+            assert("default" in m_fonts);
+            return getFont("default", size);
+        }
+        synchronized (m_mutex) {
+            auto entry = m_fonts[name];
+            size = round(size + 0.5);
 
-        files.parallel_foreach!((string path) {
-            m_fontFileContents[path] = read(path);
-        });
-        foreach (ref font; toLoad) {
-            assert(font.path in m_fontFileContents && m_fontFileContents[font.path] !is null);
-            font.load(m_fontFileContents[font.path]);
+            foreach (instance; entry.instances) {
+                if (instance.size == size)
+                    return instance;
+            }
+            auto instance = new FontInstance(entry.font, size);
+            entry.instances ~= instance;
+            entry.instances.sort!"a.size < b.size";
+            return instance;
         }
     }
-    private FontFamily addUniqueFontFamily (string id, string[] fonts) {
-        return id in m_fonts ?
-            m_fonts[id] :
-            m_fonts[id] = new FontFamily( id, m_nextUniqueFontId++, fonts.map!(
-                (font) => m_fontData[m_fontDataLookup[font]].id
-            ).array);
-    }
 
-    //
-    // Public-ish API
-    //
+    void loadFonts (FontRegistry r) {
+        synchronized (m_mutex) {
+            FontEntry[] newFonts;
+            string[]    newFiles;
 
-    // Load all fonts from a given font registry
-    void loadFonts (FontRegistry registry) {
-        m_mutex.lock();
-        auto start = cast(uint)m_fontData.length;
-        foreach (k,v; registry.fonts) {
-            if (k !in m_fonts) {
-                foreach (font; v) {
-                    if (font !in m_fontDataLookup)
-                        addUniqueFont(registry.fontInfo[font]);
+            // create font entries for new fonts
+            foreach (k,v; r.fontPaths[FT_DEFAULT]) {
+                if (k !in m_fonts) {
+                    auto font = new FontEntry(new FontData(v));
+                    newFonts ~= font;
+                    m_fonts[k] = font;
+
+                    if (v.path !in m_loadedFiles) {
+                        newFiles ~= v.path;
+                        m_loadedFiles[v.path] = null;
+                    }
                 }
-                addUniqueFontFamily(k, v);
+            }
+            // Setup font fallbacks + aliases
+            foreach (fa; r.fontAliases) {
+                if (fa[0] !in m_fonts) {
+                    if (fa[1] !in m_fonts)
+                        log.write("Cannot alias font '%s' to '%s' (does not exist)", fa[0], fa[1]);
+                    else
+                        m_fonts[fa[0]] = m_fonts[fa[1]];
+                }
+            }
+            foreach (k,v; r.fontFallbacks) {
+                if (k !in m_fonts)
+                    log.write("Invalid font fallback '%s' => '%s' (font does not exist)", k, v);
+                else if (v !in m_fonts)
+                    log.write("Invalid font fallback '%s' => '%s' (fallback does not exist)", k, v);
+                else
+                    m_fonts[k].font.fallback = m_fonts[v].font;
+            }
+            // Load font file(s) + font data
+            foreach (file; newFiles) {
+                m_loadedFiles[file] = read(file);
+            }
+            foreach (f; newFonts) {
+                auto font = m_fonts[f].font;
+                assert(font.path in m_loadedFiles, format("Font file not loaded! (%s,%s)", f, font.path));
+                font.doLoad(m_loadedFiles[font.path]);
             }
         }
-        loadFonts(start);
-        m_mutex.unlock();
-    }
-
-    // Font resolution
-    FontFamily getFont (string name) {
-        enforce( name in m_fonts, format("Unknown font '%s'", name));
-        return m_fonts[name];
+        enforce("default" in m_fonts, format("No default font specified! (has %s)", m_fonts.keys));
     }
 }
