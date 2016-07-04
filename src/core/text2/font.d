@@ -18,6 +18,9 @@ struct GlyphInfo {
     private vec2i size0; // unscaled glyph size
     public  vec2  dim;   // scaled glyph size
 
+    // internal glyphset data
+    ushort rc = 0;
+
     void renderBitmap (vec2i pos, ref uint[] bitmap, vec2i bitmapSize) {
         auto offset = pos.x + pos.y * bitmapSize.x;
         assert(offset + glyphSize.x + glyphSize.y * bitmapSize.x < bitmap.length,
