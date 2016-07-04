@@ -1,5 +1,5 @@
-module sb.threading.interface.thread_worker;
-module sb.threading.interface.thread_enums;
+module sb.threading.thread_worker;
+import sb.threading.thread_enums;
 
 /// Abstraction of a thread worker implementation, assigned + run by the a threading context.
 /// Examples include the sb main thread, graphics thread, audio thread, and various worker threads.

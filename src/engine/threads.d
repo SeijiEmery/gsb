@@ -8,6 +8,10 @@ import std.format;
 
 import gsb.core.log;
 
+import sb.threading;
+
+
+
 // Engine thread enum; only applies to gsb EngineThread(s) with
 // special semantics; other threads are not so addressed.
 enum EngineThreadId {

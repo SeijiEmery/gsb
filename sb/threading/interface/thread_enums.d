@@ -1,4 +1,4 @@
-module sb.threading.interface.thread_enums;
+module sb.threading.thread_enums;
 
 enum SbThreadId : uint {
     MAIN_THREAD = 0, GRAPHICS_THREAD = 1, AUDIO_THREAD = 2,

@@ -1,5 +1,6 @@
-module sb.threading.interface.thread_context;
-import sb.threading.interface.thread_worker;
+module sb.threading.thread_context;
+import sb.threading.thread_worker;
+import sb.threading.thread_enums;
 
 /// Creates a new thread context (binds notification events to the passed in listener,
 /// which may not be null).

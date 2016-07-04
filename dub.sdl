@@ -1,10 +1,19 @@
 name "gsb"
-description "A minimal D application."
-copyright "Copyright © 2016, semery"
-authors "semery"
+description "A tiny game engine written in D."
+copyright "Copyright © 2016, Seiji Emery"
+authors "Seiji Emery"
 
 targetType "executable"
 targetPath "build"
+sourcePaths "src" "sb/threading/interface"
+
+subPackage {
+    name "threading"
+    targetType "library"
+    sourcePaths "sb/threading/interface" "sb/threading/impl"
+    targetPath  "build/libs/threading"
+}
+dependency "gsb:threading" version="*"
 
 dependency "derelict-glfw3" version="~>1.1.1"
 dependency "derelict-gl3" version="~>1.0.18"
