@@ -105,10 +105,10 @@ interface IThreadEventListener {
     /// Called if worker timed out / failed to call signalFrameDone() (see setUnresponsiveFrameThreshold). 
     /// May call signalFrameDone() to resume execution (at the cost of potential bugs), 
     /// and/or log errors or kill the program.
-    void onUnresponsiveFrame (IThreadContext, SbThreadId);
+    void onUnresponsiveFrame (IThreadContext, SbThreadId, double);
 
     /// Called if worker doThreadWork() timed out (see setUnresponsiveWorkThreshold)
-    void onUnresponsiveWorkUnit (IThreadContext, SbThreadId);
+    void onUnresponsiveWorkUnit (IThreadContext, SbThreadId, double);
 }
 
 /// Thrown on internal threading errors

@@ -21,4 +21,4 @@ dependency "gl3n" version="~>1.3.1"
 dependency "dglsl" version="~>0.6.0"
 
 lflags "-Lext/libs" "-lstb"
-dflags "-J."
+dflags "-J." "-vgc"

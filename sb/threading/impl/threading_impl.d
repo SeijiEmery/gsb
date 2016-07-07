@@ -1,6 +1,11 @@
 module sb.threading.impl.thread_impl;
 import sb.threading;
 import std.exception: enforce;
+import std.datetime: Duration, dur;
+import core.sync.mutex;
+import core.sync.condition;
+import core.thread;
+
 
 IThreadContext sbCreateThreadContext (IThreadEventListener listener) {
     enforce!SbThreadUsageException(listener !is null, 
@@ -15,6 +20,177 @@ private struct ThreadInfo {
     IThreadWorker worker;
     SbThreadStatus status = SbThreadStatus.NOT_RUNNING;
 }
+private struct Message { SbThreadMask target; SbThreadId assigned = SbThreadId.NONE; void delegate() msg; }
+
+private class MessageBox {
+    Message[][2] frameMessages;
+    Message[][2] asyncMessages;
+    uint[2]      pendingFrameMessage;
+    uint[2]      pendingAsyncMessage;
+
+    uint curFrameId = 0;
+    ReadWriteMutex frameMutex;
+
+    this () { frameMutex = new ReadWriteMutex(); }
+    void pushThisFrame (SbThreadMask target, void delegate msg) {
+        synchronized (frameMutex.read) {
+            frameMessages[curFrameId & 1] ~= Message(target, SbThreadId.NONE, msg);
+            pendingFrameMessage[curFrameId & 1] |= target;
+        }
+    }
+    void pushNextFrame (SbThreadMask target, void delegate msg) {
+        synchronized (frameMutex.read) {
+            frameMessages[(curFrameId+1) & 1] ~= Message(target, SbThreadId.NONE, msg);
+            pendingFrameMessage[(curFrameId+1) & 1] |= target;
+        }
+    }
+    void pushAsync (SbThreadMask target, void delegate msg) {
+        synchronized (frameMutex.read) {
+            asyncMessages[curFrameId & 1] ~= Message(target, SbThreadId.NONE, msg);
+            pendingAsyncMessage[curFrameId & 1] |= target;
+        }
+    }
+
+    Message* fetchFrameMessage (SbThreadId threadId) {
+        synchronized (frameMutex.read) {
+            auto mask = threadId.toMask;
+            auto fid  = curFrameId & 1;
+            if (!pendingFrameMessages[fid] & mask)
+                return null;
+
+            foreach (ref message; frameMessages[fid]) {
+                if (message.assigned != SbThreadId.NONE && 
+                    message.target & mask &&
+                    cas(&message.assigned, SbThreadId.NONE, threadId))
+                {
+                    return &message;
+                }
+            }
+            do {
+                auto current = pendingFrameMessages[fid];
+                auto next    = current & ~threadId.toMask;
+            } while (!cas(&pendingFrameMessages[fid], current, next));
+
+
+            while (!cas(pendingFrameMessages[fid] & ~threadId.toMask,
+                pendingFrameMessages[fid], ))
+
+
+            pendingFrameMessages[curFrameId & 1] &= ~threadId.toMask;
+            return null;
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+private class ThreadRunner {
+    ThreadContext  tc;
+    IThreadWorker  worker;
+    SbThreadId     threadId;
+    SbThreadStatus status = SbThreadStatus.NOT_RUNNING;
+    bool shouldDie     = false;
+    bool shouldRestart = false;
+    IThreadWorker workerReplacement = null; // use iff shouldRestart
+final:
+    private void startupThread () {
+        status = SbThreadStatus.INITIALIZING;
+        tc.notifyStarted(threadId);
+        worker.onThreadStart(threadId);
+
+        status = SbThreadStatus.RUNNING;
+        tc.notifyRunning(threadId);
+    }
+    private void teardownThread_ok () {
+        status = SbThreadStatus.EXIT_OK;
+        try {
+            worker.onThreadEnd();
+        } catch (Throwable e) {
+            status = SbThreadStatus.EXIT_ERROR;
+            tc.notifyError(threadId);
+            return;
+        }
+        tc.notifyExited(threadId);
+    }
+    private void teardownThread_andReportError (Throwable err) {
+        status = SbThreadStatus.EXIT_ERROR;
+        worker.onThreadEnd();
+        tc.notifyError(threadId);
+    }
+    private void restartThread (ThreadWorker newWorker) {
+        teardownThread_ok();
+        worker = newWorker;
+        startupThread();
+    }
+    private void runLoop () {
+        while (!shouldDie) {
+            if (shouldRestart && workerReplacement) {
+                if (workerReplacement != worker)
+                    restartThread(workerReplacement);
+                shouldRestart = false;
+                workerReplacement = null;
+
+            } else if (nextFrameId != frameId) {
+                worker.onNextFrame();
+                frameId = nextFrameId;
+
+
+
+            } else if (hasExternWork) {
+                doExternWork();
+            } else {
+                worker.doThreadWork();
+            }
+        }
+    }
+    private void swapFrame () {
+        worker.onNextFrame();
+    }
+
+
+
+
+
+
+    void run () {
+        enforce!SbThreadingException(status == SbThreadStatus.NOT_RUNNING,
+            format("Invalid state: %s", status));
+        try {
+            startupThread();
+            runLoop();
+            teardownThread_ok();
+        } catch (Throwable e) {
+            teardownThread_andReportError(e);
+        }
+        shouldDie = shouldRestart = false;
+        workerReplacement = null;
+    }
+}
+
+
+
+
+
+
+
+
+
 private class ThreadContext : IThreadContext {
     IThreadEventListener evh;  // special event handler / event listener
     ThreadInfo[SbThreadId.max] threadInfo;
