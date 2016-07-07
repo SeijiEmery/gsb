@@ -1,4 +1,5 @@
 module sb.gl.shader;
+import gl3n.linalg;
 
 interface IShader {
     // Load shader contents

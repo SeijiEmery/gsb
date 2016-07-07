@@ -7,13 +7,69 @@ targetType "executable"
 targetPath "build"
 sourcePaths "src" "sb/threading/interface"
 
+subpackage {
+    name "all"
+    targetType "none"
+    dependency ":events" ":platform" ":threading" ":fs" ":gl" ":app" ":sb2"
+}
+subPackage {
+    name "events"
+    targetType "library"
+    importPaths "sb/events/interface"
+    sourcePaths "sb/events/impl"
+}
+subPackage {
+    name "platform"
+    targetType "library"
+    importPaths "sb/platform/interface" "sb/events/interface"
+    sourcePaths "sb/platform/glfw_impl"
+    targetPath  "build/libs/platform"
+
+    dependency "gsb:events" version="*"
+    dependency "derelict-glfw3" version="~>1.1.1"
+    dependency "derelict-gl3"  version="~>1.0.18"
+}
 subPackage {
     name "threading"
     targetType "library"
     sourcePaths "sb/threading/interface" "sb/threading/impl"
     targetPath  "build/libs/threading"
 }
-dependency "gsb:threading" version="*"
+subPackage {
+    name "fs"
+    targetType "library"
+    sourcePaths "sb/fs/interface" "sb/fs/impl"
+    targetPath "build/libs/fs"
+}
+subPackage {
+    name "gl"
+    targetType "library"
+    sourcePaths "sb/gl/interface" "sb/gl/gl_41_impl" "sb/platform/interface" "sb/events/interface"
+    targetPath "build/libs/gl"
+    dependency "gsb:platform" version="*"
+    dependency "derelict-gl3" version="~>1.0.18"
+    dependency "gl3n" version="~>1.3.1"
+}
+subPackage {
+    name "app"
+    targetType "library"
+    sourcePaths "sb/app/interface" "sb/app/impl" "sb/platform/interface" "sb/gl/interface" "sb/fs/interface" "sb/events/interface" "sb/threading/interface"
+    targetPath "build/libs/app"
+
+    dependency "gsb:threading" version="*"
+    dependency "gsb:platform" version="*"
+    dependency "gsb:fs" version="*"
+    dependency "gsb:gl" version="*"
+}
+subPackage {
+    name "sb2"
+    targetType "executable"
+    importPaths "sb/app/interface" "sb/events/interface"
+    sourcePaths "sb/app"
+    targetPath  "build"
+    dependency "gsb:app" version="*"
+}
+#dependency "gsb:threading" version="*"
 
 dependency "derelict-glfw3" version="~>1.1.1"
 dependency "derelict-gl3" version="~>1.0.18"
@@ -21,4 +77,4 @@ dependency "gl3n" version="~>1.3.1"
 dependency "dglsl" version="~>0.6.0"
 
 lflags "-Lext/libs" "-lstb"
-dflags "-J." "-vgc"
+dflags "-J."

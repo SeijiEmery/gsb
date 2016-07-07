@@ -4,11 +4,24 @@ import sb.platform;
 import sb.threading;
 import sb.fs;
 import sb.gl;
+import std.stdio;
 
+private immutable size_t MAX_BACKGROUND_THREADS = 8;
 
+IApplication sbCreateApp (SbAppConfig config) {
+    return new SbApplication(config);
+}
 class SbApplication : IApplication {
-    IThreadContext       threads;
-    IThreadEventListener threadListener;
+    IPlatform        platform = null;
+    IPlatformWindow  mainWindow = null;
+    IGraphicsContext graphicsContext = null;
+    IFileContext     fs = null;
+
+    IThreadContext       threads = null;
+    IThreadEventListener threadListener = null;
+    IThreadWorker        mtWorker, gtWorker;
+    IThreadWorker[MAX_BACKGROUND_THREADS] backgroundWorkers;
+
     bool running = false;
 
     this (SbAppConfig config) {
@@ -16,6 +29,7 @@ class SbApplication : IApplication {
             initPlatform (config);
             initThreads  (config);
             initFs       (config);
+            initWindow   (config);
             // etc...
         } catch (Throwable e) {
             doTeardown();
@@ -81,14 +95,26 @@ class SbApplication : IApplication {
 
         fs.setupScanInterval(dur!"seconds"(3), threads);
     }
+    private final void initWindow (SbAppConfig config) {
+        auto screens = platform.getScreenInfo();
+        mainWindow = platform.createWindow("main-window", config.mainWindowOptions);
+    }
+
+
+
     // ...
 
     void run () {
-        enforce(!running);
-        running = true;
+        try {
+            enforce(!running);
+            running = true;
 
-        // Everything setup, so we can just call this: (transfers control to mtWorker)
-        threads.enterThread(SbThreadId.MAIN_THREAD);
+            // Everything setup, so we can just call this: (transfers control to mtWorker)
+            threads.enterThread(SbThreadId.MAIN_THREAD);
+        } catch (Throwable e) {
+            log.write("Main thread crashed: %s", e);
+            threads.killAllThreads();
+        }
     }
 
     private class ThreadEventHandler : IThreadEventListener {
@@ -130,7 +156,7 @@ class SbApplication : IApplication {
             // run modules one by one, then call signalFrameDone...?
         }
         void onThreadNextFrame () {
-            
+
         }
     }
     private class BackgroundWorker : IThreadWorker {

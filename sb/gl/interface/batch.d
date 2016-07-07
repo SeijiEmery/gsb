@@ -1,5 +1,7 @@
 module sb.gl.batch;
 import sb.gl.context;
+import sb.gl.texture;
+import sb.gl.shader;
 
 interface IBatch {
     void bind (IShader);

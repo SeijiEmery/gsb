@@ -1,4 +1,5 @@
 module sb.events.internal_events;
+import std.datetime;
 
 // Global app events
 struct SbAppLoadedEvent {}

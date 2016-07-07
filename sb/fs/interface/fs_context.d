@@ -50,7 +50,11 @@ interface IFileAction {
     void release (); // kill action (stop file reloading)
 }
 
-
+class SbFileException : Exception {
+    this (string msg, string file = __FILE__, uint line = __LINE__, Throwable next = null) {
+        super(msg, file, line, next);
+    }
+}
 
 
 

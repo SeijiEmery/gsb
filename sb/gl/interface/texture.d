@@ -1,4 +1,5 @@
 module sb.gl.texture;
+import gl3n.linalg;
 
 interface ITexture {
     ITexture setFormat (TextureInternalFormat);

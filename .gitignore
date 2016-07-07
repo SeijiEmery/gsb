@@ -11,3 +11,5 @@ gsb.sublime-workspace
 build/*
 
 ext/libs/libstb.a
+
+*.a
