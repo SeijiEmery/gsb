@@ -4,6 +4,9 @@ import core.atomic;
 
 private immutable size_t SEGMENT_SIZE = 256;
 private class Segment (T...) {
+    // Pointer used by TaskQueue
+    Segment!T next = null;
+
     // Task range indices.
     //  next_insert: head insert index. May be atomically incremented or reset to 0, but not decremented.
     //  acquired:    number of tasks that have been acquired by fetchTask; used to detect when segment 
@@ -22,8 +25,10 @@ private class Segment (T...) {
         return next_insert - acquired; 
     }
     void reset () {
+        atomicStore(fetch_head, 0);
         atomicStore(next_insert, 0);
         atomicStore(acquired, 0);
+        next = null;
     }
 
     alias CTask = Task!T;
@@ -102,30 +107,67 @@ final:
 }
 
 class TaskQueue (T...) {
-    alias TS = Segment!T;
+    alias CTask       = Task!T;
+    alias TaskSegment = Segment!T;
+    TaskSegment rootHead, insertHead, fetchHead;
+    Mutex       segmentOpMutex;
 
+    this () {
+        rootHead = insertHead = fetchHead = new TaskSegment();
+        segmentOpMutex = new Mutex();
+    }
+    void insertTask (CTask task) {
+        private auto aquireSegment () {
+            // Recycle segment from head of queue iff a) we're totally done with that segment,
+            // and b) that segment is not the only segment; otherwise, just alloc a new
+            // segment.
+            auto head = rootHead;
+            if (head.next && !head.remainingFetches && !head.remainingInserts) {
+                rootHead = head.next;
+                head.reset();
+                return head;
+            }
+            return new TaskSegment();
+        }
+        if (!insertHead.insertTask(task)) {
+            synchronized (segmentOpMutex) {
+                insertHead.next = aquireSegment();
+                insertHead = insertHead.next;
+            }
+            bool ok = insertHead.insertTask(task);
+            assert(ok);
+        }
+    }
+    CTask* fetchTask (alias pred)() {
+        TaskSegment head = fetchHead;
+        CTask* task;
+        do {
+            task = head.fetchTask();
+            if (task || !head.next)
+                return task;
 
-
-
+            if (!head.remainingInserts && !head.remainingFetches) {
+                if (head == fetchHead) {
+                    synchronized (segmentOpMutex) {
+                        while (fetchHead.next && !fetchHead.remainingInserts && !fetchHead.remainingFetches)
+                            fetchHead = fetchHead.next;
+                    }
+                } else head = head.next;
+            } else head = head.next;
+        } while (1);
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+bool fetchAndRunTask (alias errorHandler, alias pred, T...)(TaskQueue!T queue, T args)
+{
+    auto task = queue.fetchTask!pred();
+    if (task) {
+        auto err = task.tryRun(args);
+        if (err)
+            errorHandler(*task, err);
+        return true;
+    }
+    return false;
+}
 
 
 
