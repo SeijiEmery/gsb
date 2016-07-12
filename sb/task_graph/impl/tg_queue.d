@@ -6,13 +6,30 @@ private immutable size_t SEGMENT_SIZE = 256;
 private class Segment (T...) {
     // Task range indices.
     //  next_insert: head insert index. May be atomically incremented or reset to 0, but not decremented.
-    //  next_take:   first known index we may take from. Acts as a hint to prevent needless iteration cycles,
-    //               but is non-critical and iterating from [0,next_insert) is still valid.
-    //               May be incremented / reset; valid iff next_take <= next_insert < SEGMENT_SIZE.
-    uint next_insert = 0, next_take = 0;
+    //  acquired:    number of tasks that have been acquired by fetchTask; used to detect when segment 
+    //       may be dropped/recycled, and when to update the fetch_head hint.
+    //  fetch_head:  hint indicating the _minimum_ index to start searching for items with fetchTask()
+    //       (all items before this will be skipped). Added for efficiency's sake: searching through
+    //       [0, next_insert) is perfectly valid, but inefficient; if we can __guarantee__ that all items
+    //       up to N have been acquired, then it's obviously more efficient to just search [N, next_insert),
+    //       where N <= next_insert.
+    //  
+    uint next_insert = 0, acquired = 0, fetch_head = 0;
+
+    @property auto remainingInserts () { return SEGMENT_SIZE - next_index; }
+    @property auto remainingFetches () { 
+        assert(next_insert >= acquired);
+        return next_insert - acquired; 
+    }
+    void reset () {
+        atomicStore(next_insert, 0);
+        atomicStore(acquired, 0);
+    }
+
+    alias CTask = Task!T;
 
     // Task storage
-    Task!T[SEGMENT_SIZE] items;
+    CTask[SEGMENT_SIZE] items;
 
 final:
     /// Try inserting a task. Succeeds iff capacity, etc.,
@@ -32,20 +49,30 @@ final:
     }
 
     /// Try fetching a task to execute, finding the next available task that
-    /// fullfills pred(task) and can be aquired using tryClaim. Essentially
-    /// does a filtered reduce operation in a threadsafe manner and using
-    /// atomic ops; returns either a pointer to a Task (if successful) or
-    /// null (queue segment is empty or pred did not match any tasks). 
+    /// fullfills pred(task) and can be aquired using task.tryClaim. Essentially
+    /// does a filtered reduce operation in a threadsafe manner using atomic ops; 
+    /// returns either a pointer to a Task (if successful) or null (segment is empty 
+    /// or pred did not match any tasks). 
     ///
-    Task* fetchTask (alias pred)() {
-        Task* fetchRange (uint start, uint end) {
+    CTask* fetchTask (alias pred)() {
+        CTask* fetchRange (uint start, uint end) {
             for (auto i = start; i < end; ++i) {
                 if (items[i].unclaimed && pred(items[i]) && items[i].tryClaim) {
-                    // Update next_take index iff applicable
-                    // TODO: better algorithm for this!
-                    auto prev = atomicLoad(next_take);
-                    if (i == prev+1)
-                        atomicStore(next_take, i);
+
+                    // Update acquire count and fetch_head
+                    uint count;
+                    do { count = atomicLoad(acquired);
+                    } while (!cas(&acquired, count, count+1));
+
+                    // If our acquire count matches our insert count, meaning that
+                    // we're guaranteed NOT to have any claimable items before this one,
+                    // then update our next_take hint so that all previous items are skipped.
+                    //
+                    // if (count == next_insert) fetch_head = i;
+                    while (
+                        count == atomicLoad(next_insert) &&
+                        !cas( &fetch_head, fetch_head, i )) {}
+
                     return &items[i];
                 }
             }
@@ -56,7 +83,7 @@ final:
         // multiple insertions + fetches may be running concurrently, and our start
         // index (unimportant) and end index (critical!) of the task segment may be
         // changing between calls.
-        auto front = next_take, last = next_insert;
+        auto front = fetch_head, last = next_insert;
         do {
             auto task = fetchRange(front, last);
             if (task)
