@@ -1,16 +1,41 @@
 name "gsb"
-description "A tiny game engine written in D."
+description "A game framework / graphics sandbox written in D"
 copyright "Copyright © 2016, Seiji Emery"
 authors "Seiji Emery"
+targetType "none"
 
-targetType "executable"
-targetPath "build"
-sourcePaths "src" "sb/threading/interface"
+subPackage {
+    name "gsb"
+    targetType "executable"
+    targetPath "build"
+    sourcePaths "gsb/src" "sb/threading/interface"
 
-subpackage {
-    name "all"
-    targetType "none"
-    dependency ":events" ":platform" ":threading" ":fs" ":gl" ":app" ":sb2"
+    dependency "derelict-glfw3" version="~>1.1.1"
+    dependency "derelict-gl3" version="~>1.0.18"
+    dependency "gl3n" version="~>1.3.1"
+    dependency "dglsl" version="~>0.6.0"
+
+    lflags "-Lext/libs" "-lstb"
+    dflags "-J."
+}
+#subPackage {
+#    name "all"
+#    targetType "none"
+#    dependency ":events" ":platform" ":threading" ":fs" ":gl" ":app" ":sb2"
+#}
+subPackage {
+    name "taskgraph"
+    targetType "library"
+    sourcePaths "sb/taskgraph/impl"
+    targetPath  "build/libs/taskgraph"
+}
+subPackage {
+    name "tq-test"
+    targetType "executable"
+    sourceFiles "sb/taskgraph/impl/task.d" "sb/taskgraph/impl/task_queue.d"
+    mainSourceFile "sb/taskgraph/tests/task_queue_test.d"
+
+    targetPath "build/tests/taskgraph"
 }
 subPackage {
     name "events"
@@ -71,10 +96,5 @@ subPackage {
 }
 #dependency "gsb:threading" version="*"
 
-dependency "derelict-glfw3" version="~>1.1.1"
-dependency "derelict-gl3" version="~>1.0.18"
-dependency "gl3n" version="~>1.3.1"
-dependency "dglsl" version="~>0.6.0"
 
-lflags "-Lext/libs" "-lstb"
-dflags "-J."
+

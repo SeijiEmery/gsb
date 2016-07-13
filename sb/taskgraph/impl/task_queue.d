@@ -1,11 +1,14 @@
-module sb.taskgraph.impl.tg_queue;
+module sb.taskgraph.impl.task_queue;
 import sb.taskgraph.impl.task;
 import core.atomic;
 
 private immutable size_t SEGMENT_SIZE = 256;
 private class Segment (T...) {
-    // Pointer used by TaskQueue
+    // Internal state used by TaskQueue
     Segment!T next = null;
+    uint      id   = 0;
+
+    this (uint id) { this.id = id; }
 
     // Task range indices.
     //  next_insert: head insert index. May be atomically incremented or reset to 0, but not decremented.
@@ -43,7 +46,7 @@ final:
 
         // Acquire index
         do {
-            ins = next_insert;
+            ins = atomicLoad(next_insert);
             if (ins >= SEGMENT_SIZE)
                 return false;
         } while (!cas(&next_insert, ins, ins+1));
@@ -54,9 +57,8 @@ final:
     }
 
     /// Try fetching a task to execute, finding the next available task that
-    /// fullfills pred(task) and can be aquired using task.tryClaim. Essentially
-    /// does a filtered reduce operation in a threadsafe manner using atomic ops; 
-    /// returns either a pointer to a Task (if successful) or null (segment is empty 
+    /// fullfills pred(task) and can be aquired using task.tryClaim.
+    /// Returns either a pointer to a Task (if successful) or null (segment is empty 
     /// or pred did not match any tasks). 
     ///
     CTask* fetchTask (alias pred)() {
@@ -111,23 +113,24 @@ class TaskQueue (T...) {
     alias TaskSegment = Segment!T;
     TaskSegment rootHead, insertHead, fetchHead;
     Mutex       segmentOpMutex;
+    uint        nextId = 0;
 
     this () {
-        rootHead = insertHead = fetchHead = new TaskSegment();
+        rootHead = insertHead = fetchHead = new TaskSegment(nextId++);
         segmentOpMutex = new Mutex();
     }
     void insertTask (CTask task) {
-        private auto aquireSegment () {
+        auto aquireSegment () {
             // Recycle segment from head of queue iff a) we're totally done with that segment,
             // and b) that segment is not the only segment; otherwise, just alloc a new
             // segment.
             auto head = rootHead;
-            if (head.next && !head.remainingFetches && !head.remainingInserts) {
+            if (head.next && head != fetchHead && head != insertHead) {
                 rootHead = head.next;
                 head.reset();
                 return head;
             }
-            return new TaskSegment();
+            return new TaskSegment(nextId++);
         }
         if (!insertHead.insertTask(task)) {
             synchronized (segmentOpMutex) {
@@ -157,17 +160,36 @@ class TaskQueue (T...) {
         } while (1);
     }
 }
-bool fetchAndRunTask (alias errorHandler, alias pred, T...)(TaskQueue!T queue, T args)
-{
-    auto task = queue.fetchTask!pred();
-    if (task) {
-        auto err = task.tryRun(args);
-        if (err)
-            errorHandler(*task, err);
-        return true;
-    }
-    return false;
-}
+//bool fetchAndRunTask (alias errorHandler, alias pred, T...)(TaskQueue!T queue, T args)
+//{
+//    auto task = queue.fetchTask!pred();
+//    if (task) {
+//        auto err = task.tryRun(args);
+//        if (err)
+//            errorHandler(*task, err);
+//        return true;
+//    }
+//    return false;
+//}
 
+/// build + return a string dump of taskqueue's internal segment structure.
+/// format:
+///   `[' I|F? segId (unique; does not change if recycled) ` ' acquire-count `/' `(' fetch-head-index `,' insert-head-index `]' `]'
+///       ^ I iff segment is insert head, F iff is fetch head                     ^ ------------ fetchable range ----------- ^
+///
+string dumpState (T...)(TaskQueue!T queue) {
+    synchronized (queue.segmentOpMutex) {
+        auto seg = queue.rootHead;
+        string s;
+        while (seg) {
+            s ~= format("[%s%d %d/(%d,%d]] ",
+                (seg == queue.insertHead ? "I" :
+                    seg == queue.fetchHead ? "F" : ""),
+                seg.id, seg.acquired, seg.fetch_head, seg.next_insert);
+            seg = seg.next;
+        }
+        return s;
+    }
+}
 
 
