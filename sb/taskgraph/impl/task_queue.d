@@ -243,7 +243,7 @@ class TaskQueue (Task) {
             if (head.canAdvance) {
                 if (head == fetchHead) {
                     synchronized (segmentOpMutex) {
-                        while (fetchHead.next && !fetchHead.remainingInserts && !fetchHead.remainingFetches)
+                        while (fetchHead.next && fetchHead.canAdvance)
                             fetchHead = fetchHead.next;
                     }
                 } else head = head.next;
@@ -272,23 +272,23 @@ string dumpState (T...)(TaskQueue!T queue) {
 
         while (seg) {
             auto prefix = seg == queue.insertHead ?
-                (seg == queue.fetchHead ? " IFHEAD" : " IHEAD") :
-                (seg == queue.fetchHead ? " FHEAD" : "");
+                (seg == queue.fetchHead ? " IF" : " I") :
+                (seg == queue.fetchHead ? " F" : "");
 
             if (seg.canAdvance) {
                 if (seg.canDiscard) {
                     s ~= format("[%d%s] ", seg.id, prefix);
                     ++numEmptySegments;
                 } else {
-                    s ~= format("[%d%s RUNNING] ", seg.id, prefix);
+                    s ~= format("[%d%s %d/%d] ", seg.id, prefix, seg.acquired, seg.next_insert);
                     ++numFullRunningSegments;
                 }
             } else if (seg.next_insert >= SEGMENT_SIZE) {
-                s ~= format("[%d%s FETCH %d/%d]", seg.id, prefix, seg.acquired, seg.next_insert);
+                s ~= format("[%d%s %d/%d]", seg.id, prefix, seg.acquired, seg.next_insert);
                 ++numFullAcquiringSegments;
                 numWaitForAcquireSlots += (SEGMENT_SIZE - seg.acquired);
             } else {
-                s ~= format("[%d%s INSERT %d/%d/%d]", seg.id, prefix, seg.acquired, seg.next_insert, SEGMENT_SIZE);
+                s ~= format("[%d%s %d/%d]", seg.id, prefix, seg.acquired, seg.next_insert);
                 ++numInsertingSegments;
                 numFreeInsertSlots += (SEGMENT_SIZE - seg.next_insert);
             }
