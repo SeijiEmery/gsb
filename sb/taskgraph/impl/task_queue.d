@@ -129,6 +129,51 @@ final:
     }
 }
 
+/// Implements a thread-safe N-ary producer/consumer queue.
+/// The queue is implemented as a linked list of fixed-size segments
+/// with separate insert (front) and fetch (back) pointers. Fetch + insert
+/// operations have low overhead and are implemented purely using atomics
+/// for fetch/insert within a queue segment, and use an infrequently
+/// used mutex to lock for cross-segment operations (extending the 
+/// queue for insertion, or advancing the fetch pointer forwards).
+///
+/// TaskQueue is intended to be used with SbTask (sb.taskgraph.impl.task),
+/// though any compatible data structure will work, as TaskQueue/Segment
+/// are parameterized by @Task.
+///
+/// Usage is as follows:
+///  - insert() pushes a task onto the queue, and returns a pointer/reference
+///    to that task (Task* if Task is a struct, or just Task otherwise).
+///  - fetch() aquires a task from the queue, with exclusive access so
+///    that it can be run on an arbitrary thread.
+///
+/// @Task must implement
+///  - bool tryClaim(): try aquiring exclusive access to the task; return
+///      true iff successful (task may run now, and task has not been claimed
+///      by anything else); this is trivially implementable w/ a canRun check
+///      (delegate, method or external state change), and an atomic CAS operation
+///      on some state variable (see SbTask).
+///  - bool finished(): return true iff task has been claimed and run; used
+///      by TaskQueue to detect when a segment may be recycled
+///  - void reset(): reset task state; called when a segment is recycled
+///
+/// @Task is expected to be implemented as a struct; classes will _in theory_
+/// work (and there's some conditional code to handle this), but it hasn't been
+/// thoroughly tested; for best results just use SbTask.
+///
+/// Note: the queue is infinitely resizable but may (could?) eat a large 
+/// amount of memory if abused. At present all segments are retained +
+/// recycled; this is an advantage as it minimizes memory allocations
+/// (and if a struct is used for @Task there will be effectively zero
+/// allocations in regular use, which is great for per-frame stuff),
+/// but, because of this, a queue with an unbalanced insertion >>>> 
+/// fetch ratio will consume an arbitrary amount of memory that cannot 
+/// be freed (though this would obviously cause other problems, like a 
+/// frozen app if the queue is used for anything performance critical, but the
+/// underlying lesson is, if you push 10 million tasks onto a bunch of queues
+/// and are memory constrained, you _won't_ get that memory back unless
+/// the underlying implementation changes).
+///
 class TaskQueue (Task) {
     alias TaskSegment = Segment!Task;
     TaskSegment rootHead, insertHead, fetchHead;
@@ -139,6 +184,10 @@ class TaskQueue (Task) {
         rootHead = insertHead = fetchHead = new TaskSegment(nextId++);
         segmentOpMutex = new Mutex();
     }
+
+    /// Push a task onto the queue, and return a pointer/reference to task
+    /// from memory in a queue segment (returns a Task* iff @Task is a struct,
+    /// or just Task otherwise).
     auto insertTask (Task task) {
         auto aquireSegment () {
             // Recycle segment from head of queue iff a) we're totally done with that segment,
@@ -153,23 +202,37 @@ class TaskQueue (Task) {
             return new TaskSegment(nextId++);
         }
 
-        auto head = insertHead;
+        auto head = insertHead; // save head ref -- insertHead is shared + mutable!
 
+        // Try inserting into insert head (may fail w/ null if insert head is full).
         auto tref = head.insertTask(task);
         if (tref) return tref;
         else {
+            // If head is full, add a new segment to serve as the new insert head.
             synchronized (segmentOpMutex) {
+                // But check that other threads haven't added one first!
                 if (insertHead == head) {
                     insertHead.next = aquireSegment();
                     insertHead = insertHead.next;
                 }
                 head = insertHead;   
             }
+
+            // Insert our task into the new insert head. 
+            // This should NEVER fail, as the new head should be effectively empty; 
+            // if it does, either some really wierd shit is going on with the threads + 
+            // mutex locking or SEGMENT_SIZE is set waaaay to low (< num threads, for instance).
             auto taskRef = head.insertTask(task);
             assert(taskRef !is null);
             return taskRef;
         }
     }
+    /// Fetch the next available task from the queue as a reference (Task* iff @Task
+    /// is a struct); returns null if none available.
+    /// Note: returned task _must_ be run and cannot be put back; failure to do
+    /// so will cause memory fragmentation (ie. retained, non-recyclable segments)
+    /// in queue internals; to guard when a task may / may not be run, add / use a
+    /// predicate in the @Task tryClaim() method.
     auto fetchTask () {
         TaskSegment head = fetchHead;
         do {
@@ -189,11 +252,10 @@ class TaskQueue (Task) {
     }
 }
 
-/// build + return a string dump of taskqueue's internal segment structure.
-/// format:
-///   `[' I|F? segId (unique; does not change if recycled) ` ' acquire-count `/' `(' fetch-head-index `,' insert-head-index `]' `]'
-///       ^ I iff segment is insert head, F iff is fetch head                     ^ ------------ fetchable range ----------- ^
-///
+/// build + return a string dump of taskqueue's internal segment structure,
+/// along with stats on the # and type of segments, and specifics like the # of
+/// free insert slots (from the segments marked for insert), pending tasks
+/// waiting for fetch / acquire, etc.
 string dumpState (T...)(TaskQueue!T queue) {
     synchronized (queue.segmentOpMutex) {
         auto seg = queue.rootHead;
