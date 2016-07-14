@@ -115,17 +115,32 @@ void testTaskSemantics (Logger log) {
 }
 void testTryClaim (Logger log) {
     import sb.taskgraph.impl.task;
-    log.writeToStdout = true;
 
+    // Number of tasks and threads in contention. 
+    // On my machine 100k tasks run in ~10 ms.
     immutable auto NUM_TASKS = 100_000;
     immutable auto NUM_THREADS = 8;
 
-    auto tasks = new SbTask[NUM_TASKS];
+    // Create tasks (can be uninitialized: we won't be running them, just checking tryClaim,
+    // which works fine w/ default-initialized SbTask state).
+    auto tasks      = new SbTask[NUM_TASKS];
+
+    // Tracks # of successful tryClaims on each task.
+    // If tryclaim blocking fails, may contain values other than 1. (unit test fails)
     auto taskClaims = new shared uint[NUM_TASKS];
-    //SbTask[NUM_TASKS]      tasks;
-    //Array!(shared uint, NUM_TASKS) taskClaims;
-    //shared uint[NUM_TASKS] taskClaims = 0;
-    uint[NUM_THREADS]      claimsPerThread = 0;
+
+    // Number of threads claimed per thread. Reported so we can be sure that
+    // threads _are_ running at once and getting more-or-less even shares of tasks.
+    // (visual log inspection)
+    uint[NUM_THREADS] claimsPerThread;
+
+    // Number of "contentious" reads per thread (ie. where a value appears to be X 
+    // to thread A, but is actually Y b/c thread B wrote to it). Visual inspection; 
+    // a high value for this is good b/c it indicates that the test is working properly
+    // (and contention overhead for TaskQueue is just one CAS operation).
+    uint[NUM_THREADS] perThreadContention;
+
+    // Lock threads w/ busy wait until all threads have been created.
     shared bool startRun = false;
 
     Thread[] threads;
@@ -137,12 +152,16 @@ void testTryClaim (Logger log) {
         // the same thread index due to delegate scoping!
         threads ~= new Thread({
             while (!atomicLoad(startRun)) {}
-            log.write("Thread %s RUNNING: %s", thread, sw.peek.to!Duration);
 
+            log.write("Thread %s RUNNING: %s", thread, sw.peek.to!Duration);
             foreach (task; 0 .. NUM_TASKS) {
-                if (tasks[task].tryClaim) {
-                    atomicOp!"+="(taskClaims[task], 1);
-                    ++claimsPerThread[thread];
+                if (tasks[task].unclaimed) {
+                    if (tasks[task].tryClaim) {
+                        atomicOp!"+="(taskClaims[task], 1);
+                        ++claimsPerThread[thread];
+                    } else {
+                        ++perThreadContention[thread];
+                    }
                 }
             }
             log.write("Thread %s DONE: %s", thread, sw.peek.to!Duration);
@@ -160,15 +179,21 @@ void testTryClaim (Logger log) {
             threads[thread].join();  
         }
     }
+
+    // Report thread claims + contention (written to log; check this to make sure
+    // everything is working and/or if anything breaks)
     log.write("Thread claim(s):");
     uint totalClaims = 0;
     foreach (thread; 0 .. NUM_THREADS) {
-        log.write("%s => %s", thread, claimsPerThread[thread]);
+        log.write("Thread %d claims: %s \tcontention: %s", 
+            thread, claimsPerThread[thread], perThreadContention[thread]);
         totalClaims += claimsPerThread[thread];
     }
     log.write("Total: %s", totalClaims);
 
-
+    // count collisions + non-claimed tasks (all values for taskClaims should
+    // be 1; 0 => unclaimed, 2+ => multiple threads grabbed the same task, which
+    // means that tryClaim is broken).
     uint unclaimed = 0, collisions = 0, totalNumCollisions = 0;
     foreach (claim; taskClaims) {
         switch (claim) {
@@ -234,7 +259,8 @@ void testProducerConsumerQueue (Logger log) {
             } catch (Throwable e) {
                 auto writeToStdout = log.writeToStdout;
                 log.writeToStdout = true;
-                log.write("Thread %s crashed: %s\ndump: %s", id, e, queue.dumpState());
+                log.write("Thread %s crashed: %s\ndump: %s\nsegments: %s", id, e, 
+                    queue.dumpState(), queue.dumpSegments());
                 error = e;
                 log.writeToStdout = writeToStdout;
                 threadsShouldDie = true;
