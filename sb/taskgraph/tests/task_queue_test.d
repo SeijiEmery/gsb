@@ -187,7 +187,7 @@ void testProducerConsumerQueue () {
                     numNotRunTasks, tasks.length, i);
             }
         }
-        writeln(allOk ? "ALL OK" : "ERROR!");
+        writeln(allOk ? "All tasks run" : "Not all tasks run!");
     }
 
     // Launch threads
@@ -219,11 +219,41 @@ void testProducerConsumerQueue () {
             writefln("Thread %s killed (%s)", thread.id, sw2.peek.to!Duration);
         }
     }
-    writefln("EXIT");   
 }
 
+void runTests (testfuncs...)() {
+    shared uint numTestsPassed = 0;
+    void runTestFunc (string testfunc)() {
+        try {
+            mixin(testfunc~"();");
+            writefln("PASSED: %s", testfunc);
+            atomicOp!"+="(numTestsPassed, 1);
+        } catch (Throwable err) {
+            writefln("FAILED: %s\nerror: %s", testfunc, err);
+        }
+    }
+    static if (RUN_TESTS_PARALLEL) {
+        Thread[] threads;
+        foreach (testfunc; testfuncs) {
+            threads ~= new Thread({
+                runTestFunc!testfunc();
+            }).start();
+        }
+        foreach (thread; threads)
+            thread.join();
+    } else {
+        foreach (testfunc; testfuncs) {
+            runTestFunc!testfunc();
+        } 
+    }
+    writeln(numTestsPassed == testfuncs.length ?
+        "All tests passed." :
+        format("%s / %s tests passed.", numTestsPassed, testfuncs.length));
+}
 void main (string[] args) {
-    testTaskSemantics();
-    testProducerConsumerQueue();
+    runTests!(
+        "testTaskSemantics", 
+        "testProducerConsumerQueue",
+    );
 }
 
