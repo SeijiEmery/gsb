@@ -303,8 +303,17 @@ string dumpState (Task)(TaskQueue!Task queue) {
             if (n < 1e9) return format("%s mb", n * 1e-6);
             return format("%s gb", n * 1e-9);
         }
+
+        auto immutable segment_size = Segment!Task.classinfo.init.length;
+        auto immutable queue_size   = TaskQueue!Task.classinfo.init.length;
+
+        static if (is(Task == struct))
+            auto memUsage = numSegments * segment_size + queue_size;
+        else
+            auto memUsage = numSegments * (segment_size + SEGMENT_SIZE * Task.classinfo.init.length) + queue_size;
+
         s ~= format("\n segment stats: %s | %s total (%s) | %s inserting (%s free) | %s fetching (%s waiting) | %s wait-for-run | %s empty", 
-            fmtNumBytes(numSegments * SEGMENT_SIZE * Segment!Task.sizeof + TaskQueue!Task.sizeof),
+            fmtNumBytes(memUsage),
             numSegments, numSegments * SEGMENT_SIZE,
             numInsertingSegments, numFreeInsertSlots,
             numFullAcquiringSegments, numWaitForAcquireSlots,
