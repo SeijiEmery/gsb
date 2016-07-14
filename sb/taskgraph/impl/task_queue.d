@@ -139,7 +139,10 @@ class TaskQueue (Task) {
             }
             return new TaskSegment(nextId++);
         }
-        if (!insertHead.insertTask(task)) {
+
+        auto tref = insertHead.insertTask(task);
+        if (tref) return tref;
+        else {
             synchronized (segmentOpMutex) {
                 insertHead.next = aquireSegment();
                 insertHead = insertHead.next;
@@ -148,7 +151,6 @@ class TaskQueue (Task) {
             assert(taskRef !is null);
             return taskRef;
         }
-        return null;
     }
     auto fetchTask () {
         TaskSegment head = fetchHead;
