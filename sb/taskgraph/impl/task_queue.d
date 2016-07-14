@@ -189,12 +189,12 @@ class TaskQueue (Task) {
     /// from memory in a queue segment (returns a Task* iff @Task is a struct,
     /// or just Task otherwise).
     auto insertTask (Task task) {
-        auto aquireSegment () {
+        auto acquireSegment () {
             // Recycle segment from head of queue iff a) we're totally done with that segment,
             // and b) that segment is not the only segment; otherwise, just alloc a new
             // segment.
             auto head = rootHead;
-            if (head.next && head.canDiscard) {
+            if (head.next && head != fetchHead && head.canDiscard) {
                 rootHead = head.next;
                 head.reset();
                 return head;
@@ -212,7 +212,7 @@ class TaskQueue (Task) {
             synchronized (segmentOpMutex) {
                 // But check that other threads haven't added one first!
                 if (insertHead == head) {
-                    insertHead.next = aquireSegment();
+                    insertHead.next = acquireSegment();
                     insertHead = insertHead.next;
                 }
                 head = insertHead;   
