@@ -256,11 +256,8 @@ class TaskQueue (Task) {
 /// along with stats on the # and type of segments, and specifics like the # of
 /// free insert slots (from the segments marked for insert), pending tasks
 /// waiting for fetch / acquire, etc.
-string dumpState (T...)(TaskQueue!T queue) {
+string dumpState (Task)(TaskQueue!Task queue) {
     synchronized (queue.segmentOpMutex) {
-        auto seg = queue.rootHead;
-        string s;
-
         uint numSegments = 0;
         uint numEmptySegments = 0;
         uint numFullRunningSegments = 0;
@@ -269,6 +266,11 @@ string dumpState (T...)(TaskQueue!T queue) {
 
         uint numFreeInsertSlots = 0;
         uint numWaitForAcquireSlots = 0;
+
+        auto seg = queue.rootHead;
+
+        import std.array: appender;
+        auto s = appender!string;
 
         while (seg) {
             auto prefix = seg == queue.insertHead ?
@@ -295,14 +297,21 @@ string dumpState (T...)(TaskQueue!T queue) {
             seg = seg.next;
             ++numSegments;
         }
-        s ~= format("\n segment stats: %s total (%s) | %s inserting (%s free) | %s fetching (%s waiting) | %s wait-for-run | %s empty", 
+        auto fmtNumBytes (size_t n) {
+            if (n < 1e3) return format("%s bytes", n);
+            if (n < 1e6) return format("%s kb", n * 1e-3);
+            if (n < 1e9) return format("%s mb", n * 1e-6);
+            return format("%s gb", n * 1e-9);
+        }
+        s ~= format("\n segment stats: %s | %s total (%s) | %s inserting (%s free) | %s fetching (%s waiting) | %s wait-for-run | %s empty", 
+            fmtNumBytes(numSegments * SEGMENT_SIZE * Segment!Task.sizeof + TaskQueue!Task.sizeof),
             numSegments, numSegments * SEGMENT_SIZE,
             numInsertingSegments, numFreeInsertSlots,
             numFullAcquiringSegments, numWaitForAcquireSlots,
             numFullRunningSegments,
             numEmptySegments
         );
-        return s;
+        return s.data;
     }
 }
 
