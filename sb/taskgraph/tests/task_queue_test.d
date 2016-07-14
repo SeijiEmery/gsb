@@ -18,14 +18,14 @@ import std.array;
 // the program, which defeats the point of running in parallel)
 immutable bool RUN_TESTS_PARALLEL = true;
 
-// Local log directory
-immutable string LOG_DIR = "logs";
+// Local log directory (relative to executable run dir)
+immutable string LOG_DIR = "tq-test-logs";
 
 class Logger {
     File logFile;
     bool writeToStdout;
 
-    this (string logPath, bool writeToStdout = true) {
+    this (string logPath, bool writeToStdout = false) {
         this.logFile = File(logPath, "w");
         this.writeToStdout = writeToStdout;
     }
@@ -38,36 +38,6 @@ class Logger {
         logFile.writefln(args);
         if (writeToStdout)
             stdout.writefln(args);
-    }
-}
-
-class ThreadWorker : Thread {
-    shared bool running = false;
-    shared bool shouldDie = false;
-    void delegate(ThreadWorker) doRun;
-    uint id;
-    uint runCount;
-
-    this (uint id, void delegate(ThreadWorker) doRun) {
-        this.doRun = doRun;
-        this.id = id;
-        super(&enterThread);
-    }
-    void kill () { shouldDie = true; }
-    //bool isRunning () { return running; }
-    void enterThread () {
-        writefln("Enter thread %s", id);
-        assert(!running, format("Thread %s already running!", id));
-        running = true;
-        try {
-            while (!shouldDie) {
-                doRun(this);
-            }
-        } catch (Throwable e) {
-            writefln("Thread %s crashed: %s", id, e);
-        }
-        writefln("Exit thread %s run-count %s", id, runCount);
-        running = false;
     }
 }
 
@@ -129,7 +99,7 @@ void testTaskSemantics (Logger log) {
     // check state (again)
     enforce(t1_didRun, "t1 didn't actually run?!");
     enforce(t1_didPostrun, "t1 no post run?!");
-    enforce(atomicLoad(foo) == 7, format("bad result for foo: %s", foo));
+    enforce(atomicLoad(foo) == 8, format("bad result for foo: %s", foo));
 
 
     // Test t2 init state + claim
@@ -148,6 +118,36 @@ void testTaskQueueSemantics (Logger log) {
 void testProducerConsumerQueue (Logger log) {
     import sb.taskgraph.impl.task;
     import sb.taskgraph.impl.task_queue;
+
+    class ThreadWorker : Thread {
+        shared bool running = false;
+        shared bool shouldDie = false;
+        void delegate(ThreadWorker) doRun;
+        uint id;
+        uint runCount;
+
+        this (uint id, void delegate(ThreadWorker) doRun) {
+            this.doRun = doRun;
+            this.id = id;
+            super(&enterThread);
+        }
+        void kill () { shouldDie = true; }
+        //bool isRunning () { return running; }
+        void enterThread () {
+            log.write("Enter thread %s", id);
+            assert(!running, format("Thread %s already running!", id));
+            running = true;
+            try {
+                while (!shouldDie) {
+                    doRun(this);
+                }
+            } catch (Throwable e) {
+                log.write("Thread %s crashed: %s", id, e);
+            }
+            log.write("Exit thread %s run-count %s", id, runCount);
+            running = false;
+        }
+    }
 
     // num producer + consumer threads
     immutable uint NUM_PRODUCERS = 2, NUM_CONSUMERS = 2;
@@ -253,10 +253,13 @@ void runTests (testfuncs...)(const(char)[] logDir) {
         auto log = new Logger(logDir.chainPath(testfunc ~ ".txt").array.to!string);
         try {
             mixin(testfunc~"(log);");
+
+            log.writeToStdout = true;
             log.write("PASSED: %s", testfunc);
             atomicOp!"+="(numTestsPassed, 1);
         } catch (Throwable err) {
-            log.write("FAILED: %s\nerror: %s", testfunc, err);
+            log.writeToStdout = true;
+            log.write("FAILED: %s\n%s\n", testfunc, err);
         }
     }
     static if (RUN_TESTS_PARALLEL) {
@@ -273,9 +276,10 @@ void runTests (testfuncs...)(const(char)[] logDir) {
             runTestFunc!testfunc();
         } 
     }
-    writeln(numTestsPassed == testfuncs.length ?
+    write(numTestsPassed == testfuncs.length ?
         "All tests passed." :
         format("%s / %s tests passed.", numTestsPassed, testfuncs.length));
+    writefln(" logs written to '%s'", logDir);
 }
 void main (string[] args) {
     auto logDir = args[0].dirName.chainPath(LOG_DIR).array;
