@@ -40,6 +40,21 @@ private class Segment (Task) {
     Task[SEGMENT_SIZE] items;
 
 final:
+    /// Return if taskqueue can advance segment (no remaining insertions or fetches available)
+    bool canAdvance () {
+        return next_insert >= SEGMENT_SIZE && acquired >= SEGMENT_SIZE;
+    }
+    /// Returns true iff segment is filled and all tasks have been acquired and run;
+    /// signals to the taskqueue that this segment can be recycled with reset().
+    bool canDiscard () {
+        if (!canAdvance)
+            return false;
+        foreach (task; items)
+            if (!task.finished)
+                return false;
+        return true;
+    }
+
     /// Try inserting a task. Succeeds iff capacity, etc.,
     auto insertTask (Task item) {
         uint ins;
@@ -72,9 +87,7 @@ final:
                 if (items[i].unclaimed && items[i].tryClaim) {
 
                     // Update acquire count and fetch_head
-                    uint count;
-                    do { count = atomicLoad(acquired);
-                    } while (!cas(&acquired, count, count+1));
+                    auto count = atomicOp!"+="(acquired, 1);
 
                     // If our acquire count matches our insert count, meaning that
                     // we're guaranteed NOT to have any claimable items before this one,
@@ -132,7 +145,7 @@ class TaskQueue (Task) {
             // and b) that segment is not the only segment; otherwise, just alloc a new
             // segment.
             auto head = rootHead;
-            if (head.next && head != fetchHead && head != insertHead) {
+            if (head.next && head.canDiscard) {
                 rootHead = head.next;
                 head.reset();
                 return head;
@@ -159,7 +172,7 @@ class TaskQueue (Task) {
             if (task || !head.next)
                 return task;
 
-            if (!head.remainingInserts && !head.remainingFetches) {
+            if (head.canAdvance) {
                 if (head == fetchHead) {
                     synchronized (segmentOpMutex) {
                         while (fetchHead.next && !fetchHead.remainingInserts && !fetchHead.remainingFetches)
@@ -180,14 +193,48 @@ string dumpState (T...)(TaskQueue!T queue) {
     synchronized (queue.segmentOpMutex) {
         auto seg = queue.rootHead;
         string s;
+
+        uint numSegments = 0;
+        uint numEmptySegments = 0;
+        uint numFullRunningSegments = 0;
+        uint numFullAcquiringSegments = 0;
+        uint numInsertingSegments = 0;
+
+        uint numFreeInsertSlots = 0;
+        uint numWaitForAcquireSlots = 0;
+
         while (seg) {
-            s ~= format("[%s%d %d/(%d,%d]] ",
-                (seg == queue.insertHead ?
-                    (seg == queue.fetchHead ? "IF " : "I ") :
-                    (seg == queue.fetchHead ? "F " : "")),
-                seg.id, seg.acquired, seg.fetch_head, seg.next_insert);
+            auto prefix = seg == queue.insertHead ?
+                (seg == queue.fetchHead ? " IFHEAD" : " IHEAD") :
+                (seg == queue.fetchHead ? " FHEAD" : "");
+
+            if (seg.canAdvance) {
+                if (seg.canDiscard) {
+                    s ~= format("[%d%s] ", seg.id, prefix);
+                    ++numEmptySegments;
+                } else {
+                    s ~= format("[%d%s RUNNING] ", seg.id, prefix);
+                    ++numFullRunningSegments;
+                }
+            } else if (seg.next_insert >= SEGMENT_SIZE) {
+                s ~= format("[%d%s FETCH %d/%d]", seg.id, prefix, seg.acquired, seg.next_insert);
+                ++numFullAcquiringSegments;
+                numWaitForAcquireSlots += (SEGMENT_SIZE - seg.acquired);
+            } else {
+                s ~= format("[%d%s INSERT %d/%d/%d]", seg.id, prefix, seg.acquired, seg.next_insert, SEGMENT_SIZE);
+                ++numInsertingSegments;
+                numFreeInsertSlots += (SEGMENT_SIZE - seg.next_insert);
+            }
             seg = seg.next;
+            ++numSegments;
         }
+        s ~= format("\n segment stats: %s total (%s) | %s inserting (%s free) | %s fetching (%s waiting) | %s wait-for-run | %s empty", 
+            numSegments, numSegments * SEGMENT_SIZE,
+            numInsertingSegments, numFreeInsertSlots,
+            numFullAcquiringSegments, numWaitForAcquireSlots,
+            numFullRunningSegments,
+            numEmptySegments
+        );
         return s;
     }
 }
