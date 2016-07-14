@@ -41,7 +41,7 @@ void testQueueImpl () {
     import sb.taskgraph.impl.task_queue;
 
     // num producer + consumer threads
-    immutable uint NUM_PRODUCERS = 6, NUM_CONSUMERS = 8;
+    immutable uint NUM_PRODUCERS = 2, NUM_CONSUMERS = 2;
 
     auto queue = new TaskQueue!SbTask();
     SbTask*[][NUM_PRODUCERS] producedTasks;
@@ -50,6 +50,7 @@ void testQueueImpl () {
     immutable uint DUMP_TASK_INTERVAL = 1024;
     StopWatch sw;
     shared bool mayRun = false;
+    ThreadWorker[] threads;
 
     void dumpStats () {
         writefln("%s | %s tasks: %s", sw.peek.to!Duration, taskCount, queue.dumpState());
@@ -61,7 +62,11 @@ void testQueueImpl () {
         auto task = SbTask({
             // ...
         });
-        producedTasks[thread.id] ~= queue.insertTask(task);
+        auto taskref = queue.insertTask(task);
+        if (taskref is null)
+            writefln("NULL TASK! threadid %s", thread.id);
+        else
+            producedTasks[thread.id] ~= taskref;
         thread.runCount++;
 
         if ((taskId % DUMP_TASK_INTERVAL) == DUMP_TASK_INTERVAL - 1) {
@@ -82,28 +87,30 @@ void testQueueImpl () {
     }
     void checkItems () {
         bool allOk = true;
-        foreach (i, perThreadTasks; producedTasks) {
+
+        import std.algorithm;
+        auto npt = threads[0..NUM_PRODUCERS].map!"a.runCount".reduce!"a+b";
+        auto nct = threads[NUM_PRODUCERS..(NUM_PRODUCERS+NUM_CONSUMERS)].map!"a.runCount".reduce!"a+b";
+        writefln("tasks produced: %s\ntasks consumed: %s", npt, nct);
+
+        foreach (i, tasks; producedTasks) {
             uint numNotRunTasks = 0;
-            foreach (task; perThreadTasks) {
-                if (!task.finished) {
+            foreach (task; tasks) {
+                if (task && !task.finished) {
                     numNotRunTasks++;
                 }
             }
             if (numNotRunTasks) {
                 allOk = false;
                 writefln("%s / %s tasks on thread %s not run!",
-                    numNotRunTasks, perThreadTasks.length, i);
+                    numNotRunTasks, tasks.length, i);
             }
         }
-
         writeln(allOk ? "ALL OK" : "ERROR!");
     }
 
-    
-    ThreadWorker[] threads;
-
     // Launch threads
-    foreach (uint i; 1 .. (NUM_PRODUCERS + NUM_CONSUMERS)) {
+    foreach (uint i; 0 .. (NUM_PRODUCERS + NUM_CONSUMERS)) {
         threads ~= new ThreadWorker(i, i < NUM_PRODUCERS ?
             &produceItem : 
             &consumeItem);
@@ -122,14 +129,17 @@ void testQueueImpl () {
     foreach (thread; threads) {
         thread.kill();
     }
+    checkItems();
     foreach (thread; threads) {
         if (thread.isRunning) {
+            StopWatch sw2; sw2.start();
             writefln("Waiting on thread %s", thread.id);
             while (thread.isRunning) {}
-            writefln("Thread killed");
+            writefln("Thread %s killed (%s)", thread.id, sw2.peek.to!Duration);
         }
     }
-    checkItems();
+    writefln("EXIT");
+    
 }
 
 void main (string[] args) {
