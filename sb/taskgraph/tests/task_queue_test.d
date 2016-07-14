@@ -6,6 +6,9 @@ import std.format;
 import std.datetime;
 import std.conv;
 import std.exception: enforce;
+import std.file: exists, mkdirRecurse;
+import std.path: dirName, chainPath;
+import std.array;
 
 
 // If enabled, all test functions will be run in parallel.
@@ -14,6 +17,29 @@ import std.exception: enforce;
 // not assert (enforce is recoverable + threadsafe; assert just kills
 // the program, which defeats the point of running in parallel)
 immutable bool RUN_TESTS_PARALLEL = true;
+
+// Local log directory
+immutable string LOG_DIR = "logs";
+
+class Logger {
+    File logFile;
+    bool writeToStdout;
+
+    this (string logPath, bool writeToStdout = true) {
+        this.logFile = File(logPath, "w");
+        this.writeToStdout = writeToStdout;
+    }
+    void write (string msg) {
+        logFile.writeln(msg);
+        if (writeToStdout)
+            stdout.writeln(msg);
+    }
+    void write (Args...)(Args args) if (__traits(compiles, format(args))) {
+        logFile.writefln(args);
+        if (writeToStdout)
+            stdout.writefln(args);
+    }
+}
 
 class ThreadWorker : Thread {
     shared bool running = false;
@@ -45,7 +71,7 @@ class ThreadWorker : Thread {
     }
 }
 
-void testTaskSemantics () {
+void testTaskSemantics (Logger log) {
     import sb.taskgraph.impl.task;
 
     shared uint foo = 0;
@@ -103,7 +129,7 @@ void testTaskSemantics () {
     // check state (again)
     enforce(t1_didRun, "t1 didn't actually run?!");
     enforce(t1_didPostrun, "t1 no post run?!");
-    enforce(atomicLoad(foo) == 8, format("bad result for foo: %s", foo));
+    enforce(atomicLoad(foo) == 7, format("bad result for foo: %s", foo));
 
 
     // Test t2 init state + claim
@@ -116,10 +142,10 @@ void testTaskSemantics () {
     enforce(!t2.unclaimed && t2.finished && t2.finished_with_error && !t2.finished_ok);
     enforce(atomicLoad(t2_didRun) && atomicLoad(t2_didPostRun));
 }
-void testTaskQueueSemantics () {
+void testTaskQueueSemantics (Logger log) {
 
 }
-void testProducerConsumerQueue () {
+void testProducerConsumerQueue (Logger log) {
     import sb.taskgraph.impl.task;
     import sb.taskgraph.impl.task_queue;
 
@@ -136,7 +162,7 @@ void testProducerConsumerQueue () {
     ThreadWorker[] threads;
 
     void dumpStats () {
-        writefln("%s | %s tasks: %s", sw.peek.to!Duration, taskCount, queue.dumpState());
+        log.write("%s | %s tasks: %s", sw.peek.to!Duration, taskCount, queue.dumpState());
     }
     void produceItem (ThreadWorker thread) {
         if (!atomicLoad(mayRun)) return;
@@ -162,7 +188,7 @@ void testProducerConsumerQueue () {
             thread.runCount++;
             consumedTasks[cid] ~= task;
             if (auto err = task.tryRun) {
-                writefln("Error executing task: %s", err);
+                log.write("Error executing task: %s", err);
             }
         }
     }
@@ -172,7 +198,7 @@ void testProducerConsumerQueue () {
         import std.algorithm;
         auto npt = threads[0..NUM_PRODUCERS].map!"a.runCount".reduce!"a+b";
         auto nct = threads[NUM_PRODUCERS..(NUM_PRODUCERS+NUM_CONSUMERS)].map!"a.runCount".reduce!"a+b";
-        writefln("tasks produced: %s\ntasks consumed: %s", npt, nct);
+        log.write("tasks produced: %s\ntasks consumed: %s", npt, nct);
 
         foreach (i, tasks; producedTasks) {
             uint numNotRunTasks = 0;
@@ -183,11 +209,11 @@ void testProducerConsumerQueue () {
             }
             if (numNotRunTasks) {
                 allOk = false;
-                writefln("%s / %s tasks on thread %s not run!",
+                log.write("%s / %s tasks on thread %s not run!",
                     numNotRunTasks, tasks.length, i);
             }
         }
-        writeln(allOk ? "All tasks run" : "Not all tasks run!");
+        log.write(allOk ? "All tasks run" : "Not all tasks run!");
     }
 
     // Launch threads
@@ -214,22 +240,23 @@ void testProducerConsumerQueue () {
     foreach (thread; threads) {
         if (thread.isRunning) {
             StopWatch sw2; sw2.start();
-            writefln("Waiting on thread %s", thread.id);
+            log.write("Waiting on thread %s", thread.id);
             while (thread.isRunning) {}
-            writefln("Thread %s killed (%s)", thread.id, sw2.peek.to!Duration);
+            log.write("Thread %s killed (%s)", thread.id, sw2.peek.to!Duration);
         }
     }
 }
 
-void runTests (testfuncs...)() {
+void runTests (testfuncs...)(const(char)[] logDir) {
     shared uint numTestsPassed = 0;
     void runTestFunc (string testfunc)() {
+        auto log = new Logger(logDir.chainPath(testfunc ~ ".txt").array.to!string);
         try {
-            mixin(testfunc~"();");
-            writefln("PASSED: %s", testfunc);
+            mixin(testfunc~"(log);");
+            log.write("PASSED: %s", testfunc);
             atomicOp!"+="(numTestsPassed, 1);
         } catch (Throwable err) {
-            writefln("FAILED: %s\nerror: %s", testfunc, err);
+            log.write("FAILED: %s\nerror: %s", testfunc, err);
         }
     }
     static if (RUN_TESTS_PARALLEL) {
@@ -251,9 +278,19 @@ void runTests (testfuncs...)() {
         format("%s / %s tests passed.", numTestsPassed, testfuncs.length));
 }
 void main (string[] args) {
+    auto logDir = args[0].dirName.chainPath(LOG_DIR).array;
+    if (!logDir.exists) {
+        try {
+            mkdirRecurse(logDir);
+        } catch (Throwable err) {
+            writefln("Could not create log dir '%s':\n%s", logDir, err);
+            return;
+        }
+    }
     runTests!(
-        "testTaskSemantics", 
-        "testProducerConsumerQueue",
-    );
+        "testTaskSemantics",
+        "testTaskQueueSemantics",
+        "testProducerConsumerQueue"
+    )(logDir);
 }
 
