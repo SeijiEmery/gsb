@@ -9,6 +9,7 @@ import std.exception: enforce;
 import std.file: exists, mkdirRecurse;
 import std.path: dirName, chainPath;
 import std.array;
+import std.algorithm: map, filter;
 
 
 // If enabled, all test functions will be run in parallel.
@@ -112,6 +113,76 @@ void testTaskSemantics (Logger log) {
     enforce(!t2.unclaimed && t2.finished && t2.finished_with_error && !t2.finished_ok);
     enforce(atomicLoad(t2_didRun) && atomicLoad(t2_didPostRun));
 }
+void testTryClaim (Logger log) {
+    import sb.taskgraph.impl.task;
+    log.writeToStdout = true;
+
+    immutable auto NUM_TASKS = 100_000;
+    immutable auto NUM_THREADS = 8;
+
+    auto tasks = new SbTask[NUM_TASKS];
+    auto taskClaims = new shared uint[NUM_TASKS];
+    //SbTask[NUM_TASKS]      tasks;
+    //Array!(shared uint, NUM_TASKS) taskClaims;
+    //shared uint[NUM_TASKS] taskClaims = 0;
+    uint[NUM_THREADS]      claimsPerThread = 0;
+    shared bool startRun = false;
+
+    Thread[] threads;
+    StopWatch sw;
+
+    void spawnThread (uint thread) {
+        log.write("Spawning thread %s", thread);
+        // Note: if this is just inlined in the for loop, all threads will reference
+        // the same thread index due to delegate scoping!
+        threads ~= new Thread({
+            while (!atomicLoad(startRun)) {}
+            log.write("Thread %s RUNNING: %s", thread, sw.peek.to!Duration);
+
+            foreach (task; 0 .. NUM_TASKS) {
+                if (tasks[task].tryClaim) {
+                    atomicOp!"+="(taskClaims[task], 1);
+                    ++claimsPerThread[thread];
+                }
+            }
+            log.write("Thread %s DONE: %s", thread, sw.peek.to!Duration);
+        }).start();
+    }
+    foreach (thread; 0 .. NUM_THREADS) {
+        spawnThread(thread);   
+    }
+    sw.start();
+    atomicStore(startRun, true);
+
+    foreach (thread; 0 .. NUM_THREADS) {
+        if (threads[thread].isRunning) {
+            log.write("Joining thread %s", thread);
+            threads[thread].join();  
+        }
+    }
+    log.write("Thread claim(s):");
+    uint totalClaims = 0;
+    foreach (thread; 0 .. NUM_THREADS) {
+        log.write("%s => %s", thread, claimsPerThread[thread]);
+        totalClaims += claimsPerThread[thread];
+    }
+    log.write("Total: %s", totalClaims);
+
+
+    uint unclaimed = 0, collisions = 0, totalNumCollisions = 0;
+    foreach (claim; taskClaims) {
+        switch (claim) {
+            case 0: ++unclaimed; break;
+            case 1: break;
+            default: 
+                ++collisions;
+                totalNumCollisions += claim;
+        }
+    }
+    enforce(!unclaimed && !collisions, 
+        format("tryClaim not atomic! %s unclaimed, %s collisions (%s)",
+            unclaimed, collisions, totalNumCollisions));
+}
 void testTaskQueueSemantics (Logger log) {
 
 }
@@ -119,12 +190,31 @@ void testProducerConsumerQueue (Logger log) {
     import sb.taskgraph.impl.task;
     import sb.taskgraph.impl.task_queue;
 
+    log.writeToStdout = false;
+
+    // num producer + consumer threads
+    immutable uint NUM_PRODUCERS = 2, NUM_CONSUMERS = 3;
+    immutable uint NUM_TASKS_TO_CREATE = cast(uint)(10e3);
+
+    auto queue = new TaskQueue!SbTask();
+    SbTask*[][NUM_PRODUCERS] producedTasks;
+    SbTask*[][NUM_CONSUMERS] consumedTasks;
+    shared uint taskCount = 0;
+    shared uint consumeCount = 0;
+    shared uint waitCount = 0;
+
+    immutable uint DUMP_TASK_INTERVAL = 256;
+    StopWatch sw;
+    shared bool mayRun = false;
+    shared bool threadsShouldDie = false;
+    
     class ThreadWorker : Thread {
         shared bool running = false;
         shared bool shouldDie = false;
         void delegate(ThreadWorker) doRun;
         uint id;
         uint runCount;
+        Throwable error = null;
 
         this (uint id, void delegate(ThreadWorker) doRun) {
             this.doRun = doRun;
@@ -138,46 +228,75 @@ void testProducerConsumerQueue (Logger log) {
             assert(!running, format("Thread %s already running!", id));
             running = true;
             try {
-                while (!shouldDie) {
+                while (!shouldDie && !threadsShouldDie) {
                     doRun(this);
                 }
             } catch (Throwable e) {
-                log.write("Thread %s crashed: %s", id, e);
+                auto writeToStdout = log.writeToStdout;
+                log.writeToStdout = true;
+                log.write("Thread %s crashed: %s\ndump: %s", id, e, queue.dumpState());
+                error = e;
+                log.writeToStdout = writeToStdout;
+                threadsShouldDie = true;
             }
             log.write("Exit thread %s run-count %s", id, runCount);
             running = false;
         }
     }
 
-    // num producer + consumer threads
-    immutable uint NUM_PRODUCERS = 2, NUM_CONSUMERS = 2;
+    struct TaskWorkload {
+        uint input  = 0;
+        uint output = 0;
 
-    auto queue = new TaskQueue!SbTask();
-    SbTask*[][NUM_PRODUCERS] producedTasks;
-    SbTask*[][NUM_CONSUMERS] consumedTasks;
-    shared uint taskCount = 0;
-    immutable uint DUMP_TASK_INTERVAL = 1024;
-    StopWatch sw;
-    shared bool mayRun = false;
+        static uint fact (uint n) {
+            return n <= 1 ? n : n * fact(n - 1);
+        }
+        auto exec () {
+            return fact(input % 13 + 1) * (input % 43 + 16);
+        }
+        void check () {
+            auto result = exec();
+            enforce(output == result,
+                format("Task %s did not run: %s != %s!", input, output, result));
+        }
+    }
+    TaskWorkload[NUM_TASKS_TO_CREATE] taskWork;    
     ThreadWorker[] threads;
 
     void dumpStats () {
-        log.write("%s | %s tasks: %s", sw.peek.to!Duration, taskCount, queue.dumpState());
+        log.write("%s | %s / %s tasks: %s\nrunning threads: %s\n", sw.peek.to!Duration, 
+            consumeCount, taskCount, queue.dumpState(), 
+            threads.filter!"a.isRunning".map!"a.id.to!string".array.join(" "));
     }
+
     void produceItem (ThreadWorker thread) {
         if (!atomicLoad(mayRun)) return;
 
-        uint taskId = atomicOp!"+="(taskCount, 1);
-        auto task = SbTask({
-            // ...
-        });
-        auto taskref = queue.insertTask(task);
-        enforce(taskref !is null, format("null task returned from queue.insert! threadId %s", thread.id));
-        producedTasks[thread.id] ~= taskref;
-        thread.runCount++;
+        uint taskId = atomicOp!"+="(taskCount, 1) - 1;
+        if (taskId >= NUM_TASKS_TO_CREATE) {
+            if (taskId == NUM_TASKS_TO_CREATE) {
+                log.write("Produced %s items -- killing thread %s\n%s | dump: %s\n", 
+                    taskId, thread.id, sw.peek.to!Duration, queue.dumpState());
+            } else {
+                atomicOp!"-="(taskCount, 1);
+                log.write("Produced %s items -- killing thread %s", taskCount, thread.id);
+            }            
+            thread.kill();
+        } else {
+            //enforce(taskId != 9997, "boom!");
 
-        if ((taskId % DUMP_TASK_INTERVAL) == DUMP_TASK_INTERVAL - 1) {
-            dumpStats();
+            taskWork[taskId].input = taskId;
+            auto task = SbTask({
+                taskWork[taskId].output = taskWork[taskId].exec();
+            });
+            auto taskref = queue.insertTask(task);
+            enforce(taskref !is null, format("null task returned from queue.insert! threadId %s", thread.id));
+            producedTasks[thread.id] ~= taskref;
+            thread.runCount++;
+
+            if ((taskId % DUMP_TASK_INTERVAL) == DUMP_TASK_INTERVAL - 1) {
+                dumpStats();
+            }
         }
     }
     void consumeItem (ThreadWorker thread) {
@@ -185,10 +304,29 @@ void testProducerConsumerQueue (Logger log) {
 
         auto cid = thread.id - NUM_PRODUCERS;
         if (auto task = queue.fetchTask) {
+            enforce(!task.unclaimed && !task.finished,
+                format("Unclaimed task! status %s (thread %s)", 
+                    task.state, cid));
+
             thread.runCount++;
             consumedTasks[cid] ~= task;
             if (auto err = task.tryRun) {
-                log.write("Error executing task: %s", err);
+                log.write("Error while executing task (thread %s): %s", thread.id, err);
+            }
+            atomicOp!"+="(consumeCount, 1);
+            //auto count = atomicOp!"+="(consumeCount, 1);
+            //if (count >= NUM_TASKS_TO_CREATE) {
+            //    if (count > NUM_TASKS_TO_CREATE) atomicOp!"-="(consumeCount, 1);
+            //    thread.kill();
+            //} else if ((count % DUMP_TASK_INTERVAL) == 0) {
+            //    dumpStats();
+            //}
+        } else if (consumeCount >= NUM_TASKS_TO_CREATE) {
+            thread.kill();
+        } else {
+            if ((atomicOp!"+="(waitCount, 1) % 256) == 0) {
+                log.write("Thread waiting: %s (%s / %s)", thread.id, consumeCount, taskCount);
+                dumpStats();
             }
         }
     }
@@ -213,7 +351,16 @@ void testProducerConsumerQueue (Logger log) {
                     numNotRunTasks, tasks.length, i);
             }
         }
-        log.write(allOk ? "All tasks run" : "Not all tasks run!");
+        enforce(npt == NUM_TASKS_TO_CREATE, 
+            format("Not all tasks produced: %s / %s", npt, NUM_TASKS_TO_CREATE));
+        enforce(nct == NUM_TASKS_TO_CREATE, 
+            format("Not all tasks consumed: %s / %s", nct, NUM_TASKS_TO_CREATE));
+
+        foreach (task; taskWork) {
+            task.check();
+            //log.write("%s => %s", task.input, task.output);
+        }
+        enforce(allOk, "Not all tasks run!");
     }
 
     // Launch threads
@@ -226,25 +373,17 @@ void testProducerConsumerQueue (Logger log) {
     atomicStore(mayRun, true);
     sw.start();
 
-    // Run + report stats
-    Thread.sleep( dur!"seconds"(1) );
-    atomicStore(mayRun, false);
-    sw.stop();
-    dumpStats();
-    
-    // Shutdown threads
+    bool threadsOk = true;
     foreach (thread; threads) {
-        thread.kill();
-    }
-    checkItems();
-    foreach (thread; threads) {
-        if (thread.isRunning) {
-            StopWatch sw2; sw2.start();
-            log.write("Waiting on thread %s", thread.id);
-            while (thread.isRunning) {}
-            log.write("Thread %s killed (%s)", thread.id, sw2.peek.to!Duration);
+        thread.join();
+        if (thread.error) {
+            threadsOk = false;
         }
     }
+    enforce(threadsOk, "thread(s) crashed");
+
+    dumpStats();
+    checkItems();
 }
 
 void runTests (testfuncs...)(const(char)[] logDir) {
@@ -280,6 +419,11 @@ void runTests (testfuncs...)(const(char)[] logDir) {
         "All tests passed." :
         format("%s / %s tests passed.", numTestsPassed, testfuncs.length));
     writefln(" logs written to '%s'", logDir);
+
+    if (numTestsPassed != testfuncs.length) {
+        import core.stdc.stdlib: exit;
+        exit(-1);
+    }
 }
 void main (string[] args) {
     auto logDir = args[0].dirName.chainPath(LOG_DIR).array;
@@ -292,6 +436,7 @@ void main (string[] args) {
         }
     }
     runTests!(
+        "testTryClaim",
         "testTaskSemantics",
         "testTaskQueueSemantics",
         "testProducerConsumerQueue"
