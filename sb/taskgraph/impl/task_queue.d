@@ -1,12 +1,14 @@
 module sb.taskgraph.impl.task_queue;
 import sb.taskgraph.impl.task;
+import core.sync.mutex;
 import core.atomic;
+import std.format;
 
 private immutable size_t SEGMENT_SIZE = 256;
-private class Segment (T...) {
+private class Segment (Task) {
     // Internal state used by TaskQueue
-    Segment!T next = null;
-    uint      id   = 0;
+    Segment!Task next = null;
+    uint         id   = 0;
 
     this (uint id) { this.id = id; }
 
@@ -20,9 +22,9 @@ private class Segment (T...) {
     //       up to N have been acquired, then it's obviously more efficient to just search [N, next_insert),
     //       where N <= next_insert.
     //  
-    uint next_insert = 0, acquired = 0, fetch_head = 0;
+    shared uint next_insert = 0, acquired = 0, fetch_head = 0;
 
-    @property auto remainingInserts () { return SEGMENT_SIZE - next_index; }
+    @property auto remainingInserts () { return SEGMENT_SIZE - next_insert; }
     @property auto remainingFetches () { 
         assert(next_insert >= acquired);
         return next_insert - acquired; 
@@ -34,26 +36,29 @@ private class Segment (T...) {
         next = null;
     }
 
-    alias CTask = Task!T;
-
     // Task storage
-    CTask[SEGMENT_SIZE] items;
+    Task[SEGMENT_SIZE] items;
 
 final:
     /// Try inserting a task. Succeeds iff capacity, etc.,
-    bool insertTask (Task item) {
+    auto insertTask (Task item) {
         uint ins;
 
         // Acquire index
         do {
             ins = atomicLoad(next_insert);
             if (ins >= SEGMENT_SIZE)
-                return false;
+                return null;
         } while (!cas(&next_insert, ins, ins+1));
 
         // And write task
         items[ins] = item;
-        return true;
+
+        // return pointer iff struct or value (reference?) otherwise
+        static if (is(Task == struct))
+            return &(items[ins] = item);
+        else
+            return items[ins] = item;
     }
 
     /// Try fetching a task to execute, finding the next available task that
@@ -61,10 +66,10 @@ final:
     /// Returns either a pointer to a Task (if successful) or null (segment is empty 
     /// or pred did not match any tasks). 
     ///
-    CTask* fetchTask (alias pred)() {
-        CTask* fetchRange (uint start, uint end) {
+    auto fetchTask () {
+        auto fetchRange (uint start, uint end) {
             for (auto i = start; i < end; ++i) {
-                if (items[i].unclaimed && pred(items[i]) && items[i].tryClaim) {
+                if (items[i].unclaimed && items[i].tryClaim) {
 
                     // Update acquire count and fetch_head
                     uint count;
@@ -80,7 +85,10 @@ final:
                         count == atomicLoad(next_insert) &&
                         !cas( &fetch_head, fetch_head, i )) {}
 
-                    return &items[i];
+                    static if (is(Task == struct))
+                        return &items[i];
+                    else 
+                        return items[i];
                 }
             }
             return null;
@@ -108,9 +116,8 @@ final:
     }
 }
 
-class TaskQueue (T...) {
-    alias CTask       = Task!T;
-    alias TaskSegment = Segment!T;
+class TaskQueue (Task) {
+    alias TaskSegment = Segment!Task;
     TaskSegment rootHead, insertHead, fetchHead;
     Mutex       segmentOpMutex;
     uint        nextId = 0;
@@ -119,7 +126,7 @@ class TaskQueue (T...) {
         rootHead = insertHead = fetchHead = new TaskSegment(nextId++);
         segmentOpMutex = new Mutex();
     }
-    void insertTask (CTask task) {
+    auto insertTask (Task task) {
         auto aquireSegment () {
             // Recycle segment from head of queue iff a) we're totally done with that segment,
             // and b) that segment is not the only segment; otherwise, just alloc a new
@@ -137,15 +144,16 @@ class TaskQueue (T...) {
                 insertHead.next = aquireSegment();
                 insertHead = insertHead.next;
             }
-            bool ok = insertHead.insertTask(task);
-            assert(ok);
+            auto taskRef = insertHead.insertTask(task);
+            assert(taskRef !is null);
+            return taskRef;
         }
+        return null;
     }
-    CTask* fetchTask (alias pred)() {
+    auto fetchTask () {
         TaskSegment head = fetchHead;
-        CTask* task;
         do {
-            task = head.fetchTask();
+            auto task = head.fetchTask();
             if (task || !head.next)
                 return task;
 
@@ -160,17 +168,6 @@ class TaskQueue (T...) {
         } while (1);
     }
 }
-//bool fetchAndRunTask (alias errorHandler, alias pred, T...)(TaskQueue!T queue, T args)
-//{
-//    auto task = queue.fetchTask!pred();
-//    if (task) {
-//        auto err = task.tryRun(args);
-//        if (err)
-//            errorHandler(*task, err);
-//        return true;
-//    }
-//    return false;
-//}
 
 /// build + return a string dump of taskqueue's internal segment structure.
 /// format:

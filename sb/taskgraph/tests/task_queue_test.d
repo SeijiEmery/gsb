@@ -3,12 +3,15 @@ import core.thread;
 import core.atomic;
 import std.stdio;
 import std.format;
+import std.datetime;
+import std.conv;
 
 class ThreadWorker : Thread {
-    bool running = false;
-    bool shouldDie = false;
+    shared bool running = false;
+    shared bool shouldDie = false;
     void delegate(ThreadWorker) doRun;
     uint id;
+    uint runCount;
 
     this (uint id, void delegate(ThreadWorker) doRun) {
         this.doRun = doRun;
@@ -18,6 +21,7 @@ class ThreadWorker : Thread {
     void kill () { shouldDie = true; }
     //bool isRunning () { return running; }
     void enterThread () {
+        writefln("Enter thread %s", id);
         assert(!running, format("Thread %s already running!", id));
         running = true;
         try {
@@ -27,6 +31,7 @@ class ThreadWorker : Thread {
         } catch (Throwable e) {
             writefln("Thread %s crashed: %s", id, e);
         }
+        writefln("Exit thread %s run-count %s", id, runCount);
         running = false;
     }
 }
@@ -38,26 +43,26 @@ void testQueueImpl () {
     // num producer + consumer threads
     immutable uint NUM_PRODUCERS = 6, NUM_CONSUMERS = 8;
 
-    auto queue = new TaskQueue();
-    ITask[NUM_PRODUCERS][] producedTasks;
-    ITask[NUM_CONSUMERS][] consumedTasks;
-    uint taskCount = 0;
+    auto queue = new TaskQueue!SbTask();
+    SbTask*[][NUM_PRODUCERS] producedTasks;
+    SbTask*[][NUM_CONSUMERS] consumedTasks;
+    shared uint taskCount = 0;
     immutable uint DUMP_TASK_INTERVAL = 1024;
-    Stopwatch sw;
-    bool mayRun = false;
+    StopWatch sw;
+    shared bool mayRun = false;
 
     void dumpStats () {
-        writefln("%s | %s tasks: %s", sw.peek, taskId, queue.dumpState());
+        writefln("%s | %s tasks: %s", sw.peek.to!Duration, taskCount, queue.dumpState());
     }
     void produceItem (ThreadWorker thread) {
         if (!atomicLoad(mayRun)) return;
 
         uint taskId = atomicOp!"+="(taskCount, 1);
-        auto task = new Task({
+        auto task = SbTask({
             // ...
         });
-        producedTasks[thread.id] ~= task;
-        queue.insertTask(task);
+        producedTasks[thread.id] ~= queue.insertTask(task);
+        thread.runCount++;
 
         if ((taskId % DUMP_TASK_INTERVAL) == DUMP_TASK_INTERVAL - 1) {
             dumpStats();
@@ -68,6 +73,7 @@ void testQueueImpl () {
 
         auto cid = thread.id - NUM_PRODUCERS;
         if (auto task = queue.fetchTask) {
+            thread.runCount++;
             consumedTasks[cid] ~= task;
             if (auto err = task.tryRun) {
                 writefln("Error executing task: %s", err);
@@ -99,22 +105,22 @@ void testQueueImpl () {
     // Launch threads
     foreach (uint i; 1 .. (NUM_PRODUCERS + NUM_CONSUMERS)) {
         threads ~= new ThreadWorker(i, i < NUM_PRODUCERS ?
-            &produceQueueItem : 
-            &consumeQueueItem);
+            &produceItem : 
+            &consumeItem);
         threads[$-1].start();
     }
     atomicStore(mayRun, true);
     sw.start();
 
     // Run + report stats
-    Thread.sleep( dur!"seconds"(5) );
+    Thread.sleep( dur!"seconds"(1) );
     atomicStore(mayRun, false);
     sw.stop();
     dumpStats();
     
     // Shutdown threads
     foreach (thread; threads) {
-        threads[i].kill();
+        thread.kill();
     }
     foreach (thread; threads) {
         if (thread.isRunning) {
