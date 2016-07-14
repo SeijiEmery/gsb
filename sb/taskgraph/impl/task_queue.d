@@ -237,7 +237,6 @@ class TaskQueue (Task) {
         TaskSegment head = fetchHead;
         do {
             auto task = head.fetchTask();
-            if (task || !head.next)
                 return task;
 
             if (head.canAdvance) {
