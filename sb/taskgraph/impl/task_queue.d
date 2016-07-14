@@ -182,8 +182,9 @@ string dumpState (T...)(TaskQueue!T queue) {
         string s;
         while (seg) {
             s ~= format("[%s%d %d/(%d,%d]] ",
-                (seg == queue.insertHead ? "I" :
-                    seg == queue.fetchHead ? "F" : ""),
+                (seg == queue.insertHead ?
+                    (seg == queue.fetchHead ? "IF " : "I ") :
+                    (seg == queue.fetchHead ? "F " : "")),
                 seg.id, seg.acquired, seg.fetch_head, seg.next_insert);
             seg = seg.next;
         }

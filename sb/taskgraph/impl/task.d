@@ -15,10 +15,10 @@ struct SbTask {
         return state == TaskStatus.UNASSIGNED &&
             cas(&state, TaskStatus.UNASSIGNED, TaskStatus.RUNNING);
     }
-    bool unclaimed () { return state == TaskStatus.UNASSIGNED; }
-    bool finished  () { return finished_ok || finished_with_error; }
-    bool finished_ok () { return state == TaskStatus.EXIT_OK; }
-    bool finished_with_error () { return state == TaskStatus.EXIT_FAILURE; }
+    bool unclaimed () { return atomicLoad(state) == TaskStatus.UNASSIGNED; }
+    bool finished  () { return atomicLoad(state) >= TaskStatus.EXIT_OK; }
+    bool finished_ok () { return atomicLoad(state) == TaskStatus.EXIT_OK; }
+    bool finished_with_error () { return atomicLoad(state) == TaskStatus.EXIT_FAILURE; }
 
     // Try running this item by executing it in a try-catch block. Returns null on
     // success (no thrown exceptions), or a Throwable if an error was caught while
