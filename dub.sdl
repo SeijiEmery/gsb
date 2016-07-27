@@ -4,6 +4,9 @@ copyright "Copyright © 2016, Seiji Emery"
 authors "Seiji Emery"
 targetType "none"
 
+//
+// Old app
+//
 subPackage {
     name "gsb"
     targetType "executable"
@@ -18,89 +21,104 @@ subPackage {
     lflags "-Lext/libs" "-lstb"
     dflags "-J."
 }
-#subPackage {
-#    name "all"
-#    targetType "none"
-#    dependency ":events" ":platform" ":threading" ":fs" ":gl" ":app" ":sb2"
-#}
-subPackage {
-    name "taskgraph"
-    targetType "library"
-    sourcePaths "sb/taskgraph/impl" "sb/taskgraph/interface"
-    targetPath  "build/libs/taskgraph"
-}
-subPackage {
-    name "tq-test"
-    targetType "executable"
-    sourceFiles "sb/taskgraph/impl/task.d" "sb/taskgraph/impl/task_queue.d" "sb/taskgraph/interface/task_queue.d"
-    mainSourceFile "sb/taskgraph/tests/task_queue_test.d"
 
-    targetPath "build/tests/taskgraph"
-}
-subPackage {
-    name "gl-platform-test"
-    targetType "executable"
-    sourcePaths "sb/platform/interface" "sb/gl/interface"
-    mainSourceFile "sb/gl_tests/gl_platform_test.d"
-    dependency "gsb:platform" version="*"
-    dependency "gsb:gl"       version="*"
-    targetPath "build/tests/gl_platform_test"
-}
+
+//
+// New App (based around modular subpackages)
+//
+
+//
+// Core packages
+//
 subPackage {
     name "events"
     targetType "library"
-    sourcePaths "sb/events/impl" "sb/events/interface"
+    importPaths "sb/events/interface"
+    sourcePaths "sb/events/interface" "sb/events/impl"
+    targetPath  "build/libs/events"
 }
 subPackage {
-    name "platform"
+    name "platform_glfw"
     targetType "library"
-    sourcePaths "sb/platform/glfw_impl" "sb/platform/interface" "sb/gl/interface"
+    importPaths "sb/platform/interface"
+    sourcePaths "sb/platform/interface" "sb/platform/glfw_impl" \
+                "sb/gl/interface" "sb/events/interface"
     targetPath  "build/libs/platform"
 
-    dependency "gsb:gl" version="*"
+    dependency "gsb:events"     version="*"
     dependency "derelict-glfw3" version="~>1.1.1"
-    dependency "derelict-gl3"  version="~>1.0.18"
+    dependency "derelict-gl3"   version="~>1.0.18"
+    dependency "gl3n"           version="~>1.3.1"
+}
+subPackage {
+    name "gl_41"
+    targetType "library"
+    importPaths "sb/gl/interface"
+    sourcePaths "sb/gl/interface" "sb/gl/gl_41_impl"
+    targetPath  "build/libs/graphics"
+
+    dependency "derelict-gl3" version="~>1.0.18"
+    dependency "gl3n"         version="~>1.3.1"
 }
 subPackage {
     name "threading"
     targetType "library"
+    importPaths "sb/threading/interface"
     sourcePaths "sb/threading/interface" "sb/threading/impl"
     targetPath  "build/libs/threading"
 }
 subPackage {
     name "fs"
     targetType "library"
+    importPaths "sb/fs/interface"
     sourcePaths "sb/fs/interface" "sb/fs/impl"
-    targetPath "build/libs/fs"
+    targetPath  "build/libs/fs"
 }
+
+//
+// Package aliases + base lib
+//
 subPackage {
     name "gl"
-    targetType "library"
-    sourcePaths "sb/gl/interface" "sb/gl/gl_41_impl" "sb/platform/interface" "sb/events/interface"
-    targetPath "build/libs/gl"
-    dependency "derelict-gl3" version="~>1.0.18"
-    dependency "gl3n" version="~>1.3.1"
+    targetType "none"
+    dependency "gsb:gl_41" version="*"
 }
 subPackage {
-    name "app"
+    name "platform"
+    targetType "none"
+    dependency "gsb:platform_glfw" version="*"
+}
+subPackage {
+    name "sb_base"
     targetType "library"
-    sourcePaths "sb/app/interface" "sb/app/impl" "sb/platform/interface" "sb/gl/interface" "sb/fs/interface" "sb/events/interface" "sb/threading/interface"
-    targetPath "build/libs/app"
+    importPaths "sb/base/interface"
+    sourcePaths "sb/base/interface" "sb/base/impl"
+    targetPath  "sb/libs/base"
 
-    dependency "gsb:threading" version="*"
-    dependency "gsb:platform" version="*"
-    dependency "gsb:fs" version="*"
-    dependency "gsb:gl" version="*"
+    dependency "gsb:threading"     version="*"
+    dependency "gsb:gl_41"         version="*"
+    dependency "gsb:platform_glfw" version="*"
+    dependency "gsb:events"        version="*"
+    dependency "gsb:fs"            version="*"
 }
+
+//
+// Test Apps
+//
 subPackage {
-    name "sb2"
+    name "tq-test"
     targetType "executable"
-    importPaths "sb/app/interface" "sb/events/interface"
-    sourcePaths "sb/app"
-    targetPath  "build"
-    dependency "gsb:app" version="*"
+    sourceFiles "sb/taskgraph/impl/task.d" "sb/taskgraph/impl/task_queue.d" "sb/taskgraph/interface/task_queue.d"
+    mainSourceFile "sb/taskgraph/tests/task_queue_test.d"
+    targetPath "build/tests/taskgraph"
 }
-#dependency "gsb:threading" version="*"
+subPackage {
+    name "window-test"
+    targetType "executable"
+    mainSourceFile "sb/gl_tests/window_test.d"
+    targetPath "build/tests/window_test"
 
-
-
+    dependency "gsb:platform" version="*"
+    dependency "gsb:gl"       version="*"
+    dependency "gsb:events"   version="*"
+}

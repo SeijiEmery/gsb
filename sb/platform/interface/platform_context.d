@@ -28,8 +28,6 @@ interface IPlatform {
     void pollEvents ();
 }
 
-immutable auto DEFAULT_WINDOW_TITLE_FPS_FMT = "(%0.1f FPS)";
-
 interface IPlatformWindow {
     // Get name (IPlatformWindow id, set w/ createWindow())
     string          getName ();
@@ -59,6 +57,7 @@ interface IPlatformWindow {
     // Kills the window
     void release ();
 }
+immutable auto DEFAULT_WINDOW_TITLE_FPS_FMT = "(%0.1f FPS)";
 
 // screen + resolution info
 struct ScreenInfo {

@@ -2,11 +2,11 @@ module sb.gl.context;
 import sb.gl.batch;
 import sb.gl.texture;
 import sb.gl.shader;
-import sb.platform;
+//import sb.platform;
 
 enum GLVersion { GL_410 }
 
-IGraphicsContext sbCreateGraphicsContext (IPlatform, GLVersion);
+//IGraphicsContext sbCreateGraphicsContext (IPlatform, GLVersion);
 
 // Thread-safe OpenGL handle / abstraction used to create GL resources, etc.,
 interface IGraphicsContext {
