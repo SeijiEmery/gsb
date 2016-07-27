@@ -212,7 +212,7 @@ class SbWindow : IPlatformWindow {
         swapState();
 
         // set glfw callbacks (almost all callbacks are on a per-window basis)
-        glfwSetWindowUserPointer(handle, this);
+        glfwSetWindowUserPointer(handle, cast(void*)this);
         glfwSetWindowSizeCallback(handle, &windowSizeCallback);
         glfwSetFramebufferSizeCallback(handle, &windowFramebufferSizeCallback);
         glfwSetWindowFocusCallback(handle, &windowFocusCallback);
@@ -342,36 +342,36 @@ class SbWindow : IPlatformWindow {
         }
     }
     // Called when window "damaged" and any persistent elements (eg. UI?) needs to be fully re-rendered
-    private void onWindowNeedsRefresh () {
+    private void onWindowNeedsRefresh () nothrow @safe {
         windowEvents ~= SbEvent(SbWindowRefreshEvent(this));
     }
     // Called when window gains / loses input focus
-    private void onInputFocusChanged (bool hasFocus) {
+    private void onInputFocusChanged (bool hasFocus) nothrow @safe {
         windowEvents ~= SbEvent(SbWindowFocusChangedEvent(this, hasFocus));
     }
     // Called when cursor enters / exits window
-    private void onCursorFocusChanged (bool hasFocus) {
+    private void onCursorFocusChanged (bool hasFocus) nothrow @safe {
         windowEvents ~= SbEvent(SbWindowMouseoverChangedEvent(this, hasFocus));
     }
     // Input callback: mouse motion
-    private void onCursorInput ( double xpos, double ypos ) {
+    private void onCursorInput ( double xpos, double ypos ) nothrow @safe {
         windowEvents ~= SbEvent(SbMouseMoveEvent( vec2(xpos, ypos), lastMousePos ));
         lastMousePos.x = xpos; lastMousePos.y = ypos;
     }
     // Input callback: mouse wheel / trackpad scroll motion
-    private void onScrollInput ( double xoffs, double yoffs ) {
+    private void onScrollInput ( double xoffs, double yoffs ) nothrow @safe {
         windowEvents ~= SbEvent(SbScrollInputEvent( vec2(xoffs, yoffs) ));
     }
     // Input callback: mouse button press state changed
-    private void onMouseButtonInput ( int button, int action, int mods ) {
+    private void onMouseButtonInput ( int button, int action, int mods ) nothrow @safe {
         windowEvents ~= SbEvent(SbMouseButtonEvent( button, action, mods ));
     }
     // Input callback: keyboard key press state changed
-    private void onKeyInput( int key, int scancode, int action, int mods ) {
+    private void onKeyInput( int key, int scancode, int action, int mods ) nothrow @safe {
         windowEvents ~= SbEvent(SbKeyEvent( key, scancode, action, mods ));
     }
     // Input callback: text input (key pressed as unicode codepoint)
-    private void onCharInput ( dchar chr ) {
+    private void onCharInput ( dchar chr ) nothrow @safe {
         windowEvents ~= SbEvent(SbRawCharEvent( chr ));
     }
 }
@@ -384,40 +384,40 @@ private SbWindow getWindow (GLFWwindow* handle) {
 //    auto window = handle.getWindow();
 //    mixin("if (window."~name~") window."~name~"(window);");
 //}
-extern(C) private void windowCloseCallback (GLFWwindow* handle) {
+extern(C) private void windowCloseCallback (GLFWwindow* handle) nothrow {
     //handle.doWindowCallback!"closeAction";
     auto window = handle.getWindow;
     if (window.closeAction)
         window.closeAction(window);
 }
-extern(C) private void windowSizeCallback (GLFWwindow* handle, int width, int height) {
+extern(C) private void windowSizeCallback (GLFWwindow* handle, int width, int height) nothrow @safe {
     handle.getWindow.onWindowSizeChanged( width, height );
 }
-extern(C) private void windowFramebufferSizeCallback (GLFWwindow* handle, int width, int height) {
+extern(C) private void windowFramebufferSizeCallback (GLFWwindow* handle, int width, int height) nothrow @safe {
     handle.getWindow.onFrameBufferSizeChanged( width, height );
 }
-extern(C) private void windowFocusCallback (GLFWwindow* handle, int focused) {
+extern(C) private void windowFocusCallback (GLFWwindow* handle, int focused) nothrow @safe {
     handle.getWindow.onInputFocusChanged( focused != 0 );
 }
-extern(C) private void windowRefreshCallback (GLFWwindow* handle) {
+extern(C) private void windowRefreshCallback (GLFWwindow* handle) nothrow @safe {
     handle.getWindow.onWindowNeedsRefresh();
 }
-extern(C) private void windowKeyInputCallback (GLFWwindow* handle, int key, int scancode, int action, int mods) {
+extern(C) private void windowKeyInputCallback (GLFWwindow* handle, int key, int scancode, int action, int mods) nothrow @safe {
     handle.getWindow.onKeyInput(key, scancode, action, mods);
 }
-extern(C) private void windowCharInputCallback (GLFWwindow* handle, uint codepoint) {
+extern(C) private void windowCharInputCallback (GLFWwindow* handle, uint codepoint) nothrow @safe {
     handle.getWindow.onCharInput( cast(dchar)codepoint );
 }
-extern(C) private void windowCursorInputCallback (GLFWwindow* handle, double xpos, double ypos) {
+extern(C) private void windowCursorInputCallback (GLFWwindow* handle, double xpos, double ypos) nothrow @safe {
     handle.getWindow.onCursorInput( xpos, ypos );
 }
-extern(C) private void windowCursorEnterCallback (GLFWwindow* handle, int entered) {
+extern(C) private void windowCursorEnterCallback (GLFWwindow* handle, int entered) nothrow @safe {
     handle.getWindow.onCursorFocusChanged( entered != 0 );
 }
-extern(C) private void windowMouseBtnInputCallback (GLFWwindow* handle, int button, int action, int mods) {
+extern(C) private void windowMouseBtnInputCallback (GLFWwindow* handle, int button, int action, int mods) nothrow @safe {
     handle.getWindow.onMouseButtonInput( button, action, mods );
 }
-extern(C) private void windowScrollInputCallback (GLFWwindow* handle, double xoffs, double yoffs) {
+extern(C) private void windowScrollInputCallback (GLFWwindow* handle, double xoffs, double yoffs) nothrow @safe {
     handle.getWindow.onScrollInput( xoffs, yoffs );
 }
 
