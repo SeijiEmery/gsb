@@ -36,6 +36,8 @@ subPackage {
     importPaths "sb/events/interface"
     sourcePaths "sb/events/interface" "sb/events/impl"
     targetPath  "build/libs/events"
+
+    dependency "gl3n" version="~>1.3.1"
 }
 subPackage {
     name "platform_glfw"

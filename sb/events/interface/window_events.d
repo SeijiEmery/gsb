@@ -1,14 +1,23 @@
 module sb.events.window_events;
+import gl3n.linalg;
 
-struct WindowResizeEvent {
-    uint[2] prevSize;   // scaled
-    uint[2] newSize;    // scaled
+struct SbWindowNeedsRefreshEvent {
+    string window;
 }
-struct WindowRescaleEvent {
-    double[2] prevScale;
-    double[2] newScale;
+struct SbWindowResizeEvent {
+    string window;
+    vec2 prevSize, newSize;
 }
-struct WindowFocusChangeEvent {
-    bool hasFocus;      // prevFocus: !hasFocus
+struct SbWindowRescaleEvent {
+    string window;
+    vec2 prevScale, newScale;
+}
+struct SbWindowFocusChangeEvent {
+    string   window;
+    bool     hasFocus;
+}
+struct SbWindowMouseoverEvent {
+    string   window;
+    bool     hasMouseover;
 }
 

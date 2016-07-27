@@ -40,7 +40,6 @@ interface IPlatformWindow {
 
     // Set window title
     IPlatformWindow setTitle (string);
-    IPlatformWindow setTitle (const(char)* str, size_t len = 0);
 
     // Set and enable/disable fps counter in the window title 
     // (displayed in addition to window title when enabled)

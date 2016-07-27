@@ -1,4 +1,9 @@
 module sb.events.input_events;
+import gl3n.linalg;
+
+struct SbMouseMoveEvent {
+    vec2 pos, lastPos;
+}
 
 struct MouseEvent {
     float[2] pos,    prevPos;

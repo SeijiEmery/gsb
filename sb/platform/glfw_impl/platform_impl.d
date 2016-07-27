@@ -63,7 +63,7 @@ class SbPlatform : IPlatform {
     SbWindow[string] m_windows;
     SbWindow         m_mainWindow;
     SbTime           m_time;
-
+final:
     this (IGraphicsLib graphicsLib, SbPlatformConfig config) { 
         m_config = config;
         m_graphicsLib = graphicsLib;
@@ -121,6 +121,7 @@ class SbPlatform : IPlatform {
             m_mainWindow = window;
             glfwMakeContextCurrent( handle );
         }
+        return window;
     }
     IPlatformWindow getWindow (string id) {
         return id in m_windows ? m_windows[id] : null;
@@ -153,9 +154,48 @@ class SbPlatform : IPlatform {
     private void pollGamepads () {
         // TODO: integrate existing glfw gamepad impl
     }
+
+
+    // Raw input callbacks (we force a bunch of stuff to "call home" from window obj => shared platform obj)
+    // We're gonna assume that said callbacks never get called from more than one thread (this is up to glfw),
+    // and the point of this is, if we ever support more than one window and actually _care_ about what order
+    // the events come in, we'll have enough info (more than enough) to determine what events happened when,
+    // in which proper sequence, and affecting which windows across any given frame.
+    //
+    // For the time being we don't really care, since > 1 window is out of the question, but when/if we do
+    // add multi-window / multi-monitor full-screen support, and decide to maybe use a more complex input
+    // / event model, then the infrastructure to do it already exists :)
+
+    private void pushRawInput ( SbWindow window, RawMouseBtnInput input ) nothrow @safe {
+        
+    }
+    private void pushRawInput ( SbWindow window, RawKeyInput input ) nothrow @safe {
+
+    }
+    private void pushRawInput ( SbWindow window, RawCharInput input ) nothrow @safe {
+
+    }
+
+    // Unused, but possibly useful redundant callbacks. Focus + mouse motion events are already handled
+    // in SbWindow / SbWindowState, but these give us some extra context for the above events, if we
+    // need it or something... 
+    private void notifyInputFocusChanged (SbWindow window, bool hasFocus) nothrow @safe {}
+    private void notifyCursorFocusChanged (SbWindow window, bool hasFocus) nothrow @safe {}
+    private void notifyCursorInput (SbWindow window, double x, double y) nothrow @safe {}
 }
 
+struct RawMouseBtnInput { int btn, action, mods; }
+struct RawKeyInput      { int key, scancode, action, mods; }
+struct RawCharInput     { dchar chr; }
+alias RawInputEvent = Algebraic!(RawMouseBtnInput, RawKeyInput, RawCharInput);
+
+
+
+
+
+
 struct SbWindowState {
+    // Authoritative window state (mostly set by events)
     vec2i windowSize, framebufferSize;
     vec2  scaleFactor; // 1.0 + 0.5 for retina, and other scale factors for w/e (hacky way to scale ui)
     float aspectRatio;
@@ -165,7 +205,19 @@ struct SbWindowState {
         scaleFactor.x = cast(double)framebufferSize.x / cast(double)windowSize.x;
         scaleFactor.y = cast(double)framebufferSize.y / cast(double)windowSize.y;
     }
+
+    // Raw event state
+    bool wantsRefresh = false;
+
 }
+private void swapState (ref SbWindowState a, ref SbWindowState b) {
+    a = b;
+    b.wantsRefresh = false;
+
+}
+
+
+
 
 
 class SbWindow : IPlatformWindow {
@@ -234,10 +286,6 @@ class SbWindow : IPlatformWindow {
             handle = null;
         }
     }
-    private void collectEvents (IEventProducer evp) {
-        evp.processEvents( windowEvents );
-        windowEvents.length = 0;
-    }
     private void updateWindowTitle () {
         glfwSetWindowTitle(handle, showWindowFPS ?
             format("%s %s", config.title, windowFpsString).toStringz :
@@ -247,16 +295,6 @@ class SbWindow : IPlatformWindow {
     IPlatformWindow setTitle ( string title ) {
         config.title = title;
         return updateWindowTitle, this;
-    }
-    IPlatformWindow setTitle ( const(string) title ) {
-        config.title = title;
-        return updateWindowTitle, this;
-    }
-    IPlatformWindow setTitle ( const(char)* title, size_t title_len = 0 ) {
-        return setTitle( title_len ? 
-            title[0..title_len] : 
-            title[0 .. strlen(title)] 
-        );
     }
     IPlatformWindow setTitleFPSVisible (bool visible) {
         showWindowFPS = visible;
@@ -288,12 +326,19 @@ class SbWindow : IPlatformWindow {
             glfwSetWindowResizable(handle, resizable);
         }
     }
-
-
-
     IPlatformWindow setWindowSize ( vec2i size ) {
         onWindowSizeChanged( size.x, size.y );
         return this;
+    }
+
+    private void collectEvents (IEventProducer evp) {
+        if (state.scaleFactor != nextState.scaleFactor)
+            windowEvents ~= SbWindowRescaleEvent(this, state.scaleFactor, nextState.scaleFactor);
+        if (state.windowSize != nextState.windowSize)
+            windowEvents ~= SbWindowResizeEvent(this, state.windowSize, nextState.windowSize);
+
+        evp.processEvents( windowEvents );
+        windowEvents.length = 0;
     }
     IPlatformWindow setScreenScale ( SbScreenScale option ) {
         autodetectScreenScale = option == SbScreenScale.AUTODETECT_RESOLUTION;
@@ -348,38 +393,41 @@ class SbWindow : IPlatformWindow {
             );
         }
     }
+
     // Called when window "damaged" and any persistent elements (eg. UI?) needs to be fully re-rendered
     private void onWindowNeedsRefresh () nothrow @safe {
-        windowEvents ~= SbEvent(SbWindowRefreshEvent(this));
+        nextState.wantsRefresh = true;
     }
     // Called when window gains / loses input focus
     private void onInputFocusChanged (bool hasFocus) nothrow @safe {
-        windowEvents ~= SbEvent(SbWindowFocusChangedEvent(this, hasFocus));
+        nextState.hasInputFocus = hasFocus;
+        context.notifyInputFocusChanged( this, hasFocus );
     }
     // Called when cursor enters / exits window
     private void onCursorFocusChanged (bool hasFocus) nothrow @safe {
-        windowEvents ~= SbEvent(SbWindowMouseoverChangedEvent(this, hasFocus));
+        nextState.hasCursorFocus = hasFocus;
+        context.notifyCursorFocusChanged( this, hasFocus );
     }
     // Input callback: mouse motion
     private void onCursorInput ( double xpos, double ypos ) nothrow @safe {
-        windowEvents ~= SbEvent(SbMouseMoveEvent( vec2(xpos, ypos), lastMousePos ));
-        lastMousePos.x = xpos; lastMousePos.y = ypos;
+        nextState.mousePos = vec2(xpos, ypos);
+        context.notifyCursorInput( this, xpos, ypos );
     }
     // Input callback: mouse wheel / trackpad scroll motion
     private void onScrollInput ( double xoffs, double yoffs ) nothrow @safe {
-        windowEvents ~= SbEvent(SbScrollInputEvent( vec2(xoffs, yoffs) ));
+        nextState.scrollDelta += vec2(xoffs, yoffs);
     }
     // Input callback: mouse button press state changed
     private void onMouseButtonInput ( int button, int action, int mods ) nothrow @safe {
-        windowEvents ~= SbEvent(SbMouseButtonEvent( button, action, mods ));
+        context.pushRawInput( this, RawMouseBtnInput( button, action, mods ));
     }
     // Input callback: keyboard key press state changed
     private void onKeyInput( int key, int scancode, int action, int mods ) nothrow @safe {
-        windowEvents ~= SbEvent(SbKeyEvent( key, scancode, action, mods ));
+        context.pushRawInput( this, RawKeyInput( key, scancode, action, mods ));
     }
     // Input callback: text input (key pressed as unicode codepoint)
     private void onCharInput ( dchar chr ) nothrow @safe {
-        windowEvents ~= SbEvent(SbRawCharEvent( chr ));
+        context.pushRawInput( this, RawCharInput( chr ));
     }
 }
 

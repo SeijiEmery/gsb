@@ -6,12 +6,15 @@ import std.variant: Algebraic;
 
 
 alias SbEvent = Algebraic!(
-    WindowResizeEvent, WindowRescaleEvent, WindowFocusChangeEvent,
+    SbWindowResizeEvent, SbWindowRescaleEvent, SbWindowFocusChangeEvent,
+    SbWindowMouseoverEvent, SbWindowNeedsRefreshEvent,
 
-    MouseEvent, KeyEvent, KeyTextEvent,
-    GamepadButtonEvent, GamepadAxisEvent, 
-    GamepadConnectionEvent, GamepadDisconnectionEvent, 
+    SbMouseMoveEvent, SbMouseButtonEvent, SbScrollInputEvent,
+    SbKeyEvent, SbRawCharEvent,
 
+    SbGamepadButtonEvent, SbGamepadAxisEvent,
+    SbGamepadConnectionEvent,
+ 
     SbAppLoadedEvent, SbAppKilledEvent, SbNextFrameEvent,
 
     SbModuleLoadingEvent, SbModuleLoadedEvent, SbModuleLoadFailedEvent,
