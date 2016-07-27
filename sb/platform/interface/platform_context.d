@@ -18,7 +18,7 @@ interface IPlatform {
     IEventsInstance  getEventsInstance  ();
 
     // Window + screen access
-    IPlatformWindow createWindow (string id, SbWindowOptions);
+    IPlatformWindow createWindow (string id, SbWindowConfig);
     IPlatformWindow getWindow    (string id);
     //ScreenInfo[]    getScreenInfo ();
     //uint[2][]       getResolutions (uint screenIndex);
@@ -51,7 +51,7 @@ interface IPlatformWindow {
     // Low-level window close events: check / set shouldClose, and (optionally)
     // register a onClosed callback for intercepting window close actions
     bool shouldClose ();
-    IPlatformWindow onClosed  (void delegate(IPlatformWindow));
+    IPlatformWindow onClosed  (void delegate(IPlatformWindow) nothrow);
     IPlatformWindow setShouldClose (bool closed = true);
 
     // Kills the window
@@ -74,30 +74,13 @@ struct SbPlatformConfig {
     SbPlatform_GLVersion glVersion;
 }
 
-
-
-
 struct SbWindowConfig {
     string title;
     uint size_x, size_y;
     bool resizable = true;
-}
-struct SbWindowOptions {
-    // window size + screen options.
-    // Note: will attempt to best-fit screen + resolution with default options.
-    //   eg. with size=10000x10000 + default options and 2 screens @1080p + 720p, will choose
-    //       the bigger screen and clamp size to 1080x1920, minus menu bar size (if on osx)
-    //
-    uint[2] preferredWindowSize;       // preferred window size in pixels
-    int     preferredScreenIndex = -1; // [0..num screens) for screen X; -1 for any screen
-    bool    clampToScreenSize = true;  // if true, may clamp window size to fit whatever screen we end up using
 
-    // resize options
-    SbWindowResize resizeOption     = SbWindowResize.MAY_RESIZE;
-
-    // retina screen scaling
     SbScreenScale screenScaleOption = SbScreenScale.AUTODETECT_RESOLUTION;
-    double[2] customScreenScale;  // used iff screenScaleOption == SbScreenScale.CUSTOM_SCALE
+    vec2          customScale; // used iff screenScaleOption == SbScreenScale.CUSTOM_SCALE
 }
 
 // Window resizing options

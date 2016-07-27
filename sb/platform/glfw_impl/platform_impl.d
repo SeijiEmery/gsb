@@ -8,6 +8,8 @@ import derelict.opengl3.gl3;
 import std.exception: enforce;
 import gl3n.linalg;
 import std.format;
+import std.string: toStringz;
+import core.stdc.string: strlen;
 
 IPlatform sbCreatePlatformContext (IGraphicsLib graphicsLib, SbPlatformConfig config) {
     enforce(config.backend != SbPlatform_Backend.NONE,
@@ -109,7 +111,7 @@ class SbPlatform : IPlatform {
 
         auto handle = glfwCreateWindow(
             config.size_x, config.size_y,
-            config.title.toCString,
+            config.title.toStringz,
             null, null);
         enforce(handle, format("Failed to create window '%s'", id));
 
@@ -178,7 +180,7 @@ class SbWindow : IPlatformWindow {
 
     // Screen scaling options (corresponds to SbScreenScale)
     bool autodetectScreenScale = true;
-    double forcedScaleFactor   = 0.0;   // used iff !autodetectScreenScale
+    vec2 forcedScaleFactor     = 0.0;   // used iff !autodetectScreenScale
 
     // Internal event buffer.
     // Populated by glfw event callbacks (ASSUMES single-threaded / synchronous);
@@ -186,9 +188,10 @@ class SbWindow : IPlatformWindow {
     SbEvent[] windowEvents;
 
     // D Callbacks
-    void delegate(SbWindow) closeAction = null;
+    void delegate(SbWindow) nothrow closeAction = null;
 
     // Window fps, etc
+    bool   showWindowFPS;
     string windowFpsString = "";
     string windowFpsFormat = DEFAULT_WINDOW_TITLE_FPS_FMT;
     double lastWindowFps   = 0;
@@ -205,8 +208,8 @@ class SbWindow : IPlatformWindow {
         // Setup state: for simplicity, we call setScreenScale (calls onWindowSizeChanged)
         // and swapState() to make state / nextState match starting window config parameters.
         this.state.windowSize = vec2i(config.size_x, config.size_y);
-        if (config.screenScalingOption != SbScreenScale.CUSTOM_SCALE)
-            setScreenScale( config.screenScalingOption );
+        if (config.screenScaleOption != SbScreenScale.CUSTOM_SCALE)
+            setScreenScale( config.screenScaleOption );
         else
             setScreenScale( config.customScale );
         swapState();
@@ -237,11 +240,15 @@ class SbWindow : IPlatformWindow {
     }
     private void updateWindowTitle () {
         glfwSetWindowTitle(handle, showWindowFPS ?
-            format("%s %s", config.title, windowFpsString).toCString :
-            config.title.toCString
+            format("%s %s", config.title, windowFpsString).toStringz :
+            config.title.toStringz
         );
     }
     IPlatformWindow setTitle ( string title ) {
+        config.title = title;
+        return updateWindowTitle, this;
+    }
+    IPlatformWindow setTitle ( const(string) title ) {
         config.title = title;
         return updateWindowTitle, this;
     }
@@ -264,12 +271,12 @@ class SbWindow : IPlatformWindow {
         return this;
     }
 
-    bool shouldClose () { return glfwWindowShouldClose(handle); }
+    bool shouldClose () { return glfwWindowShouldClose(handle) != 0; }
     IPlatformWindow setShouldClose (bool close = true) {
         glfwSetWindowShouldClose(handle, close);
         return this;
     }
-    IPlatformWindow onClose (void delegate(SbWindow) dg) {
+    IPlatformWindow onClose (void delegate(SbWindow) nothrow dg) {
         closeAction = dg;
         glfwSetWindowCloseCallback(handle, &windowCloseCallback);
         return this;
@@ -291,11 +298,11 @@ class SbWindow : IPlatformWindow {
     IPlatformWindow setScreenScale ( SbScreenScale option ) {
         autodetectScreenScale = option == SbScreenScale.AUTODETECT_RESOLUTION;
         final switch (option) {
-            case FORCE_SCALE_1X: forcedScaleFactor = vec2(1, 1);       break;
-            case FORCE_SCALE_2X: forcedScaleFactor = vec2(0.5, 0.5);   break;
-            case FORCE_SCALE_4X: forcedScaleFactor = vec2(0.25, 0.25); break;
-            case CUSTOM_SCALE:   autodetectScreenScale = true;         break;
-            case AUTODETECT_RESOLUTION: break;
+            case SbScreenScale.FORCE_SCALE_1X: forcedScaleFactor = vec2(1, 1);       break;
+            case SbScreenScale.FORCE_SCALE_2X: forcedScaleFactor = vec2(0.5, 0.5);   break;
+            case SbScreenScale.FORCE_SCALE_4X: forcedScaleFactor = vec2(0.25, 0.25); break;
+            case SbScreenScale.CUSTOM_SCALE:   autodetectScreenScale = true;         break;
+            case SbScreenScale.AUTODETECT_RESOLUTION: break;
         }
         config.screenScaleOption = option;
         onWindowSizeChanged( state.windowSize.x, state.windowSize.y );
@@ -306,7 +313,7 @@ class SbWindow : IPlatformWindow {
         forcedScaleFactor = customScale;
 
         config.screenScaleOption = SbScreenScale.CUSTOM_SCALE;
-        config.customScreenScale = customScale;
+        config.customScale       = customScale;
         onWindowSizeChanged( state.windowSize.x, state.windowSize.y );
         return this;
     }
@@ -315,7 +322,7 @@ class SbWindow : IPlatformWindow {
     }
 
     // Window callbacks (onWindowSizeChanged is also called by internal state setting code)
-    private void onWindowSizeChanged ( int width, int height ) {
+    private void onWindowSizeChanged ( int width, int height ) nothrow @safe {
         nextState.windowSize = vec2i(width, height);
         nextState.aspectRatio = cast(double)width / cast(double)height;
 
@@ -332,7 +339,7 @@ class SbWindow : IPlatformWindow {
             );
         }
     }
-    private void onFrameBufferSizeChanged ( int width, int height ) {
+    private void onFrameBufferSizeChanged ( int width, int height ) nothrow @safe{
         if (autodetectScreenScale) {
             nextState.framebufferSize = vec2i(width, height);
             nextState.scaleFactor = vec2(
@@ -377,7 +384,7 @@ class SbWindow : IPlatformWindow {
 }
 
 // GLFW Callbacks
-private SbWindow getWindow (GLFWwindow* handle) {
+private SbWindow getWindow (GLFWwindow* handle) nothrow @trusted {
     return cast(SbWindow)glfwGetWindowUserPointer(handle);
 }
 //private auto doWindowCallback(string name)(GLFWwindow* handle) {
