@@ -1,5 +1,5 @@
 name "gsb"
-description "A game framework / graphics sandbox written in D"
+description "D Graphics Sandbox"
 copyright "Copyright © 2016, Seiji Emery"
 authors "Seiji Emery"
 targetType "none"

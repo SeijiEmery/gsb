@@ -1,32 +1,26 @@
 module sb.platform.impl.platform_impl;
 import sb.platform;
 import sb.events;
+import sb.gl;
+
 import derelict.glfw3.glfw3;
 import derelict.opengl3.gl3;
 import std.exception: enforce;
 import gl3n.linalg;
+import std.format;
 
-IPlatform sbCreatePlatformContext (SbPlatformConfig config) {
+IPlatform sbCreatePlatformContext (IGraphicsLib graphicsLib, SbPlatformConfig config) {
     enforce(config.backend != SbPlatform_Backend.NONE,
         format("Invalid platform: %s", config.backend));
     enforce(config.glVersion != SbPlatform_GLVersion.NONE,
         format("Invalid gl version: %s", config.glVersion));
 
-    auto getGraphicsLibImpl () {
-        //final switch (config.glVersion) {
-        //    case SbPlatform_GLVersion.GL_410:
-        //        return sbCreateGraphicsContext_GL_410();
-        //    case SbPlatform_GLVersion.NONE: assert(0);
-        //}
-        enforce(config.glVersion == SbPlatform_GLVersion.GL_410,
-            format("Unsupported Graphics Backend: %s", config.glVersion));
+    enforce(graphicsLib.glVersion == GraphicsLibVersion.GL_410,
+        format("Unsupported graphics backend: %s", graphicsLib.glVersion));
 
-        return sbCreateGraphicsContext( config.glVersion );
-    }
-
-    final switch (config.backend) {
+    switch (config.backend) {
         case SbPlatform_Backend.GLFW3:
-            return new SbPlatform( getGraphicsLibImpl(), config );
+            return new SbPlatform( graphicsLib, config );
         default:
             throw new Exception(format("Unsupported platform backend: %s", config.backend));
     }
@@ -63,22 +57,24 @@ struct SbTime {
 
 class SbPlatform : IPlatform {
     SbPlatformConfig m_config;
+    IGraphicsLib     m_graphicsLib;
     SbWindow[string] m_windows;
     SbWindow         m_mainWindow;
     SbTime           m_time;
 
-    this (SbPlatformConfig config) { m_config = config; }
-
+    this (IGraphicsLib graphicsLib, SbPlatformConfig config) { 
+        m_config = config;
+        m_graphicsLib = graphicsLib;
+    }
     void init () {
         // preload gl + glfw
         DerelictGLFW3.load();
-        DerelictGL3.load();
+        m_graphicsLib.preInit();
 
         enforce( glfwInit(), "failed to initialize glfw" );
     }
-    void preInitGL () {}
     void initGL () {
-        DerelictGL3.reload();
+        m_graphicsLib.initOnThread();
         if (m_mainWindow)
             glfwMakeContextCurrent(m_mainWindow.handle);
     }
@@ -87,18 +83,29 @@ class SbPlatform : IPlatform {
             window.release();
         }
         glfwTerminate();
+        m_graphicsLib.teardown();
     }
-
+    IGraphicsContext graphicsContext () { 
+        return m_graphicsLib.getContext; 
+    }
     IPlatformWindow createWindow (string id, SbWindowConfig config) {
-        enforce(id !in m_windows, format("Already registered window '%s'", id));
-        enforce(!mainWindow, format("Unimplemented: multi-window support"));
+        import std.variant: visit;
 
-        assert( m_config.glVersion == SbPlatform_GlVersion.GL_410 );
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-        glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GL_TRUE : GL_FALSE );
+        enforce(id !in m_windows, format("Already registered window '%s'", id));
+        enforce(!m_mainWindow, format("Unimplemented: multi-window support"));
+
+        assert( m_graphicsLib.glVersion == GraphicsLibVersion.GL_410 );
+        m_graphicsLib.getVersionInfo.visit!(
+            (OpenglVersionInfo info) {
+                glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, info.VERSION_MAJOR);
+                glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, info.VERSION_MINOR);
+                glfwWindowHint(GLFW_OPENGL_PROFILE, info.IS_CORE_PROFILE ?
+                    GLFW_OPENGL_CORE_PROFILE : GLFW_OPENGL_ANY_PROFILE);
+                glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, info.IS_FORWARD_COMPAT ?
+                    GL_TRUE : GL_FALSE);
+            }
+        );
+        glfwWindowHint(GLFW_RESIZABLE, config.resizable ? GL_TRUE : GL_FALSE);
 
         auto handle = glfwCreateWindow(
             config.size_x, config.size_y,
