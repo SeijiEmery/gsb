@@ -16,8 +16,9 @@ interface IShader {
     IShader setv (string name, mat3  value);
     IShader setv (string name, mat4  value);
 
-    // Release (delete) shader
+    // Release / retain
     void release ();
+    void retain  ();
 }
 enum ShaderType {
     FRAGMENT, VERTEX, GEOMETRY

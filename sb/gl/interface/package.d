@@ -1,6 +1,4 @@
 module sb.gl;
-//public import sb.gl.gl_impl;
 public import sb.gl.batch;
 public import sb.gl.context;
-public import sb.gl.texture;
-public import sb.gl.shader;
+public import sb.gl.resource;

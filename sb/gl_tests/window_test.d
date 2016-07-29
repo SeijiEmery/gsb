@@ -4,7 +4,8 @@ import std.stdio;
 import std.datetime: StopWatch;
 import core.time;
 import std.conv;
-import std.math: sin;
+import std.math;
+import gl3n.linalg;
 
 void main (string[] args) {
     SbPlatformConfig platformConfig = {
@@ -26,8 +27,43 @@ void main (string[] args) {
         platform.initGL();
 
         //auto events = platform.getEventsInstance();
-        auto gl     = platform.getGraphicsContext();
-        auto batch  = gl.getLocalBatch();
+        auto gl           = platform.getGraphicsContext();
+        auto resourcePool = gl.createResourcePrefix("window-test");
+        scope(exit) resourcePool.release();
+
+        auto shader = resourcePool.createShader();
+        shader.rawSource(ShaderType.VERTEX, `
+            #version 410
+            in vec3 vertPosition;
+            in vec3 vertColor;
+            out vec3 color;
+
+            void main () {
+                color = vertColor;
+                gl_Position = vec4( vertPosition, 1.0 );
+            }
+        `);
+        shader.rawSource(ShaderType.FRAGMENT, `
+            #version 410
+            in vec3 color;
+            out vec3 fragColor;
+
+            void main () {
+                fragColor = vec4( color, 1.0 );
+            }
+        `);
+        //auto vbo = resourcePool.createVBO();
+        //auto vao = resourcePool.createVAO();
+
+        //const float[] position_color_data = [
+        //    -0.8f, -0.8f, 0.0f,  1.0f, 0.0f, 0.0f,
+        //     0.8f, -0.8f, 0.0f,  0.0f, 1.0f, 0.0f,
+        //     0.0f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f
+        //];
+        //vbo.bufferData( position_color_data, GL_STATIC_DRAW );
+        //vao.bindVertexAttrib( 0, vbo, GL_FLOAT, false, float.sizeof * 6, 0 );
+        //vao.bindVertexAttrib( 1, vbo, GL_FLOAT, false, float.sizeof * 6, float.sizeof * 3 );
+        //vao.bindShader( shader );
 
         StopWatch sw; sw.start();
         double prevTime = sw.peek.to!("seconds", double);
@@ -35,20 +71,24 @@ void main (string[] args) {
             auto time = sw.peek.to!("seconds", double);
             auto dt   = time - prevTime;
             prevTime  = time;
-
             window.setTitleFPS( 1.0 / dt );
-
             immutable auto PERIOD = 2.0; // 2 seconds
-            auto c = sin( time / PERIOD );
-
-            //gl.setClearColor(vec4( c, c, c, 1 ));
-            platform.swapFrame();
+            auto c = sin( time / PERIOD * 2 * PI ) * 0.5 + 0.5;
+            gl.setClearColor(vec4( c, c, c, 1 ));
+            //auto t = time * PI;
+            //gl.setClearColor(vec4(
+            //    sin( t * 3 ) * 0.5 + 0.5,
+            //    sin( t * 5 ) * 0.5 + 0.5,
+            //    sin( t * 7 ) * 0.5 + 0.5,
+            //    1,
+            //));
             platform.pollEvents();
 
-            //events.pollFrame();
-            //events.writeEventDump(stdout);
+            //gl.getLocalBatch.exec({
+            //    vao.drawArrays( GL_TRIANGLES, 0, 3 );
+            //});
 
-            // ...
+            platform.swapFrame();
         }
     } catch (Throwable e) {
         writefln("%s", e);

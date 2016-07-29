@@ -1,8 +1,9 @@
 module sb.gl.context;
+import sb.gl.resource;
 import sb.gl.batch;
-import sb.gl.texture;
-import sb.gl.shader;
+
 import std.variant: Algebraic;
+import gl3n.linalg;
 
 //
 // Graphics lib abstraction layer:
@@ -57,20 +58,22 @@ interface IGraphicsLib {
 
 // Thread-safe OpenGL handle / abstraction used to create GL resources, etc.,
 interface IGraphicsContext {
-    
+    // Create / get a resource prefix, used to create textures, shaders, etc
+    GLResourcePoolRef createResourcePrefix ( string name );
+
     // Batch creation: create a new batch with createBatch, or get a new / existing
     // batch instance for this thread
     IBatch createBatch ();     // NOT thread safe; create a new one for each thread
     IBatch getLocalBatch ();   // or just use this (thread-local batch)
 
-    // Create GL resources: textures + shaders, etc
-    ITexture createTexture ();
-    IShader  createShader ();
-
-    // Swap current frame + draw (and reset) all active batches
+    // End current frame; called before buffer swap
     void endFrame ();
+
+    // Called after buffer swap; clears color + resets state
+    void beginFrame ();
+
+    // Set state, etc
+    void setClearColor (vec4 normalized_rgba);
 }
-
-
 
 
