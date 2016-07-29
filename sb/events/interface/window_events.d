@@ -6,7 +6,7 @@ struct SbWindowNeedsRefreshEvent {
 }
 struct SbWindowResizeEvent {
     string window;
-    vec2 prevSize, newSize;
+    vec2i prevSize, newSize;
 }
 struct SbWindowRescaleEvent {
     string window;

@@ -4,18 +4,17 @@ import sb.gl;
 import gl3n.linalg;
 
 // Create platform index
-IPlatform sbCreatePlatformContext (SbPlatformConfig);
+IPlatform sbCreatePlatformContext (IGraphicsLib, SbPlatformConfig);
 
 interface IPlatform {
     // platform init + deinit calls: call initMain + teardown on main thread,
     // and initGL on graphics thread (may be main thread)
     void init ();
-    void preInitGL ();
     void initGL ();
     void teardown ();
 
     IGraphicsContext getGraphicsContext ();
-    IEventsInstance  getEventsInstance  ();
+    //IEventsInstance  getEventsInstance  ();
 
     // Window + screen access
     IPlatformWindow createWindow (string id, SbWindowConfig);
@@ -24,7 +23,7 @@ interface IPlatform {
     //uint[2][]       getResolutions (uint screenIndex);
 
     // wraps glfwSwapBuffers
-    void swapBuffers ();
+    void swapFrame ();
     void pollEvents ();
 }
 
@@ -34,9 +33,9 @@ interface IPlatformWindow {
 
     // Set window size + screen scaling
     IPlatformWindow setWindowSize (vec2i size);
-    IPlatformWindow setResizable  (bool resizable);
-    IPlatformWindow setScaling    (SbScreenScale scaling);
-    IPlatformWindow setCustomScale (double x, double y);
+    //IPlatformWindow setResizable  (bool resizable);
+    IPlatformWindow setScreenScale (SbScreenScale scaling);
+    IPlatformWindow setScreenScale (vec2 customScale);
 
     // Set window title
     IPlatformWindow setTitle (string);
@@ -78,6 +77,7 @@ struct SbWindowConfig {
     uint size_x, size_y;
     bool resizable = true;
 
+    bool showFps   = false;
     SbScreenScale screenScaleOption = SbScreenScale.AUTODETECT_RESOLUTION;
     vec2          customScale; // used iff screenScaleOption == SbScreenScale.CUSTOM_SCALE
 }

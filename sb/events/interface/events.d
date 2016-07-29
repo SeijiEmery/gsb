@@ -2,8 +2,7 @@ module sb.events.events;
 public import sb.events.window_events;
 public import sb.events.input_events;
 public import sb.events.internal_events;
-import std.variant: Algebraic;
-
+public import std.variant: Algebraic, visit;
 
 alias SbEvent = Algebraic!(
     SbWindowResizeEvent, SbWindowRescaleEvent, SbWindowFocusChangeEvent,
@@ -17,8 +16,8 @@ alias SbEvent = Algebraic!(
  
     SbAppLoadedEvent, SbAppKilledEvent, SbNextFrameEvent,
 
-    SbModuleLoadingEvent, SbModuleLoadedEvent, SbModuleLoadFailedEvent,
-    SbModuleRunningEvent, SbModuleKilledEvent, SbModuleErrorEvent,
+    //SbModuleLoadingEvent, SbModuleLoadedEvent, SbModuleLoadFailedEvent,
+    //SbModuleRunningEvent, SbModuleKilledEvent, SbModuleErrorEvent,
 );
 
 // List of event classifications as a bitmask

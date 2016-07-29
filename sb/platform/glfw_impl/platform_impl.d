@@ -68,29 +68,29 @@ final:
         m_config = config;
         m_graphicsLib = graphicsLib;
     }
-    void init () {
+    override void init () {
         // preload gl + glfw
         DerelictGLFW3.load();
         m_graphicsLib.preInit();
 
         enforce( glfwInit(), "failed to initialize glfw" );
     }
-    void initGL () {
+    override void initGL () {
         m_graphicsLib.initOnThread();
         if (m_mainWindow)
             glfwMakeContextCurrent(m_mainWindow.handle);
     }
-    void teardown () {
+    override void teardown () {
         foreach (name, window; m_windows) {
             window.release();
         }
         glfwTerminate();
         m_graphicsLib.teardown();
     }
-    IGraphicsContext graphicsContext () { 
+    override IGraphicsContext getGraphicsContext () { 
         return m_graphicsLib.getContext; 
     }
-    IPlatformWindow createWindow (string id, SbWindowConfig config) {
+    override IPlatformWindow createWindow (string id, SbWindowConfig config) {
         import std.variant: visit;
 
         enforce(id !in m_windows, format("Already registered window '%s'", id));
@@ -123,7 +123,7 @@ final:
         }
         return window;
     }
-    IPlatformWindow getWindow (string id) {
+    override IPlatformWindow getWindow (string id) {
         return id in m_windows ? m_windows[id] : null;
     }
     private void unregisterWindow (string id) {
@@ -134,22 +134,22 @@ final:
             m_windows.remove(id);
         }
     }
-    void swapFrame () {
+    override void swapFrame () {
         if (m_mainWindow) {
             m_time.endFrame();
             glfwSwapBuffers( m_mainWindow.handle );
             m_time.beginFrame();
         }
     }
-    void pollEvents () {
+    override void pollEvents () {
         glfwPollEvents();
-        eventImpl.beginFrame();
+        //eventImpl.beginFrame();
         foreach (_, window; m_windows) {
-            window.collectEvents( eventImpl.eventProducer );
+            //window.collectEvents( eventImpl.eventProducer );
             window.swapState();
         }
         pollGamepads();
-        eventImpl.dispatchEvents();
+        //eventImpl.dispatchEvents();
     }
     private void pollGamepads () {
         // TODO: integrate existing glfw gamepad impl
@@ -167,7 +167,7 @@ final:
     // / event model, then the infrastructure to do it already exists :)
 
     private void pushRawInput ( SbWindow window, RawMouseBtnInput input ) nothrow @safe {
-        
+
     }
     private void pushRawInput ( SbWindow window, RawKeyInput input ) nothrow @safe {
 
@@ -189,11 +189,6 @@ struct RawKeyInput      { int key, scancode, action, mods; }
 struct RawCharInput     { dchar chr; }
 alias RawInputEvent = Algebraic!(RawMouseBtnInput, RawKeyInput, RawCharInput);
 
-
-
-
-
-
 struct SbWindowState {
     // Authoritative window state (mostly set by events)
     vec2i windowSize, framebufferSize;
@@ -207,17 +202,18 @@ struct SbWindowState {
     }
 
     // Raw event state
-    bool wantsRefresh = false;
+    vec2 mousePos     = vec2(0, 0);
+    vec2 scrollDelta  = vec2(0, 0);
 
+    bool wantsRefresh = false;
+    bool hasInputFocus = true;
+    bool hasCursorFocus = true;
 }
 private void swapState (ref SbWindowState a, ref SbWindowState b) {
     a = b;
     b.wantsRefresh = false;
 
 }
-
-
-
 
 
 class SbWindow : IPlatformWindow {
@@ -240,10 +236,10 @@ class SbWindow : IPlatformWindow {
     SbEvent[] windowEvents;
 
     // D Callbacks
-    void delegate(SbWindow) nothrow closeAction = null;
+    void delegate(IPlatformWindow) nothrow closeAction = null;
 
     // Window fps, etc
-    bool   showWindowFPS;
+    bool   showWindowFPS   = false;
     string windowFpsString = "";
     string windowFpsFormat = DEFAULT_WINDOW_TITLE_FPS_FMT;
     double lastWindowFps   = 0;
@@ -264,6 +260,7 @@ class SbWindow : IPlatformWindow {
             setScreenScale( config.screenScaleOption );
         else
             setScreenScale( config.customScale );
+        this.showWindowFPS = config.showFps;
         swapState();
 
         // set glfw callbacks (almost all callbacks are on a per-window basis)
@@ -279,68 +276,73 @@ class SbWindow : IPlatformWindow {
         glfwSetMouseButtonCallback(handle, &windowMouseBtnInputCallback);
         glfwSetScrollCallback(handle, &windowScrollInputCallback);
     }
-    void release () {
+    override void release () {
         platform.unregisterWindow( id );
         if (handle) {
             glfwDestroyWindow( handle );
             handle = null;
         }
     }
+    override string getName () { return id; }
+
+
+
     private void updateWindowTitle () {
         glfwSetWindowTitle(handle, showWindowFPS ?
             format("%s %s", config.title, windowFpsString).toStringz :
             config.title.toStringz
         );
     }
-    IPlatformWindow setTitle ( string title ) {
+    override IPlatformWindow setTitle ( string title ) {
         config.title = title;
         return updateWindowTitle, this;
     }
-    IPlatformWindow setTitleFPSVisible (bool visible) {
+    override IPlatformWindow setTitleFPSVisible (bool visible) {
         showWindowFPS = visible;
         return updateWindowTitle, this;
     }
-    IPlatformWindow setTitleFPS (double fps) {
+    override IPlatformWindow setTitleFPS (double fps) {
         windowFpsString = format( windowFpsFormat, lastWindowFps = fps );
         return updateWindowTitle, this;
     }
-    IPlatformWindow setTitleFPSFormat (string fmt) {
+    override IPlatformWindow setTitleFPSFormat (string fmt) {
         windowFpsString = format( windowFpsFormat = fmt, lastWindowFps );
         return this;
     }
 
-    bool shouldClose () { return glfwWindowShouldClose(handle) != 0; }
-    IPlatformWindow setShouldClose (bool close = true) {
+    override bool shouldClose () { return glfwWindowShouldClose(handle) != 0; }
+    override IPlatformWindow setShouldClose (bool close = true) {
         glfwSetWindowShouldClose(handle, close);
         return this;
     }
-    IPlatformWindow onClose (void delegate(SbWindow) nothrow dg) {
+    override IPlatformWindow onClosed (void delegate(IPlatformWindow) nothrow dg) {
         closeAction = dg;
         glfwSetWindowCloseCallback(handle, &windowCloseCallback);
         return this;
     }
 
-    IPlatformWindow setResizable (bool resizable) {
-        if (resizable != config.resizable) {
-            config.resizable = resizable;
-            glfwSetWindowResizable(handle, resizable);
-        }
-    }
-    IPlatformWindow setWindowSize ( vec2i size ) {
+    // NOT SUPPORTED BY GLFW...
+    //IPlatformWindow setResizable (bool resizable) {
+    //    if (resizable != config.resizable) {
+    //        config.resizable = resizable;
+    //        glfwSetWindowResizable(handle, resizable);
+    //    }
+    //}
+    override IPlatformWindow setWindowSize ( vec2i size ) {
         onWindowSizeChanged( size.x, size.y );
         return this;
     }
 
-    private void collectEvents (IEventProducer evp) {
+    private void collectEvents (/*IEventProducer evp*/) {
         if (state.scaleFactor != nextState.scaleFactor)
-            windowEvents ~= SbWindowRescaleEvent(this, state.scaleFactor, nextState.scaleFactor);
+            windowEvents ~= SbEvent(SbWindowRescaleEvent(id, state.scaleFactor, nextState.scaleFactor));
         if (state.windowSize != nextState.windowSize)
-            windowEvents ~= SbWindowResizeEvent(this, state.windowSize, nextState.windowSize);
+            windowEvents ~= SbEvent(SbWindowResizeEvent(id, state.windowSize, nextState.windowSize));
 
-        evp.processEvents( windowEvents );
+        //evp.processEvents( windowEvents );
         windowEvents.length = 0;
     }
-    IPlatformWindow setScreenScale ( SbScreenScale option ) {
+    override IPlatformWindow setScreenScale ( SbScreenScale option ) {
         autodetectScreenScale = option == SbScreenScale.AUTODETECT_RESOLUTION;
         final switch (option) {
             case SbScreenScale.FORCE_SCALE_1X: forcedScaleFactor = vec2(1, 1);       break;
@@ -353,7 +355,7 @@ class SbWindow : IPlatformWindow {
         onWindowSizeChanged( state.windowSize.x, state.windowSize.y );
         return this;
     }
-    IPlatformWindow setScreenScale ( vec2 customScale ) {
+    override IPlatformWindow setScreenScale ( vec2 customScale ) {
         autodetectScreenScale = false;
         forcedScaleFactor = customScale;
 
@@ -401,17 +403,17 @@ class SbWindow : IPlatformWindow {
     // Called when window gains / loses input focus
     private void onInputFocusChanged (bool hasFocus) nothrow @safe {
         nextState.hasInputFocus = hasFocus;
-        context.notifyInputFocusChanged( this, hasFocus );
+        platform.notifyInputFocusChanged( this, hasFocus );
     }
     // Called when cursor enters / exits window
     private void onCursorFocusChanged (bool hasFocus) nothrow @safe {
         nextState.hasCursorFocus = hasFocus;
-        context.notifyCursorFocusChanged( this, hasFocus );
+        platform.notifyCursorFocusChanged( this, hasFocus );
     }
     // Input callback: mouse motion
     private void onCursorInput ( double xpos, double ypos ) nothrow @safe {
         nextState.mousePos = vec2(xpos, ypos);
-        context.notifyCursorInput( this, xpos, ypos );
+        platform.notifyCursorInput( this, xpos, ypos );
     }
     // Input callback: mouse wheel / trackpad scroll motion
     private void onScrollInput ( double xoffs, double yoffs ) nothrow @safe {
@@ -419,15 +421,15 @@ class SbWindow : IPlatformWindow {
     }
     // Input callback: mouse button press state changed
     private void onMouseButtonInput ( int button, int action, int mods ) nothrow @safe {
-        context.pushRawInput( this, RawMouseBtnInput( button, action, mods ));
+        platform.pushRawInput( this, RawMouseBtnInput( button, action, mods ));
     }
     // Input callback: keyboard key press state changed
     private void onKeyInput( int key, int scancode, int action, int mods ) nothrow @safe {
-        context.pushRawInput( this, RawKeyInput( key, scancode, action, mods ));
+        platform.pushRawInput( this, RawKeyInput( key, scancode, action, mods ));
     }
     // Input callback: text input (key pressed as unicode codepoint)
     private void onCharInput ( dchar chr ) nothrow @safe {
-        context.pushRawInput( this, RawCharInput( chr ));
+        platform.pushRawInput( this, RawCharInput( chr ));
     }
 }
 
@@ -475,39 +477,4 @@ extern(C) private void windowMouseBtnInputCallback (GLFWwindow* handle, int butt
 extern(C) private void windowScrollInputCallback (GLFWwindow* handle, double xoffs, double yoffs) nothrow @safe {
     handle.getWindow.onScrollInput( xoffs, yoffs );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
