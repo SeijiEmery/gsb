@@ -40,6 +40,21 @@ subPackage {
     dependency "gl3n" version="~>1.3.1"
 }
 subPackage {
+    name "platform_glfw_gl41"
+    targetType "library"
+    importPaths "sb/platform/interface" "sb/gl/interface"
+    sourcePaths "sb/platform/interface" "sb/gl/interface" "sb/events/interface" \
+                "sb/platform/glfw_impl" "sb/gl/gl_41_impl" "sb/events/impl"
+    targetPath "build/libs/platform"
+
+    dependency "derelict-glfw3" version="~>1.1.1"
+    dependency "derelict-gl3"   version="~>1.0.18"
+    dependency "gl3n"           version="~>1.3.1"
+}
+
+
+
+subPackage {
     name "platform_glfw"
     targetType "library"
     importPaths "sb/platform/interface"
@@ -120,15 +135,10 @@ subPackage {
     mainSourceFile "sb/gl_tests/window_test.d"
     targetPath "build/tests/window_test"
 
-    sourcePaths "sb/platform/interface" "sb/gl/interface" "sb/events/interface" \
-        "sb/platform/glfw_impl" "sb/gl/gl_41_impl" "sb/events/impl"
-
-    dependency "gl3n" version="~>1.3.1"
-    dependency "derelict-gl3" version="~>1.0.18"
-    dependency "derelict-glfw3" version="~>1.1.1"
-
-
-    #dependency "gsb:platform_glfw" version="*"
-    #dependency "gsb:gl_41"         version="*"
+    dependency "gsb:platform_glfw_gl41" version="*"
+    sourcePaths "sb/platform/interface" "sb/gl/interface" "sb/events/interface"
+    
+    #dependency "gsb:platform" version="*"
+    #dependency "gsb:gl"         version="*"
     #dependency "gsb:events"        version="*"
 }

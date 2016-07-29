@@ -11,7 +11,7 @@ import std.format;
 import std.string: toStringz;
 import core.stdc.string: strlen;
 
-IPlatform sbCreatePlatformContext (IGraphicsLib graphicsLib, SbPlatformConfig config) {
+extern(C) IPlatform sbCreatePlatformContext (IGraphicsLib graphicsLib, SbPlatformConfig config) {
     enforce(config.backend != SbPlatform_Backend.NONE,
         format("Invalid platform: %s", config.backend));
     enforce(config.glVersion != SbPlatform_GLVersion.NONE,

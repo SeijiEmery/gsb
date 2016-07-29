@@ -11,7 +11,7 @@ import std.format;
 // Note: this is kinda tied into the glfw3 platform impl,
 // so if/when adding additional platforms this abstraction mechanism
 // might need to be changed...
-IGraphicsLib sbCreateGraphicsLib (GraphicsLibVersion glVersion) {
+extern(C) IGraphicsLib sbCreateGraphicsLib (GraphicsLibVersion glVersion) {
     enforce!Exception( glVersion == GraphicsLibVersion.GL_410, 
         format("Invalid graphics lib version: %s, not GL_410",
             glVersion));

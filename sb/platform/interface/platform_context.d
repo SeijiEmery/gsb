@@ -3,6 +3,8 @@ import sb.platform.events;
 import sb.gl;
 import gl3n.linalg;
 
+extern(C) IPlatform sbCreatePlatformContext (IGraphicsLib, SbPlatformConfig);
+
 interface IPlatform {
     // platform init + deinit calls: call initMain + teardown on main thread,
     // and initGL on graphics thread (may be main thread)
