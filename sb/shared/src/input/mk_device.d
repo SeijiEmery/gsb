@@ -1,9 +1,41 @@
 module sb.input.mk_device;
-
 immutable uint SB_MAX_MOUSE_BUTTONS = 16;
 immutable uint SB_NUM_KEYS          = 256;
 
-enum MKPressAction { RELEASED = 0, PRESSED }
+enum MKPressState : ubyte { UP, DOWN, PRESSED, RELEASED }
+
+struct MKInputFrame {
+    double    dt;
+    SbEvent[] eventList;
+    vec2      mousePos, mouseDelta, scrollDelta;
+    MKPressState[SB_MAX_MOUSE_BUTTONS] mouseBtnState;
+    MKPressState[SB_NUM_KEYS]          keyState;
+
+    @auto ref buttons () { return mouseBtnState; }
+    @auto ref keys    () { return keyState;      }
+}
+
+struct MKPressState {
+private:
+    mixin(bitfields!(
+        bool, 1, "st_pressed",
+        bool, 1, "st_changed",
+        uint, 6, "st_pressCount"
+    ));
+
+    this (bool pressed, bool changed, uint pressCount = 1) {
+        this.st_pressed = pressed;
+        this.st_changed = changed;
+        this.st_pressCount = pressCount;
+    }
+public:
+    @property bool pressed  () { return st_pressed && st_changed; }
+    @property bool released () { return !st_pressed && st_changed; }
+    @property bool up       () { return st_pressed; }
+    @property bool down     () { return !st_pressed; }
+    @property uint pressCount () { return st_pressed ? st_pressCount : 0; }
+}
+
 
 // Mouse / Keyboard "device" implemented as a FSM that takes simple inputs and produces
 // sophisticated SbEvent outputs suitable for a video game or game editor (detects double 
@@ -29,22 +61,70 @@ final:
     void registerKeyAction ( int key, int scancode, MKPressAction action ) {
         okp(key, scancode, action != MKPressAction.RELEASED);
     }
+    void registerMouseMotion ( vec2 newPos ) {
+        nextMousePos = newPos;
+    }
+    void registerMouseMotionDelta ( vec2 delta ) {
+        nextMousePos += delta;
+    }
+    void registerMouseScrollDelta ( vec2 delta ) {
+        mouseCumulativeScrollDelta += delta;
+    }
 
     // Swap state + fetch last input frame; takes an external timestamp.
-    MKInputFrame fetchInputFrame (double timestamp) {
+    void fetchInputFrame (double timestamp, ref MKInputFrame frame) {
+        if (nextMousePos != lastMousePos) {
+            auto delta = nextMousePos - lastMousePos;
+            delta.x *= settings.mouse_sensitivity_x;
+            delta.y *= settings.mouse_sensitivity_y;
+            eventList ~= SbMouseMoveEvent( lastMousePos, lastMousePos + delta );
+        }
+        if (mouseCumulativeScrollDelta.x || mouseCumulativeScrollDelta.y) {
+            mouseCumulativeScrollDelta.x *= settings.scroll_sensitivity_x;
+            mouseCumulativeScrollDelta.y *= settings.scroll_sensitivity_y;
+            eventList ~= SbScrollInputEvent( mouseCumulativeScrollDelta );
+        }
 
+        frame.dt = isNaN( lastFrameTime ) ? 16e-3 : timestamp - lastFrameTime;
+        frame.events[0..eventList.length] = eventList[0..$];
+        frame.mousePos     = nextMousePos;
+        frame.mouseDelta   = vec2(
+            (nextMousePos.x - lastMousePos.x) * settings.mouse_sensitivity_x,
+            (nextMousePos.y - lastMousePos.y) * settings.mouse_sensitivity_y);
+        frame.scrollDelta  = mouseCumulativeScrollDelta;
+        frame.mouseBtnState = buttonState;
+        frame.keyState      = nextKeysPressed;
+
+        foreach (i; 0 .. SB_MAX_MOUSE_BUTTONS) {
+            frame.mouseBtnState[i] = MKPressState(
+                buttonState[i].pressed,
+                buttonState[i].pressed != buttonState[i].lastPressed,
+                buttonState[i].pressCount,
+            );
+            buttonState[i].lastPressed = buttonState[i].pressed;
+        }
+        foreach (i; 0 .. SB_NUM_KEYS) {
+            frame.keyState[i] = MKPressState(
+                nextKeysPressed[i],
+                nextKeysPressed[i] != lastKeysPressed[i]
+            );
+        }
+        nextKeysPressed = lastKeysPressed;
     }
 
 private:
-    struct PressInfo {
-        uint pressCount  = 0;  
+    double    lastFrameTime = double.nan;
+    SbEvent[] eventList;
+    vec2      lastMousePos, nextMousePos;
+    vec2      mouseCumulativeScrollDelta;
+
+    private struct PressInfo {
+        bool pressed, lastPressed;
+        uint pressCount  = 0, lastPressCount = 0;  
         double lastPress = double.nan;
     }
     PressInfo[ SB_MAX_MOUSE_BUTTONS ] buttonState;
-    bool     [ SB_MAX_MOUSE_BUTTONS ] mousePressed;
     bool     [ SB_NUM_KEYS ]          lastKeysPressed,  nextKeysPressed;
-
-    SbEvent[] eventList;
 
     private void omp (double t, uint btn, bool pressed) {
         assert( btn < SB_MAX_MOUSE_BUTTONS, format("mouse button %s > %s", btn, SB_MAX_MOUSE_BUTTONS));
@@ -88,7 +168,12 @@ private:
         }
     }
     private void okp ( uint key, uint scancode, bool pressed ) {
+        eventList ~= SbEvent( SbKeyEvent( key, scancode, pressed ));
 
+        assert(key < SB_NUM_KEYS, 
+            format("Key exceeds range: %s (%s %s) > %s", 
+                key, cast(dchar)key, scancode, SB_NUM_KEYS));
+        nextKeysPressed[ key ] = pressed;
     }
 }
 
