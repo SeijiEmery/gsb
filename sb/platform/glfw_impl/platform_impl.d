@@ -1,5 +1,5 @@
-module sb.platform.impl.platform_impl;
-import sb.platform;
+module sb.platform.platform_impl;
+import sb.platform.platform_interface;
 import sb.events;
 import sb.gl;
 

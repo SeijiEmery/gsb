@@ -1,4 +1,4 @@
-module sb.gl.impl.gl_41_lib_impl;
+module sb.gl.gl_impl;
 import sb.gl;
 
 import derelict.opengl3.gl3;
@@ -36,6 +36,7 @@ private class GL41_GraphicsLib : IGraphicsLib {
         initialized = true;
     }
     void initOnThread () {
+        assert(initialized, "Did not call <gl_lib>.preInit()!");
         DerelictGL3.reload();
     }
     void teardown () {

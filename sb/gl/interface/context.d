@@ -39,7 +39,10 @@ alias GLVersionInfo = Algebraic!(OpenglVersionInfo);
 // but in the meantime the graphics lib impl is effectively hardcoded in the lib impl 
 // you choose (eg. gl/gl_41_impl), and the version is checked by an enforce guard
 // (passing anything other than GL_410 while linking to the GL_41 lib will throw an Exception)
-IGraphicsLib sbCreateGraphicsLib (GraphicsLibVersion);
+//
+// MOVED TO gl_impl.di
+//
+//IGraphicsLib sbCreateGraphicsLib (GraphicsLibVersion);
 
 // Graphics lib handle. 
 // Methods are NOT threadsafe + require external guards and/or sane calling order.

@@ -1,10 +1,7 @@
-module sb.platform.platform_context;
+module sb.platform.platform_interface;
 import sb.platform.events;
 import sb.gl;
 import gl3n.linalg;
-
-// Create platform index
-IPlatform sbCreatePlatformContext (IGraphicsLib, SbPlatformConfig);
 
 interface IPlatform {
     // platform init + deinit calls: call initMain + teardown on main thread,

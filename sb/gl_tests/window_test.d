@@ -16,12 +16,6 @@ void main (string[] args) {
         platformConfig);
     try {
         platform.init();
-        platform.initGL();
-
-        //auto events = platform.getEventsInstance();
-        auto gl     = platform.getGraphicsContext();
-        auto batch  = gl.getLocalBatch();
-
         SbWindowConfig windowConfig = {
             title: "gl_platform_test",
             size_x: 1200, size_y: 780,
@@ -29,11 +23,17 @@ void main (string[] args) {
         };
         auto window = platform.createWindow("main-window", windowConfig);
 
+        platform.initGL();
+
+        //auto events = platform.getEventsInstance();
+        auto gl     = platform.getGraphicsContext();
+        auto batch  = gl.getLocalBatch();
+
         StopWatch sw; sw.start();
         double prevTime = sw.peek.to!("seconds", double);
         while (!window.shouldClose) {
             auto time = sw.peek.to!("seconds", double);
-            auto dt   = prevTime - time;
+            auto dt   = time - prevTime;
             prevTime  = time;
 
             window.setTitleFPS( 1.0 / dt );
