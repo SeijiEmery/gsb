@@ -52,18 +52,22 @@ void main (string[] args) {
                 fragColor = vec4( color, 1.0 );
             }
         `);
-        //auto vbo = resourcePool.createVBO();
-        //auto vao = resourcePool.createVAO();
+        auto vbo = resourcePool.createVBO();
+        auto vao = resourcePool.createVAO();
 
-        //const float[] position_color_data = [
-        //    -0.8f, -0.8f, 0.0f,  1.0f, 0.0f, 0.0f,
-        //     0.8f, -0.8f, 0.0f,  0.0f, 1.0f, 0.0f,
-        //     0.0f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f
-        //];
-        //vbo.bufferData( position_color_data, GL_STATIC_DRAW );
-        //vao.bindVertexAttrib( 0, vbo, GL_FLOAT, false, float.sizeof * 6, 0 );
-        //vao.bindVertexAttrib( 1, vbo, GL_FLOAT, false, float.sizeof * 6, float.sizeof * 3 );
-        //vao.bindShader( shader );
+        const float[] position_color_data = [
+            -0.8f, -0.8f, 0.0f,  1.0f, 0.0f, 0.0f,
+             0.8f, -0.8f, 0.0f,  0.0f, 1.0f, 0.0f,
+             0.0f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f
+        ];
+
+        gl.getLocalBatch.execGL({
+            bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
+            //vbo.bufferData( position_color_data, GLBuffering.STATIC_DRAW );
+            vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
+            vao.bindVertexAttrib( 1, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
+            vao.bindShader( shader );
+        });
 
         StopWatch sw; sw.start();
         double prevTime = sw.peek.to!("seconds", double);
@@ -84,9 +88,9 @@ void main (string[] args) {
             //));
             platform.pollEvents();
 
-            //gl.getLocalBatch.exec({
-            //    vao.drawArrays( GL_TRIANGLES, 0, 3 );
-            //});
+            gl.getLocalBatch.execGL({
+                vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
+            });
 
             platform.swapFrame();
         }

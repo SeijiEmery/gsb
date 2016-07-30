@@ -57,9 +57,16 @@ private class GL41_GraphicsLib : IGraphicsLib {
 private class GL41_GraphicsContext : IGraphicsContext {
     this () { m_mutex = new Mutex(); }
 
-
-    override IBatch   createBatch   () { return null; }
-    override IBatch   getLocalBatch () { return null; }
+    override IBatch   createBatch   () { return getLocalBatch(); }
+    override IBatch   getLocalBatch () { 
+        if (!m_localBatch) {
+            synchronized (m_mutex) {
+                if (!m_localBatch)
+                    m_localBatch = new Batch();
+            }
+        }
+        return m_localBatch;
+    }
     override GLResourcePoolRef createResourcePrefix (string name) {
         auto pool = new ResourcePool(name, this);
         synchronized (m_mutex) { m_resourcePools ~= pool; }
@@ -92,11 +99,51 @@ private class GL41_GraphicsContext : IGraphicsContext {
             }
         }
     }
+
+    // Internal state bindings
+    bool bindVao ( Vao vao, uint handle ) {
+        if (vao != m_lastBoundVao || handle != m_lastBoundVaoHandle) {
+            glBindVertexArray( handle );
+            m_lastBoundVao = vao;
+            m_lastBoundVaoHandle = handle;
+        }
+        return handle != 0;
+    }
+    void unbindVao () {
+        if (m_lastBoundVao) {
+            glBindVertexArray( 0 );
+            m_lastBoundVao = null;
+        }
+    }
+
+    bool bindShader ( Shader shader ) {
+        if (shader != m_lastBoundShader) {
+            m_lastBoundShader = shader;
+            return m_shaderOk = shader.bindShader();
+        }
+        return m_shaderOk;
+    }
+
 private:
     vec4 m_clearColor;
     ResourcePool[] m_resourcePools;
     Mutex m_mutex;
+    Batch m_localBatch = null;
+
+    // Internal state bindings
+    Vao  m_lastBoundVao = null;
+    uint m_lastBoundVaoHandle;
+
+    Shader m_lastBoundShader = null;
+    bool   m_shaderOk = false;
 }
+
+private class Batch : IBatch {
+    override void execGL (void delegate() stuff) {
+        stuff();
+    }
+}
+
 
 private mixin template RetainRelease () {
     import core.atomic;
@@ -142,6 +189,16 @@ private class ResourcePool : IGraphicsResourcePool {
         synchronized (m_mutex) { m_activeResources ~= shader; }
         return GLShaderRef(shader);
     }
+    override GLVboRef createVBO () {
+        auto vbo = new Vbo(this);
+        synchronized (m_mutex) { m_activeResources ~= vbo; }
+        return GLVboRef(vbo);
+    }
+    override GLVaoRef createVAO () {
+        auto vao = new Vao(this, m_graphicsContext);
+        synchronized (m_mutex) { m_activeResources ~= vao; }
+        return GLVaoRef(vao);
+    }
     mixin RetainRelease;
     private void onReleased () { m_graphicsContext.releasePool(this); }
 
@@ -163,6 +220,8 @@ private class ResourcePool : IGraphicsResourcePool {
         }
     }
 }
+
+// GL utilities
 
 private auto toGLEnum (ShaderType type) {
     final switch (type) {
@@ -200,6 +259,8 @@ private auto getProgramInfoLog ( uint program ) {
     return log [ 0 .. length ];
 }
 
+// GL error checking
+
 private void glAssertOk (lazy string msg, string file = __FILE__, size_t line = __LINE__) {
     auto err = glGetError();
     assert( err == GL_NO_ERROR, format("GL ERROR: %s | %s, %s: %s", 
@@ -234,6 +295,15 @@ private auto glErrorToString ( GLenum error ) {
 private interface IGraphicsResource {
     void forceRelease ();
 }
+
+// A bit of hackery to unwrap values from a ResourceHandle!IWhatever used by
+// our lib to abstract things. Assumes, ofc, that the backing object _is_
+// something that was allocated from the gl_41_lib impl...
+private auto unwrap (GLShaderRef shader) { return cast(Shader)(shader._value); }
+private auto unwrap (GLTextureRef texture) { return cast(Texture)(texture._value); }
+private auto unwrap (GLVaoRef vao) { return cast(Vao)(vao._value); }
+private auto unwrap (GLVboRef vbo) { return cast(Vbo)(vbo._value); }
+
 
 private class Shader : IGraphicsResource, IShader {
     ResourcePool m_graphicsPool;
@@ -359,7 +429,19 @@ private class Shader : IGraphicsResource, IShader {
         return this;
     }
     mixin RetainRelease;
-    private void onReleased () { m_graphicsPool.releaseResource(this); }
+    private void onReleased () {
+        if (m_programObject) {
+            glDeleteProgram(m_programObject);
+            m_programObject = 0;
+        }
+        foreach (ref uint shader; m_shaderObjects) {
+            if (shader) {
+                glDeleteShader(shader);
+                shader = 0;
+            }
+        }
+        m_graphicsPool.releaseResource(this); 
+    }
 }
 private class Texture : IGraphicsResource, ITexture {
     ResourcePool m_graphicsPool;
@@ -377,10 +459,130 @@ private class Texture : IGraphicsResource, ITexture {
         assert(0, "Unimplemented!");
     }
     mixin RetainRelease;
-    private void onReleased () { m_graphicsPool.releaseResource(this); }
+    private void onReleased () { 
+        m_graphicsPool.releaseResource(this);
+    }
 }
 
+private auto toGLEnum ( GLType type ) {
+    final switch (type) {
+        case GLType.BYTE: return GL_BYTE;
+        case GLType.UNSIGNED_BYTE: return GL_UNSIGNED_BYTE;
+        case GLType.SHORT: return GL_SHORT;
+        case GLType.UNSIGNED_SHORT: return GL_UNSIGNED_SHORT;
+        case GLType.INT: return GL_INT;
+        case GLType.UNSIGNED_INT: return GL_UNSIGNED_INT;
+        case GLType.FIXED: return GL_FIXED;
+        case GLType.HALF_FLOAT: return GL_HALF_FLOAT;
+        case GLType.FLOAT: return GL_FLOAT;
+        case GLType.DOUBLE: return GL_DOUBLE;
+    }
+}
+private auto toGLEnum ( GLPrimitive primitive ) {
+    final switch (primitive) {
+        case GLPrimitive.POINTS: return GL_POINTS;
+        case GLPrimitive.LINES:  return GL_LINES;
+        case GLPrimitive.LINE_STRIP: return GL_LINE_STRIP;
+        case GLPrimitive.LINE_LOOP: return GL_LINE_LOOP;
+        case GLPrimitive.TRIANGLES: return GL_TRIANGLES;
+        case GLPrimitive.TRIANGLE_STRIP: return GL_TRIANGLE_STRIP;
+        case GLPrimitive.TRIANGLE_FAN: return GL_TRIANGLE_FAN;
+    }
+}
 
+private class Vao : IGraphicsResource, IVao {
+    ResourcePool         m_graphicsPool;
+    GL41_GraphicsContext m_graphicsContext;
+    uint        m_handle = 0;
+    GLShaderRef m_boundShader;
 
+    this (ResourcePool pool, GL41_GraphicsContext context) {
+        m_graphicsPool = pool;
+        m_graphicsContext = context;
+    }
+    uint getHandle () {
+        if (!m_handle) {
+            glGenVertexArrays(1, &m_handle);
+            glAssertOk("glGenVertexArrays");
+            assert( m_handle, "glGenVertexArrays returned null!");
+        }
+        return m_handle;
+    }
 
+    override void bindVertexAttrib ( uint index, GLVboRef vbo, uint count, GLType dataType,
+        GLNormalized normalized, size_t stride, size_t offset)
+    {
+        assert( count >= 1 && count <= 4, format("Invalid count passed to bindVertexAttrib: %s!", count));
 
+        glFlushErrors();
+        m_graphicsContext.bindVao( this, getHandle() );
+
+        glEnableVertexAttribArray( index ); 
+        glAssertOk(format("glEnableVertexAttribArray(%s)", index));
+
+        glBindBuffer( GL_ARRAY_BUFFER, vbo.unwrap.getHandle );
+        glAssertOk(format("glBindBuffer(GL_ARRAY_BUFFER, %s)", vbo.unwrap.getHandle));
+
+        glVertexAttribPointer( index, count, dataType.toGLEnum, 
+            cast(GLboolean)normalized, cast(int)stride, cast(void*)offset );
+        glAssertOk(format("glVertexAttribPointer(%s, %s, %s, %s, %s, %s)",
+            index, count, dataType, normalized, stride, offset));
+
+        m_graphicsContext.unbindVao();
+    }
+    override void bindShader ( GLShaderRef shader ) { m_boundShader = shader; }
+
+    override void drawArrays ( GLPrimitive primitive, uint start, uint count ) {
+        if (m_graphicsContext.bindShader(m_boundShader.unwrap) && 
+            m_graphicsContext.bindVao( this, getHandle())
+        ) {
+            glDrawArrays( primitive.toGLEnum, start, count );
+        }
+    }
+
+    mixin RetainRelease;
+    private void onReleased () { 
+        m_graphicsPool.releaseResource(this); 
+    }
+}
+
+private auto toGLEnum ( GLBuffering buffering ) {
+    final switch (buffering) {
+        case GLBuffering.STATIC_DRAW:  return GL_STATIC_DRAW;
+        case GLBuffering.DYNAMIC_DRAW: return GL_DYNAMIC_DRAW;
+    }
+}
+
+private class Vbo : IGraphicsResource, IVbo {
+    ResourcePool m_graphicsPool;
+    uint         m_handle = 0;
+
+    this (typeof(m_graphicsPool) pool) { m_graphicsPool = pool; }
+
+    uint getHandle () {
+        if (!m_handle) {
+            glGenBuffers(1, &m_handle);
+            glAssertOk("glGenBuffers");
+            assert( m_handle, "glGenBuffers returned null!" );
+        }
+        return m_handle;
+    }
+    override void bufferData (const(void)* data, size_t length, GLBuffering buffer_usage) {
+        // TODO: Add a cpu-side data buffer + command buffer so this can be safely called
+        // on threads other than the graphics thread!
+
+        glFlushErrors();
+        glBindBuffer( GL_ARRAY_BUFFER, getHandle() );
+        glBufferData( GL_ARRAY_BUFFER, length, data, buffer_usage.toGLEnum );
+        glAssertOk(format("glBufferData( %s, %s, %s, %s)", getHandle, length, data, buffer_usage));
+    }
+
+    mixin RetainRelease;
+    private void onReleased () {
+        if (m_handle) {
+            glDeleteBuffers(1, &m_handle);
+            m_handle = 0;
+        }
+        m_graphicsPool.releaseResource(this);
+    }
+}
