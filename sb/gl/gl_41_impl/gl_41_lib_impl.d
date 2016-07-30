@@ -6,6 +6,7 @@ import gl3n.linalg;
 import std.exception: enforce;
 import std.format;
 import core.sync.mutex;
+import std.string: toStringz;
 
 
 // Create graphics lib.
@@ -329,6 +330,7 @@ private class Shader : IGraphicsResource, IShader {
     string[ShaderType.max] m_pendingSrc    = null;
     uint  [ShaderType.max] m_shaderObjects = 0;
     uint                   m_programObject = 0;
+    uint [string] m_locationCache;
     bool m_isBindable = false;
 
     this (ResourcePool pool) {
@@ -381,6 +383,9 @@ private class Shader : IGraphicsResource, IShader {
                 }
             }
             if (didRecompile) {
+                foreach (k, v; m_locationCache)
+                    m_locationCache.remove(k);
+
                 glLinkProgram( m_programObject );
                 enforce( glGetLinkStatus(m_programObject) == GL_TRUE,
                     format("Failed to link shader program: %s", getProgramInfoLog(m_programObject)));
@@ -421,28 +426,54 @@ private class Shader : IGraphicsResource, IShader {
         }
         return this;
     }
-    override IShader setv (string name, float value) {
+    uint getLocation (string name) {
+        if (name !in m_locationCache) {
+            glFlushErrors();
+            int location = glGetUniformLocation(m_programObject, name.toStringz);
+            enforce(location != -1, format("Could not get uniform '%s'", name));
+            glAssertOk(format("glGetUniformLocation(%s, %s)", m_programObject, name));
+            return m_locationCache[name] = cast(uint)location;
+        }
+        return m_locationCache[name];
+    }
+    override IShader setv (string name, float v) {
+        glUniform1f( getLocation(name), v );
+        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
-    override IShader setv (string name, int value) {
+    override IShader setv (string name, int v) {
+        glUniform1i( getLocation(name), v );
+        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
-    override IShader setv (string name, uint value) {
+    override IShader setv (string name, uint v) {
+        glUniform1ui( getLocation(name), v );
+        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
-    override IShader setv (string name, vec2 value) {
+    override IShader setv (string name, vec2 v) {
+        glUniform2fv( getLocation(name), 1, v.value_ptr );
+        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
-    override IShader setv (string name, vec3 value) {
+    override IShader setv (string name, vec3 v) {
+        glUniform3fv( getLocation(name), 1, v.value_ptr );
+        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
-    override IShader setv (string name, vec4 value) {
+    override IShader setv (string name, vec4 v) {
+        glUniform4fv( getLocation(name), 1, v.value_ptr );
+        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
-    override IShader setv (string name, mat3 value) {
+    override IShader setv (string name, mat3 v) {
+        glUniformMatrix3fv( getLocation(name), 1, true, v.value_ptr );
+        glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
-    override IShader setv (string name, mat4 value) {
+    override IShader setv (string name, mat4 v) {
+        glUniformMatrix4fv( getLocation(name), 1, true, v.value_ptr );
+        glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
         return this;
     }
     mixin RetainRelease;
