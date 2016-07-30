@@ -67,25 +67,35 @@ private struct ResourceHandle (T) if (is(T == class) || is(T == interface)) {
     T _value = null;
     alias _value this;
 
-    this (T value) { _value = value; _value.retain(); }
+    this (T value) { 
+        _value = value; 
+        if (_value)
+            _value.retain(); 
+    }
     this (this) {
-        _value.retain();
+        if (_value)
+            _value.retain();
     }
     ~this () {
-        _value.release();
+        if (_value)
+            _value.release();
     }
-    //auto ref opAssign (ref ResourceHandle!T rhs) {
-    //    if (this._value != rhs._value) {
-    //        this._value.release();
-    //        rhs._value.retain();
-    //        this._value = rhs._value;
-    //    }
-    //    return this;
-    //}
+    auto ref opAssign (ref ResourceHandle!T rhs) {
+        if (this._value != rhs._value) {
+            if (this._value)
+                this._value.release();
+            if (rhs._value)
+                rhs._value.retain();
+            this._value = rhs._value;
+        }
+        return this;
+    }
     auto ref opAssign (ResourceHandle!T rhs) {
         if (this._value != rhs._value) {
-            this._value.release();
-            rhs._value.retain();
+            if (this._value)
+                this._value.release();
+            if (rhs._value)
+                rhs._value.retain();
             this._value = rhs._value;
         }
         return this;
