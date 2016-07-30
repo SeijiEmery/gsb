@@ -183,12 +183,21 @@ private auto getShaderInfoLog ( uint shader ) {
     char[] log;
     log.length = length;
     glGetShaderInfoLog( shader, length, &length, &log[0] );
-
     return log[ 0 .. length ];
+}
+private auto glGetLinkStatus ( uint program ) {
+    int result;
+    glGetProgramiv( program, GL_LINK_STATUS, &result );
+    return result;
 }
 private auto getProgramInfoLog ( uint program ) {
     int length = 0;
-    glGetProgramIv(program, GL_LINK_STATUS, &length);
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
+
+    char[] log;
+    log.length = length;
+    glGetProgramInfoLog( program, length, &length, &log[0] );
+    return log [ 0 .. length ];
 }
 
 private void glAssertOk (lazy string msg, string file = __FILE__, size_t line = __LINE__) {
@@ -203,6 +212,7 @@ private void glEnforceOk (lazy string msg, string file = __FILE__, size_t line =
 }
 private void glFlushErrors (string file = __FILE__, size_t line = __LINE__) {
     GLenum err;
+    import std.stdio;
     while ((err = glGetError()) != GL_NO_ERROR)
         writefln("Uncaught error: %s (%s, %s)", err.glErrorToString, file, line);
 }
@@ -214,9 +224,9 @@ private auto glErrorToString ( GLenum error ) {
         case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
         case GL_INVALID_FRAMEBUFFER_OPERATION: return "GL_INVALID_FRAMEBUFFER_OPERATION";
         case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
-        case GL_STACK_UNDERFLOW: return "GL_STACK_UNDERFLOW";
-        case GL_STACK_OVERFLOW:  return "GL_STACK_OVERFLOW";
-        default: return format("Unknown error %s", err);
+        //case GL_STACK_UNDERFLOW: return "GL_STACK_UNDERFLOW";
+        //case GL_STACK_OVERFLOW:  return "GL_STACK_OVERFLOW";
+        default: return format("Unknown error %s", error);
     }
 }
 
@@ -249,19 +259,19 @@ private class Shader : IGraphicsResource, IShader {
             assert( shader, format("Could not create shader! (%s)", type ));
 
             const(char)* source = &src[0];
-            size_t       length = src.length;
+            int    length = cast(int)src.length;
 
             // Compile shader
             glShaderSource( shader, 1, &source, &length );
             glCompileShader( shader );
 
             enforce( glGetCompileStatus(shader) == GL_TRUE,
-                format("Failed to compile %s shader: %s", type, getInfoLog(shader)));
-            glEnforceOk("glShaderSource / glCompileShader (%s, %s)", type, shader);
+                format("Failed to compile %s shader: %s", type, getShaderInfoLog(shader)));
+            glEnforceOk(format("glShaderSource / glCompileShader (%s, %s)", type, shader));
 
             // Attach to program object
             glAttachShader( m_programObject, shader );
-            glEnforceOk("Failed to attach shader? (%s, %s)", type, getInfoLog(shader));
+            glEnforceOk(format("Failed to attach shader? (%s, %s)", type, getShaderInfoLog(shader)));
         }
         void maybeRecompileShaders () {
             if (!m_hasPendingRecompile)
@@ -276,9 +286,10 @@ private class Shader : IGraphicsResource, IShader {
                 assert( m_programObject, "did not create program object!" );
             }
             bool didRecompile = false;
-            foreach (i; 0 .. ShaderType.max) {
+            foreach (uint i; 0 .. ShaderType.max) {
                 if (m_pendingSrc[i]) {
-                    recompileShader( m_shaderObjects[i], cast(ShaderType)i, m_pendingSrc[i] );
+                    auto src = m_pendingSrc[i]; m_pendingSrc[i] = null;
+                    recompileShader( m_shaderObjects[i], cast(ShaderType)i, src );
                     didRecompile = true;
                 }
             }
@@ -288,17 +299,20 @@ private class Shader : IGraphicsResource, IShader {
                     format("Failed to link shader program: %s", getProgramInfoLog(m_programObject)));
                 glEnforceOk("glLinkProgram");
             }
+            m_hasPendingRecompile = false;
             m_isBindable = true;
         }
         try {
             maybeRecompileShaders();
             if (m_isBindable) {
                 glUseProgram( m_programObject );
-                glEnforceOk("glUseProgram: %s", m_programObject);
+                glEnforceOk(format("glUseProgram: %s", m_programObject));
                 return true;
             }
             return false;
         } catch (Exception e) {
+            // TODO: better error reporting (signals, etc)
+            import std.stdio;
             writefln("Error while recompiling shader(s):\n%s", e);
             return false;
         }
@@ -308,7 +322,16 @@ private class Shader : IGraphicsResource, IShader {
         assert(0, "Unimplemented! set shader source from path");
     }
     override IShader rawSource (ShaderType type, string contents) {
+        m_hasPendingRecompile = true;
+        m_pendingSrc[type] = contents;
 
+        // Temp hack to test shader compilation (it works!)
+        if (m_pendingSrc[ShaderType.FRAGMENT] && m_pendingSrc[ShaderType.VERTEX]) {
+            import std.stdio;
+            writefln("Recompiling shader");
+            if (bindShader())
+                writefln("Shader compiled successfully + program %s bound!", m_programObject);
+        }
         return this;
     }
     override IShader setv (string name, float value) {
