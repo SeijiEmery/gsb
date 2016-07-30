@@ -144,17 +144,20 @@ private class Batch : IBatch {
     }
 }
 
-
 private mixin template RetainRelease () {
     import core.atomic;
+    import std.stdio;
 
     override void release () {
         auto count = atomicOp!"-="(m_rc, 1);
-        if (count == 0)
+        writefln("--rc: %s | %s (%s)", count, this, this.classinfo);
+        if (count == 0) {
             this.onReleased();
+        }
     }
     override void retain () {
-        atomicOp!"+="(m_rc, 1);
+        auto count = atomicOp!"+="(m_rc, 1);
+        writefln("++rc: %s | %s (%s)", count, this, this.classinfo);
     }
     void forceRelease () {
         uint count;
@@ -165,7 +168,7 @@ private mixin template RetainRelease () {
         if (count > 0)
             this.onReleased();
     }
-    private shared int m_rc = 1;
+    private shared int m_rc = 0;
 }
 
 private class ResourcePool : IGraphicsResourcePool {
@@ -173,6 +176,8 @@ private class ResourcePool : IGraphicsResourcePool {
     GL41_GraphicsContext m_graphicsContext;
     IGraphicsResource[]  m_activeResources;
     Mutex m_mutex;
+
+    import std.stdio;
 
     this (string id, typeof(m_graphicsContext) context) {
         m_id = id;
@@ -200,19 +205,30 @@ private class ResourcePool : IGraphicsResourcePool {
         return GLVaoRef(vao);
     }
     mixin RetainRelease;
-    private void onReleased () { m_graphicsContext.releasePool(this); }
+    private void onReleased () { 
+        releaseAll();
+        m_graphicsContext.releasePool(this); 
+    }
 
     void releaseAll () {
+        IGraphicsResource[] resources;
+        //writefln("locking: releaseAll");
         synchronized (m_mutex) {
-            foreach (resource; m_activeResources)
-                resource.forceRelease();
+            //writefln("locked: releaseAll");
+            resources = m_activeResources;
             m_activeResources.length = 0;
         }
+        //writefln("unlocked: releaseAll");
+        foreach (resource; resources)
+            resource.forceRelease();
     }
     void releaseResource (IGraphicsResource resource) {
+        //writefln("locking: releaseResource");
         synchronized (m_mutex) {
+            //writefln("locked: releaseResource");
             foreach (i, v; m_activeResources) {
                 if (resource == v) {
+                    //writefln("swap delete: %s, %s", i, m_activeResources.length);
                     m_activeResources[i] = m_activeResources[$-1];
                     --m_activeResources.length;
                 }
@@ -299,10 +315,10 @@ private interface IGraphicsResource {
 // A bit of hackery to unwrap values from a ResourceHandle!IWhatever used by
 // our lib to abstract things. Assumes, ofc, that the backing object _is_
 // something that was allocated from the gl_41_lib impl...
-private auto unwrap (GLShaderRef shader) { return cast(Shader)(shader._value); }
-private auto unwrap (GLTextureRef texture) { return cast(Texture)(texture._value); }
-private auto unwrap (GLVaoRef vao) { return cast(Vao)(vao._value); }
-private auto unwrap (GLVboRef vbo) { return cast(Vbo)(vbo._value); }
+private auto unwrap (ref GLShaderRef shader) { return cast(Shader)(shader._value); }
+private auto unwrap (ref GLTextureRef texture) { return cast(Texture)(texture._value); }
+private auto unwrap (ref GLVaoRef vao) { return cast(Vao)(vao._value); }
+private auto unwrap (ref GLVboRef vbo) { return cast(Vbo)(vbo._value); }
 
 
 private class Shader : IGraphicsResource, IShader {
@@ -440,6 +456,8 @@ private class Shader : IGraphicsResource, IShader {
                 shader = 0;
             }
         }
+        import std.stdio;
+        writefln("releaseResource()");
         m_graphicsPool.releaseResource(this); 
     }
 }
