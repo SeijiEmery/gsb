@@ -29,7 +29,6 @@ void main (string[] args) {
         //auto events = platform.getEventsInstance();
         auto gl           = platform.getGraphicsContext();
         auto resourcePool = gl.createResourcePrefix("window-test");
-        scope(exit) resourcePool.release();
 
         auto shader = resourcePool.createShader();
         shader.rawSource(ShaderType.VERTEX, `
