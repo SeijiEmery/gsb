@@ -52,9 +52,6 @@ void main (string[] args) {
                 fragColor = vec4( color, 1.0 );
             }
         `);
-        auto vbo = resourcePool.createVBO();
-        auto vao = resourcePool.createVAO();
-
         const float[] position_color_data = [
             -0.8f, -0.8f, 0.0f,  1.0f, 0.0f, 0.0f,
              0.8f, -0.8f, 0.0f,  0.0f, 1.0f, 0.0f,
@@ -78,6 +75,9 @@ void main (string[] args) {
         //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * float.sizeof, cast(void*)(3 * float.sizeof));
         //glBindVertexArray( 0 );
 
+        auto vbo = resourcePool.createVBO();
+        auto vao = resourcePool.createVAO();
+
         gl.getLocalBatch.execGL({
             bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
             vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
@@ -92,17 +92,14 @@ void main (string[] args) {
             auto dt   = time - prevTime;
             prevTime  = time;
             window.setTitleFPS( 1.0 / dt );
-            immutable auto PERIOD = 2.0; // 2 seconds
-            auto c = sin( time / PERIOD * 2 * PI ) * 0.5 + 0.5;
-            gl.setClearColor(vec4( c, c, c, 1 ));
-
-            //auto t = time * PI;
-            //gl.setClearColor(vec4(
-            //    sin( t * 3 ) * 0.5 + 0.5,
-            //    sin( t * 5 ) * 0.5 + 0.5,
-            //    sin( t * 7 ) * 0.5 + 0.5,
-            //    1,
-            //));
+            
+            auto t = time * PI;
+            gl.setClearColor(vec4(
+                sin( t * 37 / 128.0 ) * 0.5 + 0.5,
+                sin( t * 19 / 128.0 ) * 0.5 + 0.5,
+                sin( t * 84 / 128.0 ) * 0.5 + 0.5,
+                1,
+            ));
             platform.pollEvents();
 
             //glBindVertexArray( vao_handle );
