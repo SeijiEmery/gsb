@@ -11,6 +11,9 @@ alias SbEvent = Algebraic!(
     SbMouseMoveEvent, SbMouseButtonEvent, SbScrollInputEvent,
     SbKeyEvent, SbRawCharEvent,
 
+    SbMousePressEvent, SbMouseDownEvent, SbMouseUpEvent,
+    //SbKeyPressEvent,   SbKeyDownEvent,   SbKeyUpEvent,
+
     SbGamepadButtonEvent, SbGamepadAxisEvent,
     SbGamepadConnectionEvent,
  

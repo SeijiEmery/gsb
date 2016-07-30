@@ -7,11 +7,24 @@ struct SbMouseMoveEvent {
 struct SbMouseButtonEvent {
     int button, action, mods;
 }
+
+struct SbMousePressEvent {
+    uint button, pressCount = 1;
+}
+struct SbMouseDownEvent {
+    uint button;
+}
+struct SbMouseUpEvent {
+    uint button;
+}
+
+
 struct SbScrollInputEvent {
     vec2 delta;
 }
 struct SbKeyEvent {
-    int key, scancode, action, mods;
+    int key, scancode, mods;
+    bool pressed;
 }
 struct SbRawCharEvent {
     dchar chr;
