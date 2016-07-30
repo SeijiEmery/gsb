@@ -139,6 +139,19 @@ subPackage {
     sourcePaths "sb/platform/interface" "sb/gl/interface" "sb/events/interface"
     
     #dependency "gsb:platform" version="*"
-    #dependency "gsb:gl"         version="*"
-    #dependency "gsb:events"        version="*"
+    #dependency "gsb:gl"       version="*"
+    #dependency "gsb:events"   version="*"
 }
+subPackage {
+    name "flycam-test"
+    targetType "executable"
+    mainSourceFile "sb/gl_tests/flycam_test.d"
+    targetPath "build/tests/flycam_test"
+
+    dependency "gsb:platform_glfw_gl41" version="*"
+    sourcePaths "sb/platform/interface" "sb/gl/interface" "sb/events/interface"
+}
+
+
+
+
