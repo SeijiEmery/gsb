@@ -1,26 +1,32 @@
 module sb.input.mk_device;
+import sb.events;
+import gl3n.linalg;
+import std.bitmanip;
+import std.math: isNaN;
+import std.format;
+
 immutable uint SB_MAX_MOUSE_BUTTONS = 16;
 immutable uint SB_NUM_KEYS          = 256;
 
-enum MKPressState : ubyte { UP, DOWN, PRESSED, RELEASED }
+enum MKPressAction : ubyte { RELEASED = 0, PRESSED = 1 }
 
 struct MKInputFrame {
     double    dt;
-    SbEvent[] eventList;
+    SbEvent[] events;
     vec2      mousePos, mouseDelta, scrollDelta;
     MKPressState[SB_MAX_MOUSE_BUTTONS] mouseBtnState;
     MKPressState[SB_NUM_KEYS]          keyState;
 
-    @auto ref buttons () { return mouseBtnState; }
-    @auto ref keys    () { return keyState;      }
+    auto ref buttons () { return mouseBtnState; }
+    auto ref keys    () { return keyState;      }
 }
 
 struct MKPressState {
 private:
     mixin(bitfields!(
-        bool, 1, "st_pressed",
-        bool, 1, "st_changed",
-        uint, 6, "st_pressCount"
+        bool, "st_pressed", 1,
+        bool, "st_changed", 1,
+        uint, "st_pressCount", 6
     ));
 
     this (bool pressed, bool changed, uint pressCount = 1) {
@@ -58,8 +64,8 @@ final:
     // Register key press. For performance reasons, we don't take timestamps as we
     // don't presently have a need to record double / tripple tapping key actions
     // (this could change)
-    void registerKeyAction ( int key, int scancode, MKPressAction action ) {
-        okp(key, scancode, action != MKPressAction.RELEASED);
+    void registerKeyAction ( int key, int scancode, int mods, MKPressAction action ) {
+        okp(key, scancode, mods, action != MKPressAction.RELEASED);
     }
     void registerMouseMotion ( vec2 newPos ) {
         nextMousePos = newPos;
@@ -77,12 +83,12 @@ final:
             auto delta = nextMousePos - lastMousePos;
             delta.x *= settings.mouse_sensitivity_x;
             delta.y *= settings.mouse_sensitivity_y;
-            eventList ~= SbMouseMoveEvent( lastMousePos, lastMousePos + delta );
+            eventList ~= SbEvent(SbMouseMoveEvent( lastMousePos, lastMousePos + delta ));
         }
         if (mouseCumulativeScrollDelta.x || mouseCumulativeScrollDelta.y) {
             mouseCumulativeScrollDelta.x *= settings.scroll_sensitivity_x;
             mouseCumulativeScrollDelta.y *= settings.scroll_sensitivity_y;
-            eventList ~= SbScrollInputEvent( mouseCumulativeScrollDelta );
+            eventList ~= SbEvent(SbScrollInputEvent( mouseCumulativeScrollDelta ));
         }
 
         frame.dt = isNaN( lastFrameTime ) ? 16e-3 : timestamp - lastFrameTime;
@@ -92,8 +98,6 @@ final:
             (nextMousePos.x - lastMousePos.x) * settings.mouse_sensitivity_x,
             (nextMousePos.y - lastMousePos.y) * settings.mouse_sensitivity_y);
         frame.scrollDelta  = mouseCumulativeScrollDelta;
-        frame.mouseBtnState = buttonState;
-        frame.keyState      = nextKeysPressed;
 
         foreach (i; 0 .. SB_MAX_MOUSE_BUTTONS) {
             frame.mouseBtnState[i] = MKPressState(
@@ -105,11 +109,11 @@ final:
         }
         foreach (i; 0 .. SB_NUM_KEYS) {
             frame.keyState[i] = MKPressState(
-                nextKeysPressed[i],
-                nextKeysPressed[i] != lastKeysPressed[i]
+                keyPressState[i], 
+                dirtyKeyState[i]
             );
         }
-        nextKeysPressed = lastKeysPressed;
+        dirtyKeyState = false;
     }
 
 private:
@@ -124,20 +128,20 @@ private:
         double lastPress = double.nan;
     }
     PressInfo[ SB_MAX_MOUSE_BUTTONS ] buttonState;
-    bool     [ SB_NUM_KEYS ]          lastKeysPressed,  nextKeysPressed;
+    bool     [ SB_NUM_KEYS ]          keyPressState, dirtyKeyState;
 
     private void omp (double t, uint btn, bool pressed) {
         assert( btn < SB_MAX_MOUSE_BUTTONS, format("mouse button %s > %s", btn, SB_MAX_MOUSE_BUTTONS));
 
-        if (pressed && !mousePressed[btn]) {
-            mousePressed[btn] = true;
+        if (pressed && !buttonState[btn].pressed) {
+            buttonState[btn].pressed = true;
             buttonState[btn].lastPress = t;
             eventList ~= SbEvent( SbMouseDownEvent(btn) );
 
             if (!buttonState[btn].pressCount ||
                 t - buttonState[btn].lastPress < settings.mouse_extraClickThreshold
             ) {
-                if (pressCount < settings.mouse_maxConsecutiveClicks) {
+                if (buttonState[btn].pressCount < settings.mouse_maxConsecutiveClicks) {
                     ++buttonState[btn].pressCount;
                 } else {
                     final switch (settings.mouse_extraClickBehavior) {
@@ -150,7 +154,7 @@ private:
                             return;
                         case MKExtraClickBehavior.REPEAT: break;
                         case MKExtraClickBehavior.IGNORE_1_THEN_REPEAT:
-                            if ((buttonState[btn].pressCount += 1) == setting.mouse_maxConsecutiveClicks + 1)
+                            if ((buttonState[btn].pressCount += 1) == settings.mouse_maxConsecutiveClicks + 1)
                                 return;
                     }
                 }
@@ -158,7 +162,7 @@ private:
             } else {
                 eventList ~= SbEvent(SbMousePressEvent(btn, buttonState[btn].pressCount = 1));
             }
-        } else if (!pressed && mousePressed[btn]) {
+        } else if (!pressed && buttonState[btn].pressed) {
             eventList ~= SbEvent( SbMouseUpEvent(btn) );
             if (t - buttonState[btn].lastPress < settings.mouse_extraClickThreshold) {
                 buttonState[btn].lastPress = t;
@@ -167,13 +171,16 @@ private:
             }
         }
     }
-    private void okp ( uint key, uint scancode, bool pressed ) {
-        eventList ~= SbEvent( SbKeyEvent( key, scancode, pressed ));
-
-        assert(key < SB_NUM_KEYS, 
+    private void okp ( int key, int scancode, int mods, bool pressed ) {
+        assert(scancode < SB_NUM_KEYS, 
             format("Key exceeds range: %s (%s %s) > %s", 
-                key, cast(dchar)key, scancode, SB_NUM_KEYS));
-        nextKeysPressed[ key ] = pressed;
+                scancode, key, cast(dchar)key, SB_NUM_KEYS));
+
+        if (pressed != keyPressState[ scancode ]) {
+            keyPressState[ scancode ] = pressed;
+            dirtyKeyState[ scancode ] = true;
+            eventList ~= SbEvent(SbKeyEvent( key, scancode, mods, pressed ));
+        }
     }
 }
 
