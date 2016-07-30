@@ -25,7 +25,7 @@ interface IVbo {
     void retain  ();
 }
 public void bufferData (T)(ref GLVboRef vbo, T[] data, GLBuffering bufferUsage) {
-    vbo.bufferData(data.ptr, data.length, bufferUsage);
+    vbo.bufferData(data.ptr, T.sizeof * data.length, bufferUsage);
 }
 
 enum GLBuffering { STATIC_DRAW, DYNAMIC_DRAW };

@@ -39,6 +39,7 @@ private class GL41_GraphicsLib : IGraphicsLib {
     void initOnThread () {
         assert(initialized, "Did not call <gl_lib>.preInit()!");
         DerelictGL3.reload();
+        glEnable(GL_DEPTH_TEST);
     }
     void teardown () {
         if (context)
@@ -395,13 +396,13 @@ private class Shader : IGraphicsResource, IShader {
                 glEnforceOk(format("glUseProgram: %s", m_programObject));
                 return true;
             }
-            return false;
         } catch (Exception e) {
             // TODO: better error reporting (signals, etc)
             import std.stdio;
             writefln("Error while recompiling shader(s):\n%s", e);
-            return false;
         }
+        glUseProgram( 0 );
+        return false;
     }
 
     override IShader source (ShaderType type, string path) {
@@ -533,7 +534,9 @@ private class Vao : IGraphicsResource, IVao {
         assert( count >= 1 && count <= 4, format("Invalid count passed to bindVertexAttrib: %s!", count));
 
         glFlushErrors();
-        m_graphicsContext.bindVao( this, getHandle() );
+        //m_graphicsContext.bindVao( this, getHandle() );
+
+        glBindVertexArray( getHandle() ); glAssertOk("glBindVertexArray");
 
         glEnableVertexAttribArray( index ); 
         glAssertOk(format("glEnableVertexAttribArray(%s)", index));
@@ -548,13 +551,21 @@ private class Vao : IGraphicsResource, IVao {
 
         m_graphicsContext.unbindVao();
     }
-    override void bindShader ( GLShaderRef shader ) { m_boundShader = shader; }
+    override void bindShader ( GLShaderRef shader ) { 
+        m_boundShader = shader;
+        shader.unwrap.bindShader();
+     }
 
     override void drawArrays ( GLPrimitive primitive, uint start, uint count ) {
-        if (m_graphicsContext.bindShader(m_boundShader.unwrap) && 
+                    import std.stdio;
+
+        if (m_graphicsContext.bindShader(m_boundShader.unwrap),
             m_graphicsContext.bindVao( this, getHandle())
         ) {
             glDrawArrays( primitive.toGLEnum, start, count );
+            glAssertOk(format("glDrawArrays(%s, %s, %s)", primitive, start, count));
+        } else {
+            writefln("not drawing arrays!");
         }
     }
 

@@ -34,8 +34,8 @@ void main (string[] args) {
         auto shader = resourcePool.createShader();
         shader.rawSource(ShaderType.VERTEX, `
             #version 410
-            in vec3 vertPosition;
-            in vec3 vertColor;
+            layout(location=0) in vec3 vertPosition;
+            layout(location=1) in vec3 vertColor;
             out vec3 color;
 
             void main () {
@@ -61,9 +61,25 @@ void main (string[] args) {
              0.0f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f
         ];
 
+        //import derelict.opengl3.gl3;
+        //uint vbo_handle, vao_handle;
+        //glGenVertexArrays( 1, &vao_handle );
+        //glBindVertexArray( vao_handle );
+
+        //glGenBuffers(1, &vbo_handle);
+        //glBindBuffer(GL_ARRAY_BUFFER, vbo_handle);
+        //glBufferData(GL_ARRAY_BUFFER, float.sizeof * position_color_data.length, 
+        //    position_color_data.ptr, GL_STATIC_DRAW);
+
+        //glEnableVertexAttribArray(0);
+        //glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * float.sizeof, null);
+
+        //glEnableVertexAttribArray(1);
+        //glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * float.sizeof, cast(void*)(3 * float.sizeof));
+        //glBindVertexArray( 0 );
+
         gl.getLocalBatch.execGL({
             bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
-            //vbo.bufferData( position_color_data, GLBuffering.STATIC_DRAW );
             vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
             vao.bindVertexAttrib( 1, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
             vao.bindShader( shader );
@@ -79,6 +95,7 @@ void main (string[] args) {
             immutable auto PERIOD = 2.0; // 2 seconds
             auto c = sin( time / PERIOD * 2 * PI ) * 0.5 + 0.5;
             gl.setClearColor(vec4( c, c, c, 1 ));
+
             //auto t = time * PI;
             //gl.setClearColor(vec4(
             //    sin( t * 3 ) * 0.5 + 0.5,
@@ -87,6 +104,9 @@ void main (string[] args) {
             //    1,
             //));
             platform.pollEvents();
+
+            //glBindVertexArray( vao_handle );
+            //glDrawArrays(GL_TRIANGLES, 0, 3);
 
             gl.getLocalBatch.execGL({
                 vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
