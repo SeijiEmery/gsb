@@ -32,7 +32,8 @@ interface IPlatformWindow {
 
     // Set window size + screen scaling
     IPlatformWindow setWindowSize (vec2i size);
-    //IPlatformWindow setResizable  (bool resizable);
+    vec2i           windowSize    ();
+
     IPlatformWindow setScreenScale (SbScreenScale scaling);
     IPlatformWindow setScreenScale (vec2 customScale);
 

@@ -82,8 +82,21 @@ void main (string[] args) {
 
             platform.pollEvents();
 
+            float fov = 60.0, near = 0.1, far = 1e3;
+            auto proj = mat4.perspective( 
+                cast(float)window.windowSize.x, 
+                cast(float)window.windowSize.y, 
+                fov, near, far );
+
+            // set fixed camera back 5m from origin
+            auto view  = mat4.translation(vec3(0, 0, -5));
+
+            // triangle rotates about y-axis @origin.
+            auto model = mat4.yrotation(t);                
+
+            auto mvp = proj * view * model;
             gl.getLocalBatch.execGL({
-                shader.setv("mvp", mat4.yrotation(t));
+                shader.setv("mvp", mvp);
                 vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
             });
 

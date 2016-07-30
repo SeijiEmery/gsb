@@ -342,6 +342,7 @@ class SbWindow : IPlatformWindow {
         onWindowSizeChanged( size.x, size.y );
         return this;
     }
+    override vec2i windowSize () { return nextState.windowSize; }
 
     private void collectEvents (/*IEventProducer evp*/) {
         if (state.scaleFactor != nextState.scaleFactor)
