@@ -92,12 +92,12 @@ void main (string[] args) {
             auto dt   = time - prevTime;
             prevTime  = time;
             window.setTitleFPS( 1.0 / dt );
-            
+
             auto t = time * PI;
             gl.setClearColor(vec4(
-                sin( t * 37 / 128.0 ) * 0.5 + 0.5,
-                sin( t * 19 / 128.0 ) * 0.5 + 0.5,
-                sin( t * 84 / 128.0 ) * 0.5 + 0.5,
+                sin( t * 3  / 27.0 ) * 0.5 + 0.5,
+                sin( t * 7  / 27.0 ) * 0.5 + 0.5,
+                sin( t * 13 / 27.0 ) * 0.5 + 0.5,
                 1,
             ));
             platform.pollEvents();

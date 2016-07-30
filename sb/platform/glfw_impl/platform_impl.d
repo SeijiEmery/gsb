@@ -351,8 +351,9 @@ class SbWindow : IPlatformWindow {
 
         if (state.mousePos != nextState.mousePos)
             windowEvents ~= SbEvent(SbMouseMoveEvent( nextState.mousePos, state.mousePos ));
-        if (state.scrollDelta.x || state.scrollDelta.y)
-            windowEvents ~= SbEvent(SbScrollInputEvent( state.scrollDelta ));
+        if (nextState.scrollDelta.x || nextState.scrollDelta.y)
+            windowEvents ~= SbEvent(SbScrollInputEvent( nextState.scrollDelta ));
+        nextState.scrollDelta.x = nextState.scrollDelta.y = 0;
 
         import std.stdio;
         foreach (event; windowEvents)
@@ -383,7 +384,7 @@ class SbWindow : IPlatformWindow {
         return this;
     }
     void swapState () {
-        state = nextState;
+        state.swapState(nextState);
     }
 
     // Window callbacks (onWindowSizeChanged is also called by internal state setting code)
