@@ -108,6 +108,9 @@ final:
         assert(m_graphicsContext, "GL not initialized!");
         return m_graphicsContext; 
     }
+    override SbEventList getEvents () {
+        return m_eventList;
+    }
     override IPlatformWindow createWindow (string id, SbWindowConfig config) {
         import std.variant: visit;
 
@@ -166,6 +169,7 @@ final:
     override void pollEvents () {
         glfwPollEvents();
 
+        m_eventList.clear();
         foreach (_, window; m_windows) {
             window.collectEvents( m_eventList );
             window.swapState();
@@ -173,13 +177,11 @@ final:
         m_mkDevice.fetchInputFrame( m_eventList, m_mkState );
         pollGamepads( m_eventList );
 
-        m_eventList.dumpEvents();
-        m_eventList.clear();
+        //m_eventList.dumpEvents();
+        
     }
     private void pollGamepads (IEventProducer events) {
-
         import std.stdio;
-
         immutable uint MAX_NUM_GAMEPADS = 16;
         foreach (i; 0 .. MAX_NUM_GAMEPADS) {
             auto active = glfwJoystickPresent(i);

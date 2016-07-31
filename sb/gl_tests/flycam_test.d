@@ -1,11 +1,14 @@
 import sb.platform;
 import sb.gl;
+import sb.events;
+
 import std.stdio;
 import std.datetime: StopWatch;
 import core.time;
 import std.conv;
-import std.math;
+//import std.math;
 import gl3n.linalg;
+import gl3n.math;
 
 void main (string[] args) {
     SbPlatformConfig platformConfig = {
@@ -69,6 +72,11 @@ void main (string[] args) {
             vao.bindShader( shader );
         });
 
+        auto cam_pos = vec3( 0, 0, -5 );
+        auto cam_angles = vec3(0, 0, 0);
+        auto CAM_LOOK_SPEED = 100.0.radians;
+        auto CAM_MOVE_SPEED = 15.0;
+
         StopWatch sw; sw.start();
         double prevTime = sw.peek.to!("seconds", double);
         while (!window.shouldClose) {
@@ -88,8 +96,30 @@ void main (string[] args) {
                 cast(float)window.windowSize.y, 
                 fov, near, far );
 
-            // set fixed camera back 5m from origin
-            auto view  = mat4.translation(vec3(0, 0, -5));
+            import std.variant;
+
+            foreach (event; platform.getEvents.m_events) {
+                event.tryVisit!(
+                    (SbGamepadAxisEvent ev) {
+                        cam_pos -= CAM_MOVE_SPEED * dt * vec3(
+                            ev.axes[ AXIS_LX ],
+                            ev.axes[ AXIS_LTRIGGER ] - ev.axes[ AXIS_RTRIGGER ],
+                            ev.axes[ AXIS_LY ],
+                        );
+                        cam_angles += CAM_LOOK_SPEED * dt * vec3(
+                            ev.axes[ AXIS_RX ],
+                            ev.axes[ AXIS_RY ],
+                            0,
+                        );
+                    },
+                    (){}
+                );
+            }
+
+            auto view = (mat4.identity
+                .rotatey( cam_angles.x )
+                .rotatex( cam_angles.y ))
+                * mat4.translation(cam_pos);
 
             // triangle rotates about y-axis @origin.
             auto model = mat4.yrotation(t);                

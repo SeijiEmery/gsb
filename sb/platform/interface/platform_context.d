@@ -18,6 +18,9 @@ interface IPlatform {
     // Window + screen access
     IPlatformWindow createWindow (string id, SbWindowConfig);
     IPlatformWindow getWindow    (string id);
+
+    SbEventList      getEvents    ();
+
     //ScreenInfo[]    getScreenInfo ();
     //uint[2][]       getResolutions (uint screenIndex);
 
