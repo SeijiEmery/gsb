@@ -14,34 +14,12 @@ struct MKInputFrame {
     double    dt;
     SbEvent[] events;
     vec2      mousePos, mouseDelta, scrollDelta;
-    MKPressState[SB_MAX_MOUSE_BUTTONS] mouseBtnState;
-    MKPressState[SB_NUM_KEYS]          keyState;
+    SbPressState[SB_MAX_MOUSE_BUTTONS] mouseBtnState;
+    SbPressState[SB_NUM_KEYS]          keyState;
 
     auto ref buttons () { return mouseBtnState; }
     auto ref keys    () { return keyState;      }
 }
-
-struct MKPressState {
-private:
-    mixin(bitfields!(
-        bool, "st_pressed", 1,
-        bool, "st_changed", 1,
-        uint, "st_pressCount", 6
-    ));
-
-    this (bool pressed, bool changed, uint pressCount = 1) {
-        this.st_pressed = pressed;
-        this.st_changed = changed;
-        this.st_pressCount = pressCount;
-    }
-public:
-    @property bool pressed  () { return st_pressed && st_changed; }
-    @property bool released () { return !st_pressed && st_changed; }
-    @property bool up       () { return st_pressed; }
-    @property bool down     () { return !st_pressed; }
-    @property uint pressCount () { return st_pressed ? st_pressCount : 0; }
-}
-
 
 // Mouse / Keyboard "device" implemented as a FSM that takes simple inputs and produces
 // sophisticated SbEvent outputs suitable for a video game or game editor (detects double 
@@ -55,7 +33,11 @@ public:
 class MKInputDevice {
     // Settings stored as swappable, maybe-eventually-editor-editable PoD.
     public MKInputSettings settings;
+    MKInputFrame[2]        inputState;
+    uint stateIndex = 0;
 
+    public  auto ref lastState () { return inputState[stateIndex];  }
+    private auto ref nextState () { return inputState[!stateIndex]; }
 final:
     // Register mouse button press w/ an external timestamp
     void registerMouseBtn ( double timestamp, uint btn, MKPressAction action ) {
@@ -78,7 +60,7 @@ final:
     }
 
     // Swap state + fetch last input frame; takes an external timestamp.
-    void fetchInputFrame (double timestamp, ref MKInputFrame frame) {
+    auto ref fetchInputFrame (double timestamp) {
         if (nextMousePos != lastMousePos) {
             auto delta = nextMousePos - lastMousePos;
             delta.x *= settings.mouse_sensitivity_x;
@@ -100,7 +82,7 @@ final:
         frame.scrollDelta  = mouseCumulativeScrollDelta;
 
         foreach (i; 0 .. SB_MAX_MOUSE_BUTTONS) {
-            frame.mouseBtnState[i] = MKPressState(
+            frame.mouseBtnState[i] = SbPressState(
                 buttonState[i].pressed,
                 buttonState[i].pressed != buttonState[i].lastPressed,
                 buttonState[i].pressCount,
@@ -108,7 +90,7 @@ final:
             buttonState[i].lastPressed = buttonState[i].pressed;
         }
         foreach (i; 0 .. SB_NUM_KEYS) {
-            frame.keyState[i] = MKPressState(
+            frame.keyState[i] = SbPressState(
                 keyPressState[i], 
                 dirtyKeyState[i]
             );
