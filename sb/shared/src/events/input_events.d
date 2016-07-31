@@ -41,14 +41,26 @@ struct SbGamepadAxisEvent {
 // Per-frame input state
 //
 
-public auto immutable SB_MAX_MOUSE_BUTTONS = 16;
+enum SbMouseButton : uint { 
+    LMB = 0, BUTTON_1 = 0,
+    RMB = 1, BUTTON_2 = 1,
+    MMB = 2, BUTTON_3 = 2,
+    BUTTON_4, BUTTON_5, BUTTON_6, BUTTON_7, BUTTON_8, 
+    BUTTON_9, BUTTON_10, BUTTON_11, BUTTON_12, BUTTON_13,
+    BUTTON_14, BUTTON_15, BUTTON_16
+}
 
+struct SbInputState {
+    double dt, currentTime;
+    SbKBMState kbm; alias kbm this;
+    SbGamepadState[] gamepads;
+}
 struct SbKBMState {
     vec2 cursorPos = vec2(0, 0), cursorDelta = vec2(0, 0);
     vec2 scrollDelta = vec2(0, 0);
 
-    SbPressState[ SB_MAX_MOUSE_BUTTONS ] buttons;
-    SbPressState[ SbKey.max+1 ]            keys;
+    SbPressState[ SbMouseButton.max+1 ] buttons;
+    SbPressState[ SbKey.max+1 ]         keys;
 }
 struct SbGamepadState {
     uint id;
@@ -85,9 +97,9 @@ struct SbPressState {
         this.st_pressCount = pressCount;
     }
 public:
-    @property bool pressed  () nothrow @safe { return st_pressed && st_changed; }
-    @property bool released () nothrow @safe { return !st_pressed && st_changed; }
-    @property bool down     () nothrow @safe { return st_pressed; }
-    @property bool up       () nothrow @safe { return !st_pressed; } 
-    @property uint pressCount () nothrow @safe { return st_pressed ? st_pressCount : 0; } 
+    @property bool pressed  () nothrow @safe const { return st_pressed && st_changed; }
+    @property bool released () nothrow @safe const { return !st_pressed && st_changed; }
+    @property bool down     () nothrow @safe const { return st_pressed; }
+    @property bool up       () nothrow @safe const { return !st_pressed; } 
+    @property uint pressCount () nothrow @safe const { return st_pressed ? st_pressCount : 0; } 
 }

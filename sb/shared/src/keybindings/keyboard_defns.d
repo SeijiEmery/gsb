@@ -211,14 +211,14 @@ SbKey glfwKeyToHID (int key) @safe nothrow {
         case GLFW_KEY_KP_ADD: return SbKey.KEY_KP_PLUS;
         case GLFW_KEY_KP_ENTER: return SbKey.KEY_KP_ENTER;
         case GLFW_KEY_KP_EQUAL: return SbKey.KEY_KP_EQUALS;
-        case GLFW_KEY_LEFT_SHIFT: return SbKey.KEY_LSHIFT;
-        case GLFW_KEY_LEFT_CONTROL: return SbKey.KEY_LCTRL;
-        case GLFW_KEY_LEFT_ALT: return SbKey.KEY_LALT;
-        case GLFW_KEY_LEFT_SUPER: return SbKey.KEY_LSUPER;
-        case GLFW_KEY_RIGHT_SHIFT: return SbKey.KEY_RSHIFT;
-        case GLFW_KEY_RIGHT_CONTROL: return SbKey.KEY_RCTRL;
-        case GLFW_KEY_RIGHT_ALT: return SbKey.KEY_RALT;
-        case GLFW_KEY_RIGHT_SUPER: return SbKey.KEY_RSUPER;
+        case GLFW_KEY_LEFT_SHIFT: return SbKey.KEY_SHIFT;
+        case GLFW_KEY_LEFT_CONTROL: return SbKey.KEY_CTRL;
+        case GLFW_KEY_LEFT_ALT: return SbKey.KEY_ALT;
+        case GLFW_KEY_LEFT_SUPER: return SbKey.KEY_META;
+        case GLFW_KEY_RIGHT_SHIFT: return SbKey.KEY_SHIFT;
+        case GLFW_KEY_RIGHT_CONTROL: return SbKey.KEY_CTRL;
+        case GLFW_KEY_RIGHT_ALT: return SbKey.KEY_ALT;
+        case GLFW_KEY_RIGHT_SUPER: return SbKey.KEY_META;
         case GLFW_KEY_MENU: return SbKey.KEY_UNUSED_MENU;
         default:
     }

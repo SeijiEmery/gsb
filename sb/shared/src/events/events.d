@@ -58,6 +58,12 @@ interface IEventList {
     void handle (Cases...)() if (__traits(compiles, testHandler!Cases));
 }
 
+public void onEvent (Cases...)(const(SbEventList) list) {
+    import std.variant;
+    foreach (event; list.m_events) 
+        event.tryVisit!Cases;
+}
+
 class SbEventList : IEventProducer, IEventList {
     SbEvent[] m_events;
 
@@ -66,11 +72,10 @@ class SbEventList : IEventProducer, IEventList {
     }
     void clear () { m_events.length = 0; }
 
-    void handle (Cases...)() if (__traits(compiles, testHandler!Cases)) {
-        foreach (event; m_events) {
-            event.tryVisit!(Cases, (){});
-        }
-    }
+    //void onEvent (Cases...)() const {
+    //    foreach (event; m_events)
+    //        event.tryVisit!(Cases);
+    //}
     // Write events to stdout
     void dumpEvents () {
         import std.stdio;

@@ -11,6 +11,8 @@ import gl3n.linalg;
 import std.format;
 import std.string: toStringz;
 import core.stdc.string: strlen;
+import std.algorithm;
+import std.array;
 
 extern(C) IPlatform sbCreatePlatformContext (IGraphicsLib graphicsLib, SbPlatformConfig config) {
     enforce(config.backend != SbPlatform_Backend.NONE,
@@ -66,6 +68,8 @@ class SbPlatform : IPlatform {
     SbWindow[string] m_windows;
     SbWindow         m_mainWindow;
     SbTime           m_time;
+    SbInputState     m_lastInput;
+    SbWindowState[]  m_lastWindowState;
 
     // Mouse + keyboard input device (fires events + maintains state)
     auto m_mkDevice = new MKInputDevice();
@@ -108,9 +112,11 @@ final:
         assert(m_graphicsContext, "GL not initialized!");
         return m_graphicsContext; 
     }
-    override SbEventList getEvents () {
-        return m_eventList;
-    }
+    //override SbEventList events () { return m_eventList; }
+    override const(SbEventList)      events () { return m_eventList; }
+    override const(SbInputState)      input () { return m_lastInput; }
+    override const(SbWindowState[]) windows () { return m_lastWindowState; }
+
     override IPlatformWindow createWindow (string id, SbWindowConfig config) {
         import std.variant: visit;
 
@@ -170,15 +176,24 @@ final:
         glfwPollEvents();
 
         m_eventList.clear();
+
+        m_lastWindowState.length = 0;
         foreach (_, window; m_windows) {
+            m_lastWindowState ~= window.getState();
+
             window.collectEvents( m_eventList );
             window.swapState();
         }
         m_mkDevice.fetchInputFrame( m_eventList, m_mkState );
         pollGamepads( m_eventList );
 
-        //m_eventList.dumpEvents();
-        
+        m_lastInput = SbInputState(
+            m_time.dt, m_time.currentTime,
+            m_mkState,
+            m_gamepads[0..$].filter!"a !is null".map!"a.state".array
+        );
+
+        //m_eventList.dumpEvents();        
     }
     private void pollGamepads (IEventProducer events) {
         import std.stdio;
@@ -240,7 +255,7 @@ struct RawKeyInput      { int key, scancode, action, mods; }
 struct RawCharInput     { dchar chr; }
 alias RawInputEvent = Algebraic!(RawMouseBtnInput, RawKeyInput, RawCharInput);
 
-struct SbWindowState {
+struct SbInternalWindowState {
     // Authoritative window state (mostly set by events)
     vec2i windowSize, framebufferSize;
     vec2  scaleFactor; // 1.0 + 0.5 for retina, and other scale factors for w/e (hacky way to scale ui)
@@ -252,20 +267,14 @@ struct SbWindowState {
         scaleFactor.y = cast(double)framebufferSize.y / cast(double)windowSize.y;
     }
 
-    // Raw event state
-    vec2 mousePos     = vec2(0, 0);
-    vec2 scrollDelta  = vec2(0, 0);
-
     bool wantsRefresh = false;
     bool hasInputFocus = true;
     bool hasCursorFocus = true;
 }
-private void swapState (ref SbWindowState a, ref SbWindowState b) {
+private void swapState (ref SbInternalWindowState a, ref SbInternalWindowState b) {
     a = b;
     b.wantsRefresh = false;
-
 }
-
 
 class SbWindow : IPlatformWindow {
     SbPlatform platform;
@@ -275,7 +284,7 @@ class SbWindow : IPlatformWindow {
     
     // current + next window state. Mutating operations change @nextState, 
     // preserving @state until swapState() is called.
-    SbWindowState  state, nextState;
+    SbInternalWindowState  state, nextState;
 
     // Screen scaling options (corresponds to SbScreenScale)
     bool autodetectScreenScale = true;
@@ -336,7 +345,15 @@ class SbWindow : IPlatformWindow {
     }
     override string getName () { return id; }
 
-
+    SbWindowState getState () {
+        return SbWindowState( id, 
+            nextState.windowSize, state.windowSize,
+            nextState.scaleFactor, state.scaleFactor,
+            state.hasCursorFocus,
+            state.hasInputFocus,
+            state.wantsRefresh
+        );
+    }
 
     private void updateWindowTitle () {
         glfwSetWindowTitle(handle, showWindowFPS ?

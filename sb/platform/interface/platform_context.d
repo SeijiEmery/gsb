@@ -19,10 +19,10 @@ interface IPlatform {
     IPlatformWindow createWindow (string id, SbWindowConfig);
     IPlatformWindow getWindow    (string id);
 
-    SbEventList      getEvents    ();
-
-    //ScreenInfo[]    getScreenInfo ();
-    //uint[2][]       getResolutions (uint screenIndex);
+    //SbEventList     events ();
+    const(SbEventList)     events();
+    const(SbInputState)    input ();
+    const(SbWindowState[]) windows ();
 
     // wraps glfwSwapBuffers
     void swapFrame ();
