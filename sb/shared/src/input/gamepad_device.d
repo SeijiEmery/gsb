@@ -59,15 +59,23 @@ final:
         setAxis(AXIS_RY, settings.flipRY ? -state.axes[AXIS_RY] : state.axes[AXIS_RY], profile.RAXIS_DEADZONE);
 
         // Set dpad inputs as an extra simulated axis
-        // Note: we're _slightly_ cheating here, but dpad inputs can't both point in opposite directions :)
-        setAxis(AXIS_DPAD_X,
-            pressed[BUTTON_DPAD_LEFT] ? -1.0 :
-            pressed[BUTTON_DPAD_RIGHT] ? 1.0 : 0.0, 0.0);
-        setAxis(AXIS_DPAD_Y,
-            pressed[BUTTON_DPAD_DOWN] ? -1.0 :
-            pressed[BUTTON_DPAD_UP] ? 1.0 : 0.0, 0.0);
+        state.axes[AXIS_DPAD_X] = state.axes[AXIS_DPAD_Y] = 0;
+        if (pressed[BUTTON_DPAD_LEFT]) state.axes[AXIS_DPAD_X] -= 1.0;
+        if (pressed[BUTTON_DPAD_RIGHT]) state.axes[AXIS_DPAD_X] += 1.0;
+        if (pressed[BUTTON_DPAD_DOWN]) state.axes[AXIS_DPAD_Y] -= 1.0;
+        if (pressed[BUTTON_DPAD_UP]) state.axes[AXIS_DPAD_Y] += 1.0;
 
-        // Update trigger "buttons" (triggers should also act as buttons)
+        // Add LB/RB and LS/RS axes
+        state.axes[AXIS_BUMPERS] = 0;
+        if (pressed[BUTTON_LBUMPER]) state.axes[AXIS_BUMPERS] -= 1.0;
+        if (pressed[BUTTON_RBUMPER]) state.axes[AXIS_BUMPERS] += 1.0;
+        if (pressed[BUTTON_LSTICK]) state.axes[AXIS_HATS] -= 1.0;
+        if (pressed[BUTTON_RSTICK]) state.axes[AXIS_HATS] += 1.0;
+
+        // Add combined trigger axis
+        state.axes[AXIS_TRIGGERS] = state.axes[AXIS_RTRIGGER] - state.axes[AXIS_LTRIGGER];
+
+        // Update trigger buttons from axes
         // Note: trigger axes are / should always be clamped >= 0.
         pressed[BUTTON_LTRIGGER] = state.axes[AXIS_LTRIGGER] > settings.triggerButtonThreshold;
         pressed[BUTTON_RTRIGGER] = state.axes[AXIS_RTRIGGER] > settings.triggerButtonThreshold;

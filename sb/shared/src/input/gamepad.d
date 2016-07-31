@@ -25,7 +25,7 @@ public auto immutable BUTTON_SELECT = SbGamepadButton.SELECT;
 public auto immutable BUTTON_HOME = SbGamepadButton.HOME;
 
 enum SbGamepadAxis : ubyte {
-    LX = 0, LY, RX, RY, LTRIGGER, RTRIGGER, DPAD_X, DPAD_Y
+    LX = 0, LY, RX, RY, LTRIGGER, RTRIGGER, DPAD_X, DPAD_Y, TRIGGERS, BUMPERS, HATS,
 }
 public auto immutable AXIS_LX = SbGamepadAxis.LX;
 public auto immutable AXIS_LY = SbGamepadAxis.LY;
@@ -33,8 +33,12 @@ public auto immutable AXIS_RX = SbGamepadAxis.RX;
 public auto immutable AXIS_RY = SbGamepadAxis.RY;
 public auto immutable AXIS_LTRIGGER = SbGamepadAxis.LTRIGGER;
 public auto immutable AXIS_RTRIGGER = SbGamepadAxis.RTRIGGER;
-public auto immutable AXIS_DPAD_X = SbGamepadAxis.DPAD_X;
+public auto immutable AXIS_DPAD_X = SbGamepadAxis.DPAD_X;   // fake axes for dpad
 public auto immutable AXIS_DPAD_Y = SbGamepadAxis.DPAD_Y;
+public auto immutable AXIS_TRIGGERS = SbGamepadAxis.TRIGGERS; // combined LT + RT axes
+public auto immutable AXIS_BUMPERS = SbGamepadAxis.BUMPERS;   // fake axes for LB/RB + LS/RS
+public auto immutable AXIS_HATS = SbGamepadAxis.HATS;
+
 
 enum SbGamepadProfile {
     NO_PROFILE = 0,

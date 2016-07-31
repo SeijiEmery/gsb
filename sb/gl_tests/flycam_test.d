@@ -102,7 +102,7 @@ void main (string[] args) {
         auto CAM_LOOK_SPEED = 100.0.radians;
         auto CAM_MOVE_SPEED = 15.0;
 
-        float MAX_FOV = 360.0, MIN_FOV = 0.5, FOV_CHANGE_SPEED = 90.0;
+        float MAX_FOV = 360.0, MIN_FOV = 0.5, FOV_CHANGE_SPEED = 120.0;
         float MIN_FAR = 10, MAX_FAR = 2e3, FAR_CHANGE_SPEED = 1e2;
 
         float fov = 60.0, near = 0.1, far = 1e3;
@@ -139,21 +139,15 @@ void main (string[] args) {
             foreach (event; platform.getEvents.m_events) {
                 event.tryVisit!(
                     (SbGamepadAxisEvent ev) {
-                        //cam_pos -= CAM_MOVE_SPEED * dt * vec3(
-                        //    ev.axes[ AXIS_LX ],
-                        //    ev.axes[ AXIS_LTRIGGER ] - ev.axes[ AXIS_RTRIGGER ],
-                        //    ev.axes[ AXIS_LY ],
-                        //);
-
                         cam_pos -= right * ev.axes [ AXIS_LX ] * dt * CAM_MOVE_SPEED;
                         cam_pos -= fwd   * ev.axes [ AXIS_LY ] * dt * CAM_MOVE_SPEED;
-                        cam_pos += up    * (ev.axes[AXIS_RTRIGGER] - ev.axes[AXIS_LTRIGGER]) * dt * CAM_MOVE_SPEED;
+                        cam_pos += up    * ev.axes [ AXIS_BUMPERS ] * dt * CAM_MOVE_SPEED;
 
                         cam_angles.x += ev.axes[AXIS_RY] * dt * CAM_LOOK_SPEED;
                         cam_angles.y -= ev.axes[AXIS_RX] * dt * CAM_LOOK_SPEED;
 
-                        fov = max(MIN_FOV, min(MAX_FOV, fov + ev.axes[AXIS_DPAD_Y] * dt * FOV_CHANGE_SPEED));
-                        far = max(MIN_FAR, min(MAX_FAR, far + ev.axes[AXIS_DPAD_X] * dt * FAR_CHANGE_SPEED));
+                        fov = max(MIN_FOV, min(MAX_FOV, fov + ev.axes[AXIS_TRIGGERS] * dt * FOV_CHANGE_SPEED));
+                        far = max(MIN_FAR, min(MAX_FAR, far + ev.axes[AXIS_DPAD_Y] * dt * FAR_CHANGE_SPEED));
                     },
                     (SbGamepadButtonEvent ev) {
                         if (ev.button == BUTTON_LSTICK && ev.pressed)
