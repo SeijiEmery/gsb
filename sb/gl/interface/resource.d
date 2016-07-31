@@ -33,11 +33,13 @@ enum GLBuffering { STATIC_DRAW, DYNAMIC_DRAW };
 interface IVao {
     void bindVertexAttrib (uint index, GLVboRef vbo, uint count, GLType dataType,
         GLNormalized normalized, size_t stride = 0, size_t offset = 0);
+    void setVertexAttribDivisor(uint index, uint divisor);
 
     // hacky... but whatever. 
     // We'll write some abstraction over VAOs later.
     void bindShader ( GLShaderRef shader );
     void drawArrays ( GLPrimitive, uint start, uint count );
+    void drawArraysInstanced ( GLPrimitive, uint start, uint count, uint instanceCount );
 
     void release ();
     void retain ();

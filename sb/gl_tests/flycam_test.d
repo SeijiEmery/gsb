@@ -38,13 +38,17 @@ void main (string[] args) {
             #version 410
             layout(location=0) in vec3 vertPosition;
             layout(location=1) in vec3 vertColor;
+            layout(location=2) in vec3 instancePosition;
             out vec3 color;
 
-            uniform mat4 mvp;
+            uniform mat4 vp;
+            uniform mat4 model;
 
             void main () {
                 color = vertColor;
-                gl_Position = mvp * vec4( vertPosition, 1.0 );
+                gl_Position = vp * (
+                    vec4(instancePosition, 0) +
+                    model * vec4(vertPosition, 1.0));
             }
         `);
         shader.rawSource(ShaderType.FRAGMENT, `
@@ -62,20 +66,46 @@ void main (string[] args) {
              0.0f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f
         ];
 
-        auto vbo = resourcePool.createVBO();
         auto vao = resourcePool.createVAO();
+        auto vbo = resourcePool.createVBO();
+        auto instance_vbo = resourcePool.createVBO();
 
+        immutable auto GRID_DIM   = vec3i( 100, 50, 100 );
+        immutable auto GRID_SCALE =  vec3( 100, 50, 100 );
+
+        vec3[] instanceGridData;
+        foreach (x; 0f .. GRID_DIM.x) {
+            foreach (y; 0f .. GRID_DIM.y) {
+                foreach (z; 0f .. GRID_DIM.z) {
+                    instanceGridData ~= vec3(
+                        (x - GRID_DIM.x * 0.5) * GRID_SCALE.x / GRID_DIM.x * 2.0,
+                        (y - GRID_DIM.y * 0.5) * GRID_SCALE.y / GRID_DIM.y * 2.0,
+                        (z - GRID_DIM.z * 0.5) * GRID_SCALE.z / GRID_DIM.z * 2.0,
+                    );
+               }
+            }
+        }
         gl.getLocalBatch.execGL({
             bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
             vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
             vao.bindVertexAttrib( 1, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
+
+            bufferData( instance_vbo, instanceGridData, GLBuffering.STATIC_DRAW );
+            vao.bindVertexAttrib( 2, instance_vbo, 3, GLType.FLOAT, GLNormalized.FALSE, 0, 0 );
+            vao.setVertexAttribDivisor( 2, 1 );
+
             vao.bindShader( shader );
         });
 
-        auto cam_pos = vec3( 0, 0, -5 );
+        auto cam_pos    = vec3( 0, 0, -5 );
         auto cam_angles = vec3(0, 0, 0);
         auto CAM_LOOK_SPEED = 100.0.radians;
         auto CAM_MOVE_SPEED = 15.0;
+
+        float MAX_FOV = 360.0, MIN_FOV = 0.5, FOV_CHANGE_SPEED = 90.0;
+        float MIN_FAR = 10, MAX_FAR = 2e3, FAR_CHANGE_SPEED = 1e2;
+
+        float fov = 60.0, near = 0.1, far = 1e3;
 
         StopWatch sw; sw.start();
         double prevTime = sw.peek.to!("seconds", double);
@@ -90,7 +120,7 @@ void main (string[] args) {
 
             platform.pollEvents();
 
-            float fov = 60.0, near = 0.1, far = 1e3;
+            
             auto proj = mat4.perspective( 
                 cast(float)window.windowSize.x, 
                 cast(float)window.windowSize.y, 
@@ -98,36 +128,54 @@ void main (string[] args) {
 
             import std.variant;
 
+            auto fwd = vec3(
+                cam_angles.x.cos * cam_angles.y.cos,
+                cam_angles.x.sin,
+                cam_angles.x.cos * cam_angles.y.sin
+            );
+            auto right = fwd.cross(vec3(0, 1, 0));
+            auto up    = fwd.cross(right);
+
             foreach (event; platform.getEvents.m_events) {
                 event.tryVisit!(
                     (SbGamepadAxisEvent ev) {
-                        cam_pos -= CAM_MOVE_SPEED * dt * vec3(
-                            ev.axes[ AXIS_LX ],
-                            ev.axes[ AXIS_LTRIGGER ] - ev.axes[ AXIS_RTRIGGER ],
-                            ev.axes[ AXIS_LY ],
-                        );
-                        cam_angles += CAM_LOOK_SPEED * dt * vec3(
-                            ev.axes[ AXIS_RX ],
-                            ev.axes[ AXIS_RY ],
-                            0,
-                        );
+                        //cam_pos -= CAM_MOVE_SPEED * dt * vec3(
+                        //    ev.axes[ AXIS_LX ],
+                        //    ev.axes[ AXIS_LTRIGGER ] - ev.axes[ AXIS_RTRIGGER ],
+                        //    ev.axes[ AXIS_LY ],
+                        //);
+
+                        cam_pos -= right * ev.axes [ AXIS_LX ] * dt * CAM_MOVE_SPEED;
+                        cam_pos -= fwd   * ev.axes [ AXIS_LY ] * dt * CAM_MOVE_SPEED;
+                        cam_pos += up    * (ev.axes[AXIS_RTRIGGER] - ev.axes[AXIS_LTRIGGER]) * dt * CAM_MOVE_SPEED;
+
+                        cam_angles.x += ev.axes[AXIS_RY] * dt * CAM_LOOK_SPEED;
+                        cam_angles.y -= ev.axes[AXIS_RX] * dt * CAM_LOOK_SPEED;
+
+                        fov = max(MIN_FOV, min(MAX_FOV, fov + ev.axes[AXIS_DPAD_Y] * dt * FOV_CHANGE_SPEED));
+                        far = max(MIN_FAR, min(MAX_FAR, far + ev.axes[AXIS_DPAD_X] * dt * FAR_CHANGE_SPEED));
+                    },
+                    (SbGamepadButtonEvent ev) {
+                        if (ev.button == BUTTON_LSTICK && ev.pressed)
+                            cam_pos = vec3(0, 0, -5);
+                        if (ev.button == BUTTON_RSTICK && ev.pressed)
+                            cam_angles = vec3(0, 0, 0);
                     },
                     (){}
                 );
             }
-
-            auto view = (mat4.identity
-                .rotatey( cam_angles.x )
-                .rotatex( cam_angles.y ))
-                * mat4.translation(cam_pos);
+            auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
 
             // triangle rotates about y-axis @origin.
-            auto model = mat4.yrotation(t);                
+            auto model = mat4.yrotation(t).scale( 0.25, 0.25, 0.25 );                
 
             auto mvp = proj * view * model;
             gl.getLocalBatch.execGL({
-                shader.setv("mvp", mvp);
-                vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
+                shader.setv("vp", proj * view);
+                shader.setv("model", model);
+
+                //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
+                vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
             });
 
             platform.swapFrame();

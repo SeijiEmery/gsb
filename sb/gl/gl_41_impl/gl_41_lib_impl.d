@@ -565,9 +565,8 @@ private class Vao : IGraphicsResource, IVao {
         assert( count >= 1 && count <= 4, format("Invalid count passed to bindVertexAttrib: %s!", count));
 
         glFlushErrors();
-        //m_graphicsContext.bindVao( this, getHandle() );
-
-        glBindVertexArray( getHandle() ); glAssertOk("glBindVertexArray");
+        m_graphicsContext.bindVao( this, getHandle() );
+        //glBindVertexArray( getHandle() ); glAssertOk("glBindVertexArray");
 
         glEnableVertexAttribArray( index ); 
         glAssertOk(format("glEnableVertexAttribArray(%s)", index));
@@ -581,6 +580,12 @@ private class Vao : IGraphicsResource, IVao {
             index, count, dataType, normalized, stride, offset));
 
         m_graphicsContext.unbindVao();
+    }
+    override void setVertexAttribDivisor (uint index, uint divisor) {
+        glFlushErrors();
+        m_graphicsContext.bindVao( this, getHandle() );
+        glVertexAttribDivisor( index, divisor );
+        glAssertOk(format("glVertexAttribDivisor(%s, %s)", index, divisor));
     }
     override void bindShader ( GLShaderRef shader ) { 
         m_boundShader = shader;
@@ -597,6 +602,14 @@ private class Vao : IGraphicsResource, IVao {
             glAssertOk(format("glDrawArrays(%s, %s, %s)", primitive, start, count));
         } else {
             writefln("not drawing arrays!");
+        }
+    }
+    override void drawArraysInstanced ( GLPrimitive primitive, uint start, uint count, uint instances ) {
+        if (m_graphicsContext.bindShader(m_boundShader.unwrap),
+            m_graphicsContext.bindVao( this, getHandle())
+        ) {
+            glDrawArraysInstanced( primitive.toGLEnum, start, count, instances );
+            glAssertOk(format("glDrawArrays(%s, %s, %s)", primitive, start, count));
         }
     }
 
