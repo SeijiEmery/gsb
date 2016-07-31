@@ -1,6 +1,6 @@
 module sb.platform.platform_interface;
-import sb.platform.events;
 import sb.gl;
+import sb.events;
 import gl3n.linalg;
 
 extern(C) IPlatform sbCreatePlatformContext (IGraphicsLib, SbPlatformConfig);
