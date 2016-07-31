@@ -21,3 +21,13 @@ struct SbWindowMouseoverEvent {
     bool     hasMouseover;
 }
 
+struct SbWindowState {
+    string window;
+    vec2i size,  prevSize;
+    vec2  scale, prevScale;
+
+    bool  hasMouseFocus; // (mouseover)
+    bool  hasInputFocus;
+    bool  needsRefresh = false;
+}
+

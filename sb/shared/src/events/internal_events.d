@@ -4,20 +4,28 @@ import std.datetime;
 // Global app events
 struct SbAppLoadedEvent {}
 struct SbAppKilledEvent {}
-struct SbNextFrameEvent { Duration currentTime; uint frameId; }
+struct SbNextFrameEvent {
+    double time, dt;
+    uint   frameId;
+}
 
+// And app / frame time state
+struct SbFrameState {
+    double currentTime, dt;
+    uint   currentFrameId;
+}
 
 // SbEvents relating to SbModule load / reload pipeline:
 //   ModuleLoading => ModuleLoaded | ModuleLoadFailed
-struct SbModuleLoadingEvent {}
-struct SbModuleLoadedEvent  {}
-struct SbModuleLoadFailedEvent {}
+//struct SbModuleLoadingEvent {}
+//struct SbModuleLoadedEvent  {}
+//struct SbModuleLoadFailedEvent {}
 
 // SbEvents for module run state pipeline:
 //   ModuleRunning => ModuleKilled | ModuleError
-struct SbModuleRunningEvent {}
-struct SbModuleKilledEvent  {}
-struct SbModuleErrorEvent   {}
+//struct SbModuleRunningEvent {}
+//struct SbModuleKilledEvent  {}
+//struct SbModuleErrorEvent   {}
 
 // All module + app events for lifetime of program:
 //  SbAppLoadedEvent  =>  SbNextFrameEvent*  =>  SbAppKilledEvent
