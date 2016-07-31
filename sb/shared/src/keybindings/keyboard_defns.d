@@ -1,5 +1,6 @@
 module sb.keybindings.keyboard_defns;
 import derelict.glfw3.glfw3;
+import std.format;
 
 // Our internal keycode enum. Uses USB HID bindings so we're
 // not bound to glfw, etc., and includes translation from glfw
@@ -165,7 +166,7 @@ enum SbKey : ubyte {
     KEY_META  = 0xEB,
 }
 
-SbKey glfwKeyToHID (int key) {
+SbKey glfwKeyToHID (int key) @safe nothrow {
     import derelict.glfw3.glfw3;
 
     switch (key) {
@@ -176,7 +177,7 @@ SbKey glfwKeyToHID (int key) {
         case GLFW_KEY_PERIOD: return SbKey.KEY_PERIOD;
         case GLFW_KEY_SLASH: return SbKey.KEY_SLASH;
         case GLFW_KEY_SEMICOLON: return SbKey.KEY_SEMICOLON;
-        case GLFW_KEY_EQUAL: return SbKey.KEY_EQUAL;
+        case GLFW_KEY_EQUAL: return SbKey.KEY_EQUALS;
         case GLFW_KEY_LEFT_BRACKET: return SbKey.KEY_LEFTBRACKET;
         case GLFW_KEY_BACKSLASH: return SbKey.KEY_BACKSLASH;
         case GLFW_KEY_RIGHT_BRACKET: return SbKey.KEY_RIGHTBRACKET;
@@ -184,7 +185,7 @@ SbKey glfwKeyToHID (int key) {
         case GLFW_KEY_WORLD_1: return SbKey.UNKNOWN; // FIXME?
         case GLFW_KEY_WORLD_2: return SbKey.UNKNOWN;
         case GLFW_KEY_ESCAPE: return SbKey.KEY_ESCAPE;
-        case GLFW_KEY_ENTER: return SbKey.KEY_ENTER;
+        case GLFW_KEY_ENTER: return SbKey.KEY_RETURN;
         case GLFW_KEY_TAB: return SbKey.KEY_TAB;
         case GLFW_KEY_BACKSPACE: return SbKey.KEY_BACKSPACE;
         case GLFW_KEY_INSERT: return SbKey.KEY_INSERT;
@@ -194,7 +195,7 @@ SbKey glfwKeyToHID (int key) {
         case GLFW_KEY_DOWN: return SbKey.KEY_DOWN;
         case GLFW_KEY_UP: return SbKey.KEY_UP;
         case GLFW_KEY_PAGE_UP: return SbKey.KEY_PAGEUP;
-        case GLFW_KEY_PAGE_DOWN: return Sbkey.KEY_PAGEDOWN;
+        case GLFW_KEY_PAGE_DOWN: return SbKey.KEY_PAGEDOWN;
         case GLFW_KEY_HOME: return SbKey.KEY_HOME;
         case GLFW_KEY_END: return SbKey.KEY_END;
         case GLFW_KEY_CAPS_LOCK: return SbKey.KEY_CAPSLOCK;
@@ -214,10 +215,11 @@ SbKey glfwKeyToHID (int key) {
         case GLFW_KEY_LEFT_ALT: return SbKey.KEY_LALT;
         case GLFW_KEY_LEFT_SUPER: return SbKey.KEY_LSUPER;
         case GLFW_KEY_RIGHT_SHIFT: return SbKey.KEY_RSHIFT;
-        case GLFW_KEY_RIGHT_CONTROL: return SbKey.KEY_RCONTROL;
+        case GLFW_KEY_RIGHT_CONTROL: return SbKey.KEY_RCTRL;
         case GLFW_KEY_RIGHT_ALT: return SbKey.KEY_RALT;
         case GLFW_KEY_RIGHT_SUPER: return SbKey.KEY_RSUPER;
         case GLFW_KEY_MENU: return SbKey.KEY_UNUSED_MENU;
+        default:
     }
     if (key >= GLFW_KEY_A && key <= GLFW_KEY_Z)
         return cast(SbKey)(key - GLFW_KEY_A + SbKey.KEY_A);
@@ -234,7 +236,11 @@ SbKey glfwKeyToHID (int key) {
     if (key >= GLFW_KEY_F13 && key <= GLFW_KEY_F25)
         return cast(SbKey)(key - GLFW_KEY_F13 + SbKey.KEY_F13);
 
-    assert(0, format("Unknown key: %s (%s)", key, cast(dchar)key));
+    import std.stdio;
+    import std.exception;
+
+    assumeWontThrow(writefln("Unknown key %s (%s)", key, cast(dchar)key));
+    return SbKey.UNKNOWN;
 }
 SbKey toKey (char chr) {
     if (chr >= 'a' && chr <= 'z')

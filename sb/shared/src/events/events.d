@@ -17,16 +17,16 @@ alias SbEvent = Algebraic!(
 );
 
 // List of event classifications as a bitmask
-enum SbEventMask {
-    FRAME_EVENTS  = 0x1,
-    APP_EVENTS    = 0x2,
-    MODULE_EVENTS = 0x4,
-    MODULE_LOAD_EVENTS = 0x8,
+//enum SbEventMask {
+//    FRAME_EVENTS  = 0x1,
+//    APP_EVENTS    = 0x2,
+//    MODULE_EVENTS = 0x4,
+//    MODULE_LOAD_EVENTS = 0x8,
 
-    WINDOW_EVENTS = 0x10,
-    INPUT_EVENTS  = 0x20,
-    ALL           = 0x2f,
-}
+//    WINDOW_EVENTS = 0x10,
+//    INPUT_EVENTS  = 0x20,
+//    ALL           = 0x2f,
+//}
 
 // Event producer interface; wraps an internal event list in a concurrent-ish manner.
 // (note: you should not share the same IEventProducer across multiple threads, but
@@ -35,12 +35,15 @@ enum SbEventMask {
 //  events concurrently).
 interface IEventProducer {
     // Add event
-    IEventProducer pushEvent (SbEvent);
+    IEventProducer pushEv (SbEvent);
+}
 
-    // Add event (convenience function: enables pushEvent(MouseEvent(...)),
-    //  vs the more verbose pushEvent(SbEvent(MouseEvent(...))), as the SbEvent ctor
-    //  is technically required but effectively redundant).
-    IEventProducer pushEvent (T)(lazy T event) if (__traits(compiles, SbEvent(event)));
+
+public IEventProducer pushEvent (IEventProducer events, SbEvent event) {
+    return events.pushEv(event);
+}
+public IEventProducer pushEvent (T)(IEventProducer events, lazy T event) if (__traits(compiles, SbEvent(event))) {
+    return events.pushEv(SbEvent(event));
 }
 
 // Test event handler list (Cases), ensuring that it can match SbEvent.visit() / tryVisit()
@@ -58,11 +61,8 @@ interface IEventList {
 class SbEventList : IEventProducer, IEventList {
     SbEvent[] m_events;
 
-    IEventProducer pushEvent (SbEvent event) {
+    IEventProducer pushEv (SbEvent event) {
         return m_events ~= event, this;
-    }
-    IEventProducer pushEvent (T)(lazy T event) if (__traits(compiles, SbEvent(event))) {
-        return pushEvent(SbEvent(event));
     }
     void clear () { m_events.length = 0; }
 
@@ -70,6 +70,12 @@ class SbEventList : IEventProducer, IEventList {
         foreach (event; m_events) {
             event.tryVisit!(Cases, (){});
         }
+    }
+    // Write events to stdout
+    void dumpEvents () {
+        import std.stdio;
+        foreach (event; m_events)
+            writefln("%s", event);
     }
 }
 

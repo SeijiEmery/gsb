@@ -61,7 +61,7 @@ struct SbKBMState {
     vec2 scrollDelta;
 
     SbPressState[ SB_MAX_MOUSE_BUTTONS ] buttons;
-    SbPressState[ SbKey ]                keys;
+    SbPressState[ SbKey.max ]            keys;
 }
 struct SbGamepadState {
     SbGamepadDeviceRef device;
@@ -85,7 +85,6 @@ struct SbGamepadState {
 // using MKDeviceSettings (see IPlatform / MKDevice)
 //
 struct SbPressState {
-private:
     import std.bitmanip;
     mixin(bitfields!(
         bool, "st_pressed", 1,
@@ -99,9 +98,9 @@ private:
         this.st_pressCount = pressCount;
     }
 public:
-    @property bool pressed  () { return st_pressed && st_changed; }
-    @property bool released () { return !st_pressed && st_changed; }
-    @property bool up       () { return st_pressed; }
-    @property bool down     () { return !st_pressed; } 
-    @property uint pressCount () { return st_pressed ? st_pressCount : 0; } 
+    @property bool pressed  () nothrow @safe { return st_pressed && st_changed; }
+    @property bool released () nothrow @safe { return !st_pressed && st_changed; }
+    @property bool up       () nothrow @safe { return st_pressed; }
+    @property bool down     () nothrow @safe { return !st_pressed; } 
+    @property uint pressCount () nothrow @safe { return st_pressed ? st_pressCount : 0; } 
 }
