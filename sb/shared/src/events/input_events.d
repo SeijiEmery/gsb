@@ -1,23 +1,7 @@
 module sb.events.input_events;
 public import sb.keybindings;
+public import sb.input.gamepad;
 import gl3n.linalg;
-
-//
-// Sb input definitions
-//
-struct SbGamepadDevice {
-    uint   id;
-    string name;
-    uint num_buttons;
-    uint num_axes;
-}
-alias SbGamepadDeviceRef = const(SbGamepadDevice)*;
-
-immutable auto SB_MAX_MOUSE_BUTTONS = 16; // max mouse buttons...
-immutable auto SB_MAX_GAMEPAD_BUTTONS = 20;
-immutable auto SB_MAX_GAMEPAD_AXES    = 10;
-
-enum SbGamepadButton { A, B, X, Y, }
 
 //
 // Input Events
@@ -39,35 +23,38 @@ struct SbMouseButtonEvent {
     ubyte clicks = 1;
 }
 struct SbGamepadButtonEvent {
-    SbGamepadDeviceRef device;
+    uint id;
     SbGamepadButton button;
     bool            pressed;
 }
 struct SbGamepadConnectionEvent {
-    SbGamepadDeviceRef device;
-    bool            connected;
+    uint id;
+    bool connected;
+    const(SbGamepadProfileData)* profile;
 }
 struct SbGamepadAxisEvent {
-    SbGamepadDeviceRef device;
-    float[]         axes;
+    uint     id;
+    float[]  axes;
 }
 
 //
 // Per-frame input state
 //
 
+public auto immutable SB_MAX_MOUSE_BUTTONS = 16;
+
 struct SbKBMState {
     vec2 cursorPos = vec2(0, 0), cursorDelta = vec2(0, 0);
     vec2 scrollDelta = vec2(0, 0);
 
     SbPressState[ SB_MAX_MOUSE_BUTTONS ] buttons;
-    SbPressState[ SbKey.max ]            keys;
+    SbPressState[ SbKey.max+1 ]            keys;
 }
 struct SbGamepadState {
-    SbGamepadDeviceRef device;
-
-    float       [ SB_MAX_GAMEPAD_AXES ]    axes;
-    SbPressState[ SB_MAX_GAMEPAD_BUTTONS ] buttons;
+    uint id;
+    bool connected = false;
+    float       [ SbGamepadAxis.max+1 ]   axes;
+    SbPressState[ SbGamepadButton.max+1 ] buttons;
 }
 
 // Encapsulates press state for various buttons + keys w/ 4 states:
@@ -100,7 +87,7 @@ struct SbPressState {
 public:
     @property bool pressed  () nothrow @safe { return st_pressed && st_changed; }
     @property bool released () nothrow @safe { return !st_pressed && st_changed; }
-    @property bool up       () nothrow @safe { return st_pressed; }
-    @property bool down     () nothrow @safe { return !st_pressed; } 
+    @property bool down     () nothrow @safe { return st_pressed; }
+    @property bool up       () nothrow @safe { return !st_pressed; } 
     @property uint pressCount () nothrow @safe { return st_pressed ? st_pressCount : 0; } 
 }

@@ -93,7 +93,7 @@ final:
 private:
     SbPressState [ SB_MAX_MOUSE_BUTTONS ] buttonState;
     double [ SB_MAX_MOUSE_BUTTONS ]       buttonTimestamps;
-    SbPressState [ SbKey.max ]            keyState;
+    SbPressState [ SbKey.max+1 ]            keyState;
 
     vec2 nextMousePos, scrollDelta;
     SbEvent[] events;

@@ -1,6 +1,7 @@
 module sb.platform.platform_impl;
 import sb.platform.platform_interface;
 import sb.events;
+import sb.input;
 import sb.gl;
 
 import derelict.glfw3.glfw3;
@@ -65,9 +66,21 @@ class SbPlatform : IPlatform {
     SbWindow[string] m_windows;
     SbWindow         m_mainWindow;
     SbTime           m_time;
+
+    // Mouse + keyboard input device (fires events + maintains state)
+    auto m_mkDevice = new MKInputDevice();
+
+    // Active gamepads
+    immutable uint MAX_NUM_GAMEPADS = 16;
+    GamepadDevice[MAX_NUM_GAMEPADS] m_gamepads = null;
+
+    // Event list + state info
+    auto m_eventList = new SbEventList();
+    SbKBMState m_mkState;
+
 final:
     this (IGraphicsLib graphicsLib, SbPlatformConfig config) { 
-        m_config = config;
+        m_config      = config;
         m_graphicsLib = graphicsLib;
     }
     override void init () {
@@ -152,19 +165,45 @@ final:
     }
     override void pollEvents () {
         glfwPollEvents();
-        //eventImpl.beginFrame();
+
         foreach (_, window; m_windows) {
-            //window.collectEvents( eventImpl.eventProducer );
-            window.collectEvents();
+            window.collectEvents( m_eventList );
             window.swapState();
         }
-        pollGamepads();
-        //eventImpl.dispatchEvents();
-    }
-    private void pollGamepads () {
-        // TODO: integrate existing glfw gamepad impl
-    }
+        m_mkDevice.fetchInputFrame( m_eventList, m_mkState );
+        pollGamepads( m_eventList );
 
+        m_eventList.dumpEvents();
+        m_eventList.clear();
+    }
+    private void pollGamepads (IEventProducer events) {
+
+        import std.stdio;
+
+        immutable uint MAX_NUM_GAMEPADS = 16;
+        foreach (i; 0 .. MAX_NUM_GAMEPADS) {
+            auto active = glfwJoystickPresent(i);
+            if (active) {
+                int naxes, nbuttons;
+                auto axes = glfwGetJoystickAxes(i, &naxes);
+                auto buttons = glfwGetJoystickButtons(i, &nbuttons);
+
+                if (!m_gamepads[i]) {
+                    writefln("Joystick discovered! %s, %s, %s",
+                        i, naxes, nbuttons);
+
+
+                    m_gamepads[i] = new GamepadDevice(i, sbFindMatchingGamepadProfile( naxes, nbuttons ));
+                    m_gamepads[i].setConnectionState(true, events);
+                }
+                m_gamepads[i].update(axes[0..naxes], buttons[0..nbuttons], events);
+            
+            } else if (m_gamepads[i]) {
+                m_gamepads[i].setConnectionState(false, events);
+                m_gamepads[i] = null;
+            }
+        }
+    }
 
     // Raw input callbacks (we force a bunch of stuff to "call home" from window obj => shared platform obj)
     // We're gonna assume that said callbacks never get called from more than one thread (this is up to glfw),
@@ -177,7 +216,7 @@ final:
     // / event model, then the infrastructure to do it already exists :)
 
     private void pushRawInput ( SbWindow window, RawMouseBtnInput input ) nothrow @safe {
-
+    
     }
     private void pushRawInput ( SbWindow window, RawKeyInput input ) nothrow @safe {
 
@@ -344,23 +383,15 @@ class SbWindow : IPlatformWindow {
     }
     override vec2i windowSize () { return nextState.windowSize; }
 
-    private void collectEvents (/*IEventProducer evp*/) {
-        if (state.scaleFactor != nextState.scaleFactor)
-            windowEvents ~= SbEvent(SbWindowRescaleEvent(id, state.scaleFactor, nextState.scaleFactor));
-        if (state.windowSize != nextState.windowSize)
-            windowEvents ~= SbEvent(SbWindowResizeEvent(id, state.windowSize, nextState.windowSize));
-
-        if (state.mousePos != nextState.mousePos)
-            windowEvents ~= SbEvent(SbMouseMoveEvent( nextState.mousePos, state.mousePos ));
-        if (nextState.scrollDelta.x || nextState.scrollDelta.y)
-            windowEvents ~= SbEvent(SbScrollInputEvent( nextState.scrollDelta ));
-        nextState.scrollDelta.x = nextState.scrollDelta.y = 0;
-
-        import std.stdio;
+    private void collectEvents (IEventProducer eventList) {
         foreach (event; windowEvents)
-            writefln("%s", event);
-        //evp.processEvents( windowEvents );
+            eventList.pushEvent(event);
         windowEvents.length = 0;
+
+        if (state.scaleFactor != nextState.scaleFactor)
+            eventList.pushEvent(SbWindowRescaleEvent(id, state.scaleFactor, nextState.scaleFactor));
+        if (state.windowSize != nextState.windowSize)
+            eventList.pushEvent(SbWindowResizeEvent(id, state.windowSize, nextState.windowSize));
     }
     override IPlatformWindow setScreenScale ( SbScreenScale option ) {
         autodetectScreenScale = option == SbScreenScale.AUTODETECT_RESOLUTION;
@@ -435,27 +466,25 @@ class SbWindow : IPlatformWindow {
     }
     // Input callback: mouse motion
     private void onCursorInput ( double xpos, double ypos ) nothrow {
-        nextState.mousePos = vec2(xpos, ypos);
-        platform.notifyCursorInput( this, xpos, ypos );
+        platform.m_mkDevice.registerMouseMotion( vec2(xpos, ypos) );
     }
     // Input callback: mouse wheel / trackpad scroll motion
     private void onScrollInput ( double xoffs, double yoffs ) nothrow {
-        nextState.scrollDelta += vec2(xoffs, yoffs);
+        platform.m_mkDevice.registerMouseScrollDelta( vec2(xoffs, yoffs) );
     }
     // Input callback: mouse button press state changed
     private void onMouseButtonInput ( int button, int action, int mods ) nothrow {
-        windowEvents ~= SbEvent(SbMouseButtonEvent( button, action, mods ));
-        platform.pushRawInput( this, RawMouseBtnInput( button, action, mods ));
+        if (action == GLFW_PRESS || action == GLFW_RELEASE)
+            platform.m_mkDevice.registerMouseBtn( glfwGetTime(), button, action == GLFW_PRESS );
     }
     // Input callback: keyboard key press state changed
     private void onKeyInput( int key, int scancode, int action, int mods ) nothrow {
-        windowEvents ~= SbEvent(SbKeyEvent( key, scancode, action, mods ));
-        platform.pushRawInput( this, RawKeyInput( key, scancode, action, mods ));
+        if (action == GLFW_PRESS || action == GLFW_RELEASE)
+            platform.m_mkDevice.registerKeyAction( glfwKeyToHID(key), action == GLFW_PRESS );
     }
     // Input callback: text input (key pressed as unicode codepoint)
     private void onCharInput ( dchar chr ) nothrow {
-        windowEvents ~= SbEvent(SbRawCharEvent( chr ));
-        platform.pushRawInput( this, RawCharInput( chr ));
+        platform.m_mkDevice.registerCharInput( chr );
     }
 }
 
