@@ -57,8 +57,8 @@ struct SbGamepadAxisEvent {
 //
 
 struct SbKBMState {
-    vec2 cursorPos, cursorDelta;
-    vec2 scrollDelta;
+    vec2 cursorPos = vec2(0, 0), cursorDelta = vec2(0, 0);
+    vec2 scrollDelta = vec2(0, 0);
 
     SbPressState[ SB_MAX_MOUSE_BUTTONS ] buttons;
     SbPressState[ SbKey.max ]            keys;

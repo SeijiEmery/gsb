@@ -173,6 +173,7 @@ SbKey glfwKeyToHID (int key) @safe nothrow {
         case GLFW_KEY_UNKNOWN: return SbKey.UNKNOWN;
         case GLFW_KEY_SPACE: return SbKey.KEY_SPACE;
         case GLFW_KEY_APOSTROPHE: return SbKey.KEY_APOSTROPHE;
+        case GLFW_KEY_COMMA: return SbKey.KEY_COMMA;
         case GLFW_KEY_MINUS: return SbKey.KEY_MINUS;
         case GLFW_KEY_PERIOD: return SbKey.KEY_PERIOD;
         case GLFW_KEY_SLASH: return SbKey.KEY_SLASH;
@@ -229,7 +230,7 @@ SbKey glfwKeyToHID (int key) @safe nothrow {
             cast(SbKey)(key - GLFW_KEY_1 + SbKey.KEY_1);
     if (key >= GLFW_KEY_KP_0 && key <= GLFW_KEY_KP_9)
         return key == GLFW_KEY_KP_0 ? SbKey.KEY_KP_0 :
-            cast(SbKey)(key - GLFW_KEY_1 + SbKey.KEY_1);
+            cast(SbKey)(key - GLFW_KEY_KP_9 + SbKey.KEY_KP_9);
 
     if (key >= GLFW_KEY_F1 && key <= GLFW_KEY_F12)
         return cast(SbKey)(key - GLFW_KEY_F1 + SbKey.KEY_F1);

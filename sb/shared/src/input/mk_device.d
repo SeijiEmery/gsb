@@ -107,16 +107,16 @@ private:
     //bool     [ SB_NUM_KEYS ]          keyPressState, dirtyKeyState;
 
     private void omp (double t, uint btn, bool pressed) nothrow @trusted {
-        //assert( btn < SB_MAX_MOUSE_BUTTONS, 
-        //    format("mouse button %s > %s", btn, SB_MAX_MOUSE_BUTTONS));
-        if (btn >= SB_MAX_MOUSE_BUTTONS) {
+        if (btn >= SB_MAX_MOUSE_BUTTONS) { 
             import std.stdio;
-            import std.exception;
+            import std.exception; 
             assumeWontThrow( writefln("Invalid mouse button: %s > %s", btn, SB_MAX_MOUSE_BUTTONS) );
             return;
         }
+        if (pressed == buttonState[btn].st_pressed)
+            return;
 
-        if (pressed && !buttonState[btn].st_pressed) {
+        if (pressed) {
             buttonState[btn].st_pressed = true;
             buttonState[btn].st_changed = true;
 
@@ -145,13 +145,13 @@ private:
             } else {
                 pressCount = 1;
             }
-
-            buttonTimestamps[btn] = t;
             buttonState[btn].st_pressCount = pressCount;
             events ~= SbEvent(SbMouseButtonEvent( btn, pressed, cast(ubyte)pressCount ));
 
-        } else if (!pressed && buttonState[btn].pressed) {
+        } else {
             events ~= SbEvent( SbMouseButtonEvent( btn, pressed, cast(ubyte)buttonState[btn].st_pressCount ));
+            buttonState[btn].st_pressed = pressed;
+
             if (t - buttonTimestamps[btn] < settings.mouse_extraClickThreshold) {
                 // Took < T time to mouse up, so extend double click timer to end of mouse up
                 buttonTimestamps[btn] = t;
