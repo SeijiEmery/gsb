@@ -381,10 +381,11 @@ int TKimpl_parseFloat( TK_ObjDelegate *objDelegate, char *token, char *endtoken,
         char *endt = NULL;
         float value = 0.0;
         value = TK_STRTOF(token, &endt);
-        if (endt != endtoken && (*endt != '\r' || endt != endtoken-1)) {
+        if (endt != endtoken && !(*endt == '\r' && endt == endtoken-1)) {
             // *endt != '\r': dirty hack to handle "\r\n" (0x0D0A), which will screw up edge detection
-            // since this code assumes that newlines are one character (in this case, endt hits '\r' + stops
-            // but we're waiting for endtoken '\n', so we think there's an error when it's just the newline)
+            // since this code assumes that newlines are one character, not two. (but they may be two,
+            // sometimes, if the obj files were written on windows + your file access library doesn't detect +
+            // fix it for you)
              if (objDelegate->error) {
                  objDelegate->error( objDelegate->currentLineNumber, "Could not parse float.",
                                     objDelegate->userData );
