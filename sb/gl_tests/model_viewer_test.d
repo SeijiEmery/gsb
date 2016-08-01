@@ -41,6 +41,7 @@ class RawModelData {
             this.triCount = triCount;
         }
     }
+    auto centroid = vec3(0, 0, 0);
     SubMesh[] meshes;
     auto addMesh ( string name, size_t triCount ) { 
         auto mesh = new SubMesh(name, triCount);
@@ -54,6 +55,7 @@ RawModelData loadObj ( string obj_file_contents, RawModelData model = null ) {
     RawModelData.SubMesh mesh = null;
     Exception exc = null;
 
+    double cx = 0, cy = 0, cz = 0; size_t vertCount = 0;
     tkParseObj( obj_file_contents,
         (const(char)* mtlName, size_t triCount) {
             mesh = model.addMesh( mtlName.fromStringz.dup, triCount );
@@ -61,6 +63,7 @@ RawModelData loadObj ( string obj_file_contents, RawModelData model = null ) {
         (TK_Triangle tri) {
             assert( mesh, "Null mesh!" );
             void writev ( TK_TriangleVert v, ref float[] packedData ) {
+                cx += v.pos[0]; cy += v.pos[1]; cz += v.pos[2]; ++vertCount;
                 packedData ~= [ v.pos[0], v.pos[1], v.pos[2], v.st[0], v.st[1], v.nrm[0], v.nrm[1], v.nrm[2] ];
             }
             writev( tri.vertA, mesh.packedData );
@@ -75,6 +78,9 @@ RawModelData loadObj ( string obj_file_contents, RawModelData model = null ) {
         }
     );
     if (exc) throw exc;
+
+    if (!vertCount) vertCount = 1;
+    model.centroid += vec3( cx / vertCount, cy / vertCount, cz / vertCount );
     return model;
 }
 
@@ -119,10 +125,11 @@ struct RenderableMesh {
         RawModelData model, GLShaderRef shader, IGraphicsContext gl, GLResourcePoolRef resourcePool,
         vec3 pos, vec3 scale, quat rot
     ) {
-        this.transform = mat4.identity
-            .translate(pos)
-            .scale(scale.x, scale.y, scale.z);
-            //.rotate(rot);
+        this.transform =
+            mat4.translation( pos - model.centroid) *
+            mat4.scaling( scale.x, scale.y, scale.z ) *
+            rot.to_matrix!(4,4);
+
         foreach (mesh; model.meshes) {
             parts ~= RenderableMeshPart( mesh, shader, gl, resourcePool );
         }
@@ -228,22 +235,28 @@ void main (string[] args) {
         `);
 
         RenderableMesh[] meshes;
-        void loadMesh ( string path, vec3 pos, vec3 scale, quat rotation ) {
+        GLResourcePoolRef[string] resourcePools;
+
+        void loadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true ) {
             auto isZip = path.endsWith(".zip");
             auto fileName = isZip ? baseName(path, ".zip") : baseName(path);
             try {
                 StopWatch sw; sw.start();
                 auto contents = isZip ? readArchive(path, fileName) : readFile(path);
                 auto modelData = loadObj(cast(string)contents);
+                if (!useCentroid)
+                    modelData.centroid = vec3(0, 0, 0);
 
                 writefln("Loaded '%s' in %s. %s parts:", fileName, sw.peek.to!Duration, modelData.meshes.length);
                 foreach (mesh; modelData.meshes)
                     writefln("\t'%s' | %s tris", mesh.name, mesh.triCount);
+                writefln("\tcentroid: %s", modelData.centroid);
                 writeln("");
 
+                auto pool = resourcePools[fileName] = gl.createResourcePrefix( fileName );
                 meshes ~= RenderableMesh(
                     modelData, 
-                    meshShader, gl, gl.createResourcePrefix( fileName ),
+                    meshShader, gl, pool,
                     pos, scale, rotation
                 );
             } catch (Exception e) {
@@ -261,9 +274,9 @@ void main (string[] args) {
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj",
             vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj",
-            vec3(-5, 0, 0), vec3(1, 1, 1), quat.identity);
+            vec3(0, 1, 0), vec3(0.025, 0.025, 0.025), quat.xrotation(PI), false);
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip",
-            vec3(0, 5, 0), vec3(1, 1, 1), quat.identity);
+            vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
 
         auto shader = resourcePool.createShader();
         shader.rawSource(ShaderType.VERTEX, `
@@ -329,8 +342,11 @@ void main (string[] args) {
             vao.bindShader( shader );
         });
 
-        auto cam_pos    = vec3( 0, 0, -5 );
-        auto cam_angles = vec3(0, 0, 0);
+        auto CAMERA_ORIGIN = vec3( 0, 0, -5 );
+        auto CAMERA_START_ANGLES = vec3(0, PI / 2, 0);
+
+        auto cam_pos    = CAMERA_ORIGIN;
+        auto cam_angles = CAMERA_START_ANGLES;
         auto CAM_LOOK_SPEED = 100.0.radians;
         auto CAM_MOVE_SPEED = 15.0;
 
@@ -338,6 +354,7 @@ void main (string[] args) {
         float MIN_FAR = 10, MAX_FAR = 2e3, FAR_CHANGE_SPEED = 1e2;
 
         float fov = 60.0, near = 0.1, far = 1e3;
+        bool drawTriArray = false; // draw instanced triangles
 
         StopWatch sw; sw.start();
         double prevTime = sw.peek.to!("seconds", double);
@@ -395,9 +412,11 @@ void main (string[] args) {
                 },
                 (const SbGamepadButtonEvent ev) {
                     if (ev.button == BUTTON_LSTICK && ev.pressed)
-                        cam_pos = vec3(0, 0, -5);
+                        cam_pos = CAMERA_ORIGIN;
                     if (ev.button == BUTTON_RSTICK && ev.pressed)
-                        cam_angles = vec3(0, 0, 0);
+                        cam_angles = CAMERA_START_ANGLES;
+                    if (ev.button == BUTTON_Y && ev.pressed)
+                        drawTriArray = !drawTriArray;
                 }
             );
             auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
@@ -406,13 +425,15 @@ void main (string[] args) {
             auto modelMatrix = mat4.yrotation(t).scale( 0.25, 0.25, 0.25 );                
 
             auto mvp = proj * view * modelMatrix;
-            gl.getLocalBatch.execGL({
-                shader.setv("vp", proj * view);
-                shader.setv("model", modelMatrix);
 
-                //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
-                vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
-            });
+            if (drawTriArray) {
+                gl.getLocalBatch.execGL({
+                    shader.setv("vp", proj * view);
+                    shader.setv("model", modelMatrix);
+                    //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
+                    vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
+                });
+            }
             drawMeshes( proj * view );
 
 
