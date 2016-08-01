@@ -437,43 +437,59 @@ private class Shader : IGraphicsResource, IShader {
         return m_locationCache[name];
     }
     override IShader setv (string name, float v) {
-        glUniform1f( getLocation(name), v );
-        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniform1f( getLocation(name), v );
+            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     override IShader setv (string name, int v) {
-        glUniform1i( getLocation(name), v );
-        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniform1i( getLocation(name), v );
+            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     override IShader setv (string name, uint v) {
-        glUniform1ui( getLocation(name), v );
-        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniform1ui( getLocation(name), v );
+            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     override IShader setv (string name, vec2 v) {
-        glUniform2fv( getLocation(name), 1, v.value_ptr );
-        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniform2fv( getLocation(name), 1, v.value_ptr );
+            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     override IShader setv (string name, vec3 v) {
-        glUniform3fv( getLocation(name), 1, v.value_ptr );
-        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniform3fv( getLocation(name), 1, v.value_ptr );
+            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     override IShader setv (string name, vec4 v) {
-        glUniform4fv( getLocation(name), 1, v.value_ptr );
-        glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniform4fv( getLocation(name), 1, v.value_ptr );
+            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     override IShader setv (string name, mat3 v) {
-        glUniformMatrix3fv( getLocation(name), 1, true, v.value_ptr );
-        glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniformMatrix3fv( getLocation(name), 1, true, v.value_ptr );
+            glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     override IShader setv (string name, mat4 v) {
-        glUniformMatrix4fv( getLocation(name), 1, true, v.value_ptr );
-        glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glUniformMatrix4fv( getLocation(name), 1, true, v.value_ptr );
+            glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
+        }
         return this;
     }
     mixin RetainRelease;
