@@ -152,14 +152,15 @@ private mixin template RetainRelease () {
 
     override void release () {
         auto count = atomicOp!"-="(m_rc, 1);
-        writefln("--rc: %s | %s (%s)", count, this, this.classinfo);
+        //writefln("--rc: %s | %s (%s)", count, this, this.classinfo);
         if (count == 0) {
+            writefln("Released: %s", this);
             this.onReleased();
         }
     }
     override void retain () {
         auto count = atomicOp!"+="(m_rc, 1);
-        writefln("++rc: %s | %s (%s)", count, this, this.classinfo);
+        //writefln("++rc: %s | %s (%s)", count, this, this.classinfo);
     }
     void forceRelease () {
         uint count;
@@ -172,6 +173,8 @@ private mixin template RetainRelease () {
     }
     private shared int m_rc = 0;
 }
+
+string getId ( ResourcePool pool ) { return pool ? pool.m_id : "null"; }
 
 private class ResourcePool : IGraphicsResourcePool {
     string               m_id;
@@ -236,6 +239,9 @@ private class ResourcePool : IGraphicsResourcePool {
                 }
             }
         }
+    }
+    override string toString () {
+        return format("ResourcePool '%s'", m_id);
     }
 }
 
@@ -336,6 +342,14 @@ private class Shader : IGraphicsResource, IShader {
     this (ResourcePool pool) {
         m_graphicsPool = pool;
     }
+    override string toString () {
+        return format("Shader %s %s '%s'", m_programObject,
+            m_hasPendingRecompile ? "PENDING_RECOMPILE" :
+                m_isBindable ? "COMPILED" : "NOT_COMPILED",
+            m_graphicsPool.getId
+        );
+    }
+
     // Call only on Graphics thread!
     private bool bindShader () {
         void recompileShader ( ref uint shader, ShaderType type, string src ) {
@@ -566,6 +580,10 @@ private class Vao : IGraphicsResource, IVao {
         m_graphicsPool = pool;
         m_graphicsContext = context;
     }
+    override string toString () {
+        return format("VAO %s '%s' | bound shader: %s", m_handle, m_graphicsPool.getId,
+            m_boundShader.unwrap);
+    }
     uint getHandle () {
         if (!m_handle) {
             glGenVertexArrays(1, &m_handle);
@@ -631,6 +649,10 @@ private class Vao : IGraphicsResource, IVao {
 
     mixin RetainRelease;
     private void onReleased () { 
+        if (m_handle) {
+            glDeleteVertexArrays(1, &m_handle);
+            m_handle = 0;
+        }
         m_graphicsPool.releaseResource(this); 
     }
 }
@@ -647,6 +669,10 @@ private class Vbo : IGraphicsResource, IVbo {
     uint         m_handle = 0;
 
     this (typeof(m_graphicsPool) pool) { m_graphicsPool = pool; }
+
+    override string toString () {
+        return format("VBO %s '%s'", m_handle, m_graphicsPool.getId);
+    }
 
     uint getHandle () {
         if (!m_handle) {
