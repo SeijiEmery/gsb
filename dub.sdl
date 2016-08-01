@@ -140,6 +140,17 @@ subPackage {
     dependency "gsb:platform_glfw_gl41" version="*"
     sourcePaths "sb/platform/interface" "sb/gl/interface" "sb/shared"
 }
+subPackage {
+    name "modelviewer-test"
+    targetType "executable"
+    mainSourceFile "sb/gl_tests/model_viewer_test.d"
+    targetPath "build/tests/modelviewer"
+
+    dependency "gsb:platform_glfw_gl41" version="*"
+    sourcePaths "sb/platform/interface" "sb/gl/interface" \
+        "sb/shared" "sb/model_loaders/tk_objfile/src"
+    lflags "-Lext/libs" "-ltk_objfile"
+}
 
 
 

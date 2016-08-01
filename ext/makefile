@@ -1,10 +1,18 @@
-all: libs/libstb.a
+all: libs/libstb.a libs/libtk_objfile.a
 
 libs/libstb.a: build/stb.o
 	mkdir -p libs
 	ar rcs $@ $^
 
 build/stb.o: stb/stb.c
+	mkdir -p build
+	gcc -Wall -O2 -c -o $@ $<
+
+libs/libtk_objfile.a: build/tk_objfile.o
+	mkdir -p libs
+	ar rcs $@ $^
+
+build/tk_objfile.o: tk_objfile/tk_objfile.c
 	mkdir -p build
 	gcc -Wall -O2 -c -o $@ $<
 
