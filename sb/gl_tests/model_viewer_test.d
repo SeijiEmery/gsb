@@ -9,6 +9,130 @@ import core.time;
 import std.conv;
 import gl3n.linalg;
 import gl3n.math;
+import std.exception: enforce;
+import std.format;
+import std.path: baseName;
+import std.algorithm: endsWith;
+import std.string: fromStringz;
+
+auto readFile (string path) {
+    import std.file;
+
+    enforce(exists(path), format("File does not exist: '%s'", path));
+    return read(path);
+}
+auto readArchive (string path, string file) {
+    import std.file;
+    import std.zip;
+
+    enforce(exists(path), format("File does not exist: '%s'", path));
+    auto archive = new ZipArchive(read(path));
+    enforce(file in archive.directory, 
+        format("Archive '%s' does not contain file '%s'", path, file));
+    return archive.expand(archive.directory[file]);
+}
+class RawModelData {
+    static class SubMesh {
+        string name;
+        size_t triCount;
+        float[] packedData;
+        this (string name, size_t triCount) { 
+            this.name = name; 
+            this.triCount = triCount;
+        }
+    }
+    SubMesh[] meshes;
+    auto addMesh ( string name, size_t triCount ) { 
+        auto mesh = new SubMesh(name, triCount);
+        meshes ~= mesh;
+        return mesh;
+    }
+}
+RawModelData loadObj ( string obj_file_contents, RawModelData model = null ) {
+    if (!model)
+        model = new RawModelData();
+    RawModelData.SubMesh mesh = null;
+    Exception exc = null;
+
+    tkParseObj( obj_file_contents,
+        (const(char)* mtlName, size_t triCount) {
+            mesh = model.addMesh( mtlName.fromStringz.dup, triCount );
+        },
+        (TK_Triangle tri) {
+            assert( mesh, "Null mesh!" );
+            void writev ( TK_TriangleVert v, ref float[] packedData ) {
+                packedData ~= [ v.pos[0], v.pos[1], v.pos[2], v.st[0], v.st[1], v.nrm[0], v.nrm[1], v.nrm[2] ];
+            }
+            writev( tri.vertA, mesh.packedData );
+            writev( tri.vertB, mesh.packedData );
+            writev( tri.vertC, mesh.packedData );
+        },
+        (ref TK_ObjDelegate _) {
+            writefln("Finished reading obj file");
+        },
+        (ref TK_ObjDelegate obj, string error) {
+            exc = new Exception(format("Error reading obj file:\n\t%s\n%s", obj, error));
+        }
+    );
+    if (exc) throw exc;
+    return model;
+}
+
+struct RenderableMeshPart {
+    string name;
+    static struct RenderItem {
+        GLVaoRef vao;
+        GLPrimitive primitive;
+        size_t start, count;
+    }
+    RenderItem[] renderItems;
+    GLVboRef[]   vbos;
+
+    void render () {
+        foreach (ref item; renderItems) {
+            item.vao.drawArrays( item.primitive, cast(uint)item.start, cast(uint)item.count );
+        }
+    }
+    // Generate from mesh part data
+    this ( RawModelData.SubMesh mesh, GLShaderRef shader, IGraphicsContext gl, GLResourcePoolRef resourcePool ) {
+        this.name = mesh.name;
+        void genTris ( float[] packedData_v3_s2_n3, size_t count ) {
+            auto vbo = resourcePool.createVBO();
+            gl.getLocalBatch.execGL({ bufferData(vbo, packedData_v3_s2_n3, GLBuffering.STATIC_DRAW); });
+
+            auto vao = resourcePool.createVAO();
+            vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 8, 0 );
+            vao.bindVertexAttrib( 1, vbo, 2, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 8, float.sizeof * 3 );
+            vao.bindVertexAttrib( 2, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 8, float.sizeof * 5 );
+            vao.bindShader( shader );
+
+            renderItems ~= RenderItem( vao, GLPrimitive.TRIANGLES, 0, count );
+        }
+        genTris( mesh.packedData, mesh.triCount );
+    }
+}
+struct RenderableMesh {
+    mat4 transform;
+    RenderableMeshPart[] parts;
+
+    this ( 
+        RawModelData model, GLShaderRef shader, IGraphicsContext gl, GLResourcePoolRef resourcePool,
+        vec3 pos, vec3 scale, quat rot
+    ) {
+        this.transform = mat4.identity
+            .translate(pos)
+            .scale(scale.x, scale.y, scale.z);
+            //.rotate(rot);
+        foreach (mesh; model.meshes) {
+            parts ~= RenderableMeshPart( mesh, shader, gl, resourcePool );
+        }
+    }
+    void render () {
+        foreach (ref part; parts)
+            part.render();
+    }
+}
+
 
 void main (string[] args) {
     SbPlatformConfig platformConfig = {
@@ -52,33 +176,94 @@ void main (string[] args) {
             writefln("Opened '%s' in %s", obj_zip, sw.peek.to!Duration);
             //writefln("\n\n\nCONTENTS:\n%s", cast(string)contents);
         }
-        //auto model = sbLoadObjFile( "/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj" );
-        {
-            import std.file;
-            import std.zip;
-            //auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj");
-            auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj");
-            //auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj");
-            //auto archive = new ZipArchive(read("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip"));
-            //auto contents = archive.expand(archive.directory["dragon.obj"]);
+        ////auto model = sbLoadObjFile( "/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj" );
+        //{
+        //    import std.file;
+        //    import std.zip;
+        //    //auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj");
+        //    auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj");
+        //    //auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj");
+        //    //auto archive = new ZipArchive(read("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip"));
+        //    //auto contents = archive.expand(archive.directory["dragon.obj"]);
 
-            tkParseObj(cast(string)contents, 
-                (const(char)* mtlName, size_t triCount) {
-                    writefln("mtl '%s', tris = %s", mtlName, triCount);
-                },
-                (TK_Triangle tri) {
-                    writefln("%s", tri);
-                },
-                (ref TK_ObjDelegate obj) {
-                    writefln("Read obj file:\n\t %s", obj);
-                },
-                (ref TK_ObjDelegate obj, string error) {
-                    writefln("Error reading obj file:\n\t%s\n%s", obj, error);
-                }
-            );
+        //    tkParseObj(cast(string)contents, 
+        //        (const(char)* mtlName, size_t triCount) {
+        //            writefln("mtl '%s', tris = %s", mtlName, triCount);
+        //        },
+        //        (TK_Triangle tri) {
+        //            writefln("%s", tri);
+        //        },
+        //        (ref TK_ObjDelegate obj) {
+        //            writefln("Read obj file:\n\t %s", obj);
+        //        },
+        //        (ref TK_ObjDelegate obj, string error) {
+        //            writefln("Error reading obj file:\n\t%s\n%s", obj, error);
+        //        }
+        //    );
+        //}
+
+        auto meshShader = resourcePool.createShader();
+        meshShader.rawSource(ShaderType.VERTEX, `
+            #version 410
+            layout(location=0) in vec3 vertPosition;
+            layout(location=1) in vec2 vertUV;
+            layout(location=2) in vec3 vertNormal;
+            out vec4 color;
+
+            uniform mat4 mvp;
+
+            void main () {
+                color = vec4( 1, 1, 0, 1 );
+                gl_Position = mvp * vec4( vertPosition, 1.0 );
+            }
+        `);
+        meshShader.rawSource(ShaderType.FRAGMENT, `
+            #version 410
+            in vec4 color;
+            out vec4 fragColor;
+
+            void main () {
+                fragColor = color;
+            }
+        `);
+
+        RenderableMesh[] meshes;
+        void loadMesh ( string path, vec3 pos, vec3 scale, quat rotation ) {
+            auto isZip = path.endsWith(".zip");
+            auto fileName = isZip ? baseName(path, ".zip") : baseName(path);
+            try {
+                StopWatch sw; sw.start();
+                auto contents = isZip ? readArchive(path, fileName) : readFile(path);
+                auto modelData = loadObj(cast(string)contents);
+
+                writefln("Loaded '%s' in %s. %s parts:", fileName, sw.peek.to!Duration, modelData.meshes.length);
+                foreach (mesh; modelData.meshes)
+                    writefln("\t'%s' | %s tris", mesh.name, mesh.triCount);
+                writeln("");
+
+                meshes ~= RenderableMesh(
+                    modelData, 
+                    meshShader, gl, gl.createResourcePrefix( fileName ),
+                    pos, scale, rotation
+                );
+            } catch (Exception e) {
+                writefln("Failed to load '%s':\n%s", fileName, e);
+            }
         }
-
-
+        void drawMeshes ( mat4 camera_mv_matrix ) {
+            gl.getLocalBatch.execGL({
+                foreach (ref mesh; meshes) {
+                    meshShader.setv("mvp", camera_mv_matrix * mesh.transform);
+                    mesh.render();
+                }
+            });
+        }
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj",
+            vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj",
+            vec3(-5, 0, 0), vec3(1, 1, 1), quat.identity);
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip",
+            vec3(0, 5, 0), vec3(1, 1, 1), quat.identity);
 
         auto shader = resourcePool.createShader();
         shader.rawSource(ShaderType.VERTEX, `
@@ -228,6 +413,8 @@ void main (string[] args) {
                 //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
                 vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
             });
+            drawMeshes( proj * view );
+
 
             platform.swapFrame();
         }
