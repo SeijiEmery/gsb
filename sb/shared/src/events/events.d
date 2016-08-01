@@ -47,21 +47,23 @@ public IEventProducer pushEvent (T)(IEventProducer events, lazy T event) if (__t
 }
 
 // Test event handler list (Cases), ensuring that it can match SbEvent.visit() / tryVisit()
-private void testHandler (Cases...)() {
-    SbEvent[] events;
-    events[0].visit!Cases;
-}
+//private void testHandler (Cases...)() {
+//    SbEvent[] events;
+//    events[0].visit!(Cases, (){});
+//}
 
 // Event consumer interface.
 interface IEventList {
     // Try handling events; same semantics as Variant.tryVisit() w/ default case
-    void handle (Cases...)() if (__traits(compiles, testHandler!Cases));
+    //void handle (Cases...)() if (__traits(compiles, testHandler!Cases));
 }
 
-public void onEvent (Cases...)(const(SbEventList) list) {
+public void onEvent (Cases...)(const(SbEventList) list) 
+    //if (__traits(compiles, list.m_events[0].tryVisit!(Cases, (){})))
+{
     import std.variant;
     foreach (event; list.m_events) 
-        event.tryVisit!Cases;
+        event.tryVisit!(Cases, (){});
 }
 
 class SbEventList : IEventProducer, IEventList {

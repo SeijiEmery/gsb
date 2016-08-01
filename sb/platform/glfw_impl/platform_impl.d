@@ -147,6 +147,7 @@ final:
         if (!m_mainWindow) {
             m_mainWindow = window;
             glfwMakeContextCurrent( handle );
+            pollEvents();
         }
         return window;
     }
