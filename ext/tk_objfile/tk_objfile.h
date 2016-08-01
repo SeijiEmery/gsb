@@ -381,7 +381,7 @@ int TKimpl_parseFloat( TK_ObjDelegate *objDelegate, char *token, char *endtoken,
         char *endt = NULL;
         float value = 0.0;
         value = TK_STRTOF(token, &endt);
-        if (endt != endtoken) {
+        if (endt != endtoken && *endt != '\r') {
              if (objDelegate->error) {
                  objDelegate->error( objDelegate->currentLineNumber, "Could not parse float.",
                                     objDelegate->userData );
