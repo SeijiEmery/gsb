@@ -7,6 +7,7 @@ import std.exception: enforce;
 import std.format;
 import core.sync.mutex;
 import std.string: toStringz;
+import std.typecons;
 
 
 // Create graphics lib.
@@ -337,6 +338,7 @@ private class Shader : IGraphicsResource, IShader {
     uint  [ShaderType.max] m_shaderObjects = 0;
     uint                   m_programObject = 0;
     uint [string] m_locationCache;
+    Tuple!(string,ShaderType,uint)[] m_subroutineCache;
     bool m_isBindable = false;
 
     this (ResourcePool pool) {
@@ -438,6 +440,24 @@ private class Shader : IGraphicsResource, IShader {
             if (bindShader())
                 writefln("Shader compiled successfully + program %s bound!", m_programObject);
         }
+        return this;
+    }
+    override IShader useSubroutine (ShaderType type, string name) {
+        uint fetchSubroutine () {
+            foreach (ref entry; m_subroutineCache) {
+                if (entry[0] == name && entry[1] == type)
+                    return entry[2];
+            }
+            auto subroutine = glGetSubroutineIndex(m_programObject, type.toGLEnum, name.toStringz);
+            enforce(subroutine != -1, format("Could not get subroutine '%s'", name));
+            glAssertOk(format("glGetSubroutineIndex(%s, %s)", m_programObject, name));
+            m_subroutineCache ~= tuple(name, type, subroutine);
+            return subroutine;
+        }
+        glFlushErrors();
+        auto subroutine = fetchSubroutine();
+        glUniformSubroutinesuiv( type.toGLEnum, 1, &subroutine );
+        glAssertOk(format("glUniformSubroutinesuiv(%s, 1, %s)", type, subroutine));
         return this;
     }
     uint getLocation (string name) {

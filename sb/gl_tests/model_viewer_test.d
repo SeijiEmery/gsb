@@ -202,7 +202,11 @@ void main (string[] args) {
 
             layout(location=0) out vec4 fragColor;
 
-            vec3 ads () {
+            subroutine vec3 shadingModel ();
+            subroutine uniform shadingModel calcLighting;
+
+            subroutine (shadingModel)
+            vec3 phongModel_noHalfwayVector () {
                 vec3 n = normalize(normal);
                 vec3 s = normalize(vec3(light.position) - position);
                 vec3 v = normalize(vec3(-position));
@@ -211,12 +215,26 @@ void main (string[] args) {
                 return light.intensity * (
                     material.Ka +
                     material.Kd * max(dot(s, n), 0.0) +
-                    material.Ks * pow(max(dot(r, v), 0), material.shininess)
+                    material.Ks * pow(max(dot(r, v), 0.0), material.shininess)
+                );
+            }
+
+            subroutine (shadingModel)
+            vec3 phongModel_halfwayVector () {
+                vec3 n = normalize(normal);
+                vec3 s = normalize(vec3(light.position) - position);
+                vec3 v = normalize(vec3(-position));
+                vec3 h = normalize(v + s);
+
+                return light.intensity * (
+                    material.Ka +
+                    material.Kd * max(dot(s, n), 0.0) +
+                    material.Ks * pow(max(dot(h, n), 0.0), material.shininess)
                 );
             }
 
             void main () {
-                fragColor = vec4(ads(), 1.0);
+                fragColor = vec4(calcLighting(), 1.0);
             }
         `);
         
@@ -239,14 +257,25 @@ void main (string[] args) {
         auto g_light    = LightInfo();
         auto g_material = MaterialInfo();
         float g_lightIntensity = 1.0;
+        bool  g_useHalfwayVector = true;
 
         float MIN_SHININESS = 1, MAX_SHININESS = 300, SHININESS_CHANGE_RATE = 0.4;
         float MIN_INTENSITY = 0.1, MAX_INTENSITY = 10.0, INTENSITY_CHANGE_RATE = 0.5;
 
+        void setUseHalfwayVector (bool useHalfwayVector) {
+            g_useHalfwayVector = useHalfwayVector;
+            gl.getLocalBatch.execGL({
+                meshShader.useSubroutine(ShaderType.FRAGMENT, useHalfwayVector ?
+                    "phongModel_halfwayVector" :
+                    "phongModel_noHalfwayVector");
+            });
+        }
+        setUseHalfwayVector(g_useHalfwayVector);
 
         void setLight (ref CameraInfo camera, ref LightInfo light) {
             meshShader.setv("light.position",  camera.view * vec4(light.pos, 1.0));
             meshShader.setv("light.intensity", light.intensity);
+            //meshShader.setv("useHalfwayVector", cast(int)g_useHalfwayVector);
             //meshShader.setv("light.La", light.ambient);
             //meshShader.setv("light.Ld", light.diffuse);
             //meshShader.setv("light.Ls", light.specular);
@@ -256,7 +285,7 @@ void main (string[] args) {
             meshShader.setv("material.Kd", material.diffuse);
             meshShader.setv("material.Ks", material.specular);
             meshShader.setv("material.shininess", material.shininess);
-
+            
             auto vp = camera.view * model;
             meshShader.setv("modelViewMatrix", vp);
             meshShader.setv("normalMatrix", mat3(vp).inverse.transposed);
@@ -444,7 +473,6 @@ void main (string[] args) {
 
                     auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
                         g_material.shininess + ev.axes[AXIS_DPAD_Y] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
-
                     if (g_material.shininess != new_shininess) {
                         writefln("set shininess = %s", g_material.shininess = new_shininess);
                     }
@@ -463,8 +491,12 @@ void main (string[] args) {
                         cam_angles = CAMERA_START_ANGLES;
                     if (ev.button == BUTTON_Y && ev.pressed)
                         drawTriArray = !drawTriArray;
-                    if (ev.button == BUTTON_B && ev.pressed)
+                    if (ev.button == BUTTON_A && ev.pressed)
                         g_light.pos = cam_pos;
+                    if (ev.button == BUTTON_B && ev.pressed) {
+                        setUseHalfwayVector(!g_useHalfwayVector);
+                        writefln("use halfway vector: %s", g_useHalfwayVector);
+                    }
                 }
             );
             auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
