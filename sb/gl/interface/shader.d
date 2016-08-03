@@ -17,7 +17,7 @@ interface IShader {
     IShader setv (string name, mat4  value);
 
     // Set shader subroutine uniforms (call only on graphics thread!)
-    IShader useSubroutine (ShaderType type, string name);
+    IShader useSubroutine (ShaderType type, string name, string value);
 
     // Release / retain
     void release ();

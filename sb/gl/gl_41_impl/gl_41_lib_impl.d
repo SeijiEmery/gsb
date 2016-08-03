@@ -337,8 +337,8 @@ private class Shader : IGraphicsResource, IShader {
     string[ShaderType.max] m_pendingSrc    = null;
     uint  [ShaderType.max] m_shaderObjects = 0;
     uint                   m_programObject = 0;
-    uint [string] m_locationCache;
-    Tuple!(string,ShaderType,uint)[] m_subroutineCache;
+    uint [string]          m_locationCache;
+    Tuple!(ShaderType,string,string,uint)[] m_subroutineCache;
     bool m_isBindable = false;
 
     this (ResourcePool pool) {
@@ -442,22 +442,38 @@ private class Shader : IGraphicsResource, IShader {
         }
         return this;
     }
-    override IShader useSubroutine (ShaderType type, string name) {
-        uint fetchSubroutine () {
-            foreach (ref entry; m_subroutineCache) {
-                if (entry[0] == name && entry[1] == type)
-                    return entry[2];
+    override IShader useSubroutine (ShaderType type, string name, string value) {
+        uint shaderType = type.toGLEnum;
+        uint fetchSubroutineUniform () {
+            if (name !in m_locationCache) {
+                int location = glGetSubroutineUniformLocation(m_programObject, shaderType, name.toStringz);
+                enforce(location != -1, format("Could not get subroutine uniform '%s'", name));
+                glAssertOk(format("glGetSubroutineUniformLocation(%s, %s, %s)", m_programObject, type, name));
+                return m_locationCache[name] = location;
             }
-            auto subroutine = glGetSubroutineIndex(m_programObject, type.toGLEnum, name.toStringz);
-            enforce(subroutine != -1, format("Could not get subroutine '%s'", name));
-            glAssertOk(format("glGetSubroutineIndex(%s, %s)", m_programObject, name));
-            m_subroutineCache ~= tuple(name, type, subroutine);
+            return m_locationCache[name];
+        }
+        uint fetchSubroutineValue () {
+            foreach (ref entry; m_subroutineCache) {
+                if (entry[0] == type && entry[1] == name && entry[2] == value)
+                    return entry[3];
+            }
+            auto subroutine = glGetSubroutineIndex(m_programObject, shaderType, value.toStringz);
+            enforce(subroutine != -1, format("Could not get subroutine value '%s': '%s'", name, value));
+            glAssertOk(format("glGetSubroutineIndex(%s, %s, %s)", m_programObject, type, value));
+            m_subroutineCache ~= tuple(type, name, value, subroutine);
             return subroutine;
         }
-        glFlushErrors();
-        auto subroutine = fetchSubroutine();
-        glUniformSubroutinesuiv( type.toGLEnum, 1, &subroutine );
-        glAssertOk(format("glUniformSubroutinesuiv(%s, 1, %s)", type, subroutine));
+        if (m_graphicsPool.m_graphicsContext.bindShader(this)) {
+            glFlushErrors();
+            //uint[2] kv = [ fetchSubroutineUniform(), fetchSubroutineValue() ];
+            uint index = fetchSubroutineUniform();
+            uint v     = fetchSubroutineValue();
+            enforce( index == 0, format("Index != 0: %s", index));
+
+            glUniformSubroutinesuiv( shaderType, 1, &v );
+            glAssertOk(format("glUniformSubroutinesuiv(%s, 1, %s)", type, v));
+        }
         return this;
     }
     uint getLocation (string name) {
