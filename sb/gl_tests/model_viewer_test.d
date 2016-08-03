@@ -112,7 +112,7 @@ struct RenderableMeshPart {
             vao.bindVertexAttrib( 2, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 8, float.sizeof * 5 );
             vao.bindShader( shader );
 
-            renderItems ~= RenderItem( vao, GLPrimitive.TRIANGLES, 0, count );
+            renderItems ~= RenderItem( vao, GLPrimitive.TRIANGLES, 0, count * 3 );
         }
         genTris( mesh.packedData, mesh.triCount );
     }
@@ -162,78 +162,62 @@ void main (string[] args) {
         auto gl           = platform.getGraphicsContext();
         auto resourcePool = gl.createResourcePrefix("model-viewer");
 
-        auto obj_file = "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj";
-        auto obj_zip  = "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip";
-        {
-            import std.file;
-            StopWatch sw; sw.start();
-            auto contents = readText(obj_file);
-            writefln("Opened '%s' in %s", obj_file, sw.peek.to!Duration);
-        }
-        {
-            import std.file;
-            import std.zip;
-            StopWatch sw; sw.start();
-            auto archive = new ZipArchive(read(obj_zip));
-            auto inner   = archive.directory["dragon.obj"];
-            writefln("'%s' compression: %s | compressed %s, expanded %s", 
-                inner.name, inner.compressionMethod, inner.compressedSize, inner.expandedSize);
-
-            auto contents = archive.expand(inner);
-            writefln("Opened '%s' in %s", obj_zip, sw.peek.to!Duration);
-            //writefln("\n\n\nCONTENTS:\n%s", cast(string)contents);
-        }
-        ////auto model = sbLoadObjFile( "/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj" );
-        //{
-        //    import std.file;
-        //    import std.zip;
-        //    //auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj");
-        //    auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj");
-        //    //auto contents = readText("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj");
-        //    //auto archive = new ZipArchive(read("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip"));
-        //    //auto contents = archive.expand(archive.directory["dragon.obj"]);
-
-        //    tkParseObj(cast(string)contents, 
-        //        (const(char)* mtlName, size_t triCount) {
-        //            writefln("mtl '%s', tris = %s", mtlName, triCount);
-        //        },
-        //        (TK_Triangle tri) {
-        //            writefln("%s", tri);
-        //        },
-        //        (ref TK_ObjDelegate obj) {
-        //            writefln("Read obj file:\n\t %s", obj);
-        //        },
-        //        (ref TK_ObjDelegate obj, string error) {
-        //            writefln("Error reading obj file:\n\t%s\n%s", obj, error);
-        //        }
-        //    );
-        //}
-
         auto meshShader = resourcePool.createShader();
         meshShader.rawSource(ShaderType.VERTEX, `
             #version 410
             layout(location=0) in vec3 vertPosition;
             layout(location=1) in vec2 vertUV;
             layout(location=2) in vec3 vertNormal;
-            out vec4 color;
+            
+            out vec3 lightIntensity;
 
-            uniform mat4 mvp;
+            uniform vec4 lightPos;
+            uniform vec3 Kd;
+            uniform vec3 Ld;
+
+            uniform mat4 modelViewMatrix;
+            uniform mat3 normalMatrix;
+            uniform mat4 mvp;            
 
             void main () {
-                color = vec4( 1, 1, 0, 1 );
-                gl_Position = mvp * vec4( vertPosition, 1.0 );
+                vec3 tnorm = normalize( normalMatrix * vertNormal );
+                vec4 eyeCoords = modelViewMatrix * vec4(vertPosition, 1.0);
+                vec3 s = normalize(vec3(lightPos - eyeCoords));
+
+                lightIntensity = Ld * Kd * max(dot(s, tnorm), 0.0);
+
+                gl_Position = mvp * vec4(vertPosition, 1.0);
             }
         `);
         meshShader.rawSource(ShaderType.FRAGMENT, `
             #version 410
-            in vec4 color;
+            in  vec3 lightIntensity;
             out vec4 fragColor;
 
             void main () {
-                fragColor = color;
+                fragColor = vec4(lightIntensity, 1.0);
             }
         `);
-
+        //
+        // Set meshShader params
+        //
+        void setLight (vec4 pos, vec3 Kd, vec3 Ld) {
+            meshShader.setv("lightPos", pos);
+            meshShader.setv("Kd", Kd);
+            meshShader.setv("Ld", Ld);
+        }
+        void setMvp (ref mat4 model, ref mat4 view, ref mat4 proj ) {
+            meshShader.setv("modelViewMatrix", view * model);
+            meshShader.setv("normalMatrix", mat3(view * model).inverse.transposed);
+            //meshShader.setv("projMatrix", proj);
+            meshShader.setv("mvp", proj * view * model);
+        }
+        struct LightInfo {
+            vec3 pos, Kd, Ld;
+        }
+        struct CameraInfo {
+            vec3 pos; mat4 view, proj;
+        }
         RenderableMesh[] meshes;
         GLResourcePoolRef[string] resourcePools;
 
@@ -263,10 +247,11 @@ void main (string[] args) {
                 writefln("Failed to load '%s':\n%s", fileName, e);
             }
         }
-        void drawMeshes ( mat4 camera_mv_matrix ) {
+        void drawMeshes ( CameraInfo camera, LightInfo light ) {
             gl.getLocalBatch.execGL({
+                setLight(camera.view * vec4(light.pos, 1.0), light.Kd, light.Ld);
                 foreach (ref mesh; meshes) {
-                    meshShader.setv("mvp", camera_mv_matrix * mesh.transform);
+                    setMvp(mesh.transform, camera.view, camera.proj);
                     mesh.render();
                 }
             });
@@ -350,6 +335,10 @@ void main (string[] args) {
         auto CAM_LOOK_SPEED = 100.0.radians;
         auto CAM_MOVE_SPEED = 15.0;
 
+        auto light_pos = vec3(0,0,0);
+        auto LIGHT_Kd = vec3(0.5,0.5,0.5);
+        auto LIGHT_Ld = vec3(0.9,0.9,0.9);
+
         float MAX_FOV = 360.0, MIN_FOV = 0.5, FOV_CHANGE_SPEED = 120.0;
         float MIN_FAR = 10, MAX_FAR = 2e3, FAR_CHANGE_SPEED = 1e2;
 
@@ -391,7 +380,7 @@ void main (string[] args) {
             if (input.keys[SbKey.KEY_S].down || input.keys[SbKey.KEY_DOWN].down)  wasd_axes.y -= 1.0;
             if (input.keys[SbKey.KEY_W].down || input.keys[SbKey.KEY_UP].down)    wasd_axes.y += 1.0;
             if (input.keys[SbKey.KEY_SPACE].down || input.keys[SbKey.KEY_Q].down) wasd_axes.z += 1.0;
-            if (input.keys[SbKey.KEY_SHIFT].down || input.keys[SbKey.KEY_E].down) wasd_axes.z -= 1.0;
+            if (input.keys[SbKey.KEY_CTRL].down || input.keys[SbKey.KEY_E].down) wasd_axes.z -= 1.0;
 
             auto mouse_axes = input.buttons[SbMouseButton.RMB].down ?
                 input.cursorDelta * 0.25 :
@@ -417,6 +406,9 @@ void main (string[] args) {
                         cam_angles = CAMERA_START_ANGLES;
                     if (ev.button == BUTTON_Y && ev.pressed)
                         drawTriArray = !drawTriArray;
+                    if (ev.button == BUTTON_B && ev.pressed)
+                        light_pos = cam_pos;
+                        //lightAtCamera = !lightAtCamera;
                 }
             );
             auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
@@ -434,9 +426,15 @@ void main (string[] args) {
                     vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
                 });
             }
-            drawMeshes( proj * view );
 
+            auto lightDist = 5.0;
+            auto lightPos  = lightDist * vec3( cos(t), 0, sin(t) );
 
+            drawMeshes( 
+                CameraInfo(cam_pos, view, proj),
+                LightInfo(light_pos, LIGHT_Ld, LIGHT_Kd)
+                //LightInfo( lightPos, LIGHT_Ld, LIGHT_Kd )
+            );
             platform.swapFrame();
         }
     } catch (Throwable e) {
