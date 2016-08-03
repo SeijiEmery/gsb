@@ -168,14 +168,28 @@ void main (string[] args) {
             layout(location=0) in vec3 vertPosition;
             layout(location=1) in vec2 vertUV;
             layout(location=2) in vec3 vertNormal;
+
+            uniform mat4 modelViewMatrix;
+            uniform mat3 normalMatrix;
+            uniform mat4 mvp;
+
+            out vec3 position;
+            out vec3 normal;
             
-            out vec3 lightIntensity;
+            void main () {
+                normal = normalize(normalMatrix * vertNormal);
+                position = vec3(modelViewMatrix * vec4(vertPosition, 1.0));
+                gl_Position = mvp * vec4(vertPosition, 1.0);
+            }
+        `);
+        meshShader.rawSource(ShaderType.FRAGMENT, `
+            #version 410
+            in vec3 position;
+            in vec3 normal;
 
             struct LightInfo {
                 vec4 position;
-                vec3 La;
-                vec3 Ld;
-                vec3 Ls;
+                vec3 intensity;
             };
             struct MaterialInfo {
                 vec3 Ka;
@@ -186,43 +200,32 @@ void main (string[] args) {
             uniform LightInfo    light;
             uniform MaterialInfo material;
 
-            uniform mat4 modelViewMatrix;
-            uniform mat3 normalMatrix;
-            uniform mat4 mvp;            
+            layout(location=0) out vec4 fragColor;
 
-            void main () {
-                vec3 tnorm = normalize( normalMatrix * vertNormal );
-                vec4 eyeCoords = modelViewMatrix * vec4(vertPosition, 1.0);
-                vec3 s = normalize(vec3(light.position - eyeCoords));
-                vec3 v = normalize(-eyeCoords.xyz);
-                vec3 r = reflect(-s, tnorm);
-                float sDotN = max(dot(s, tnorm), 0);
+            vec3 ads () {
+                vec3 n = normalize(normal);
+                vec3 s = normalize(vec3(light.position) - position);
+                vec3 v = normalize(vec3(-position));
+                vec3 r = reflect(-s, n);
 
-                vec3 ambient = light.La * material.Ka;
-                vec3 diffuse = light.Ld * material.Kd * sDotN;
-                vec3 spec = sDotN > 0.0 ?
-                    light.Ls * material.Ks * pow(max(dot(r, v), 0.0), material.shininess) :
-                    vec3(0.0);
-
-                lightIntensity = ambient + diffuse + spec;
-                gl_Position = mvp * vec4(vertPosition, 1.0);
+                return light.intensity * (
+                    material.Ka +
+                    material.Kd * max(dot(s, n), 0.0) +
+                    material.Ks * pow(max(dot(r, v), 0), material.shininess)
+                );
             }
-        `);
-        meshShader.rawSource(ShaderType.FRAGMENT, `
-            #version 410
-            in  vec3 lightIntensity;
-            out vec4 fragColor;
 
             void main () {
-                fragColor = vec4(lightIntensity, 1.0);
+                fragColor = vec4(ads(), 1.0);
             }
         `);
         
         struct LightInfo {
             vec3 pos;
-            vec3 ambient = vec3(0.2);
-            vec3 diffuse = vec3(0.5);
-            vec3 specular = vec3(1.0);
+            vec3 intensity = vec3(1.0);
+            //vec3 ambient = vec3(0.2);
+            //vec3 diffuse = vec3(0.5);
+            //vec3 specular = vec3(1.0);
         }
         struct MaterialInfo {
             vec3 ambient  = vec3(0.5,0.5,1);
@@ -235,14 +238,18 @@ void main (string[] args) {
         }
         auto g_light    = LightInfo();
         auto g_material = MaterialInfo();
+        float g_lightIntensity = 1.0;
 
-        float MIN_SHININESS = 1, MAX_SHININESS = 200, SHININESS_CHANGE_SPEED = 0.2;
+        float MIN_SHININESS = 1, MAX_SHININESS = 300, SHININESS_CHANGE_RATE = 0.4;
+        float MIN_INTENSITY = 0.1, MAX_INTENSITY = 10.0, INTENSITY_CHANGE_RATE = 0.5;
+
 
         void setLight (ref CameraInfo camera, ref LightInfo light) {
-            meshShader.setv("light.position", camera.view * vec4(light.pos, 1.0));
-            meshShader.setv("light.La", light.ambient);
-            meshShader.setv("light.Ld", light.diffuse);
-            meshShader.setv("light.Ls", light.specular);
+            meshShader.setv("light.position",  camera.view * vec4(light.pos, 1.0));
+            meshShader.setv("light.intensity", light.intensity);
+            //meshShader.setv("light.La", light.ambient);
+            //meshShader.setv("light.Ld", light.diffuse);
+            //meshShader.setv("light.Ls", light.specular);
         }
         void setModel (ref mat4 model, ref CameraInfo camera, ref MaterialInfo material) {
             meshShader.setv("material.Ka", material.ambient);
@@ -436,10 +443,17 @@ void main (string[] args) {
                     fov = max(MIN_FOV, min(MAX_FOV, fov + (ev.axes[AXIS_TRIGGERS] - scroll_axis) * dt * FOV_CHANGE_SPEED));
 
                     auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
-                        g_material.shininess + ev.axes[AXIS_DPAD_Y] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_SPEED));
+                        g_material.shininess + ev.axes[AXIS_DPAD_Y] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
 
                     if (g_material.shininess != new_shininess) {
                         writefln("set shininess = %s", g_material.shininess = new_shininess);
+                    }
+
+                    auto new_intensity = max(MIN_INTENSITY, min(MAX_INTENSITY,
+                        g_lightIntensity + ev.axes[AXIS_DPAD_X] * dt * (MAX_INTENSITY - MIN_INTENSITY) * INTENSITY_CHANGE_RATE));
+                    if (new_intensity != g_lightIntensity) {
+                        writefln("set intensity = %s", g_lightIntensity = new_intensity);
+                        g_light.intensity = vec3(g_lightIntensity);
                     }
                 },
                 (const SbGamepadButtonEvent ev) {
