@@ -49,7 +49,7 @@ class RawModelData {
         return mesh;
     }
 }
-RawModelData loadObj ( string obj_file_contents, RawModelData model = null ) {
+RawModelData loadObj ( string obj_file_contents, RawModelData model = null, bool genNormals = false ) {
     if (!model)
         model = new RawModelData();
     RawModelData.SubMesh mesh = null;
@@ -66,6 +66,21 @@ RawModelData loadObj ( string obj_file_contents, RawModelData model = null ) {
                 cx += v.pos[0]; cy += v.pos[1]; cz += v.pos[2]; ++vertCount;
                 packedData ~= [ v.pos[0], v.pos[1], v.pos[2], v.st[0], v.st[1], v.nrm[0], v.nrm[1], v.nrm[2] ];
             }
+
+            // naive impl; probably wrong
+            if (genNormals) {
+                vec3 normal = -cross(
+                    vec3(tri.vertA.pos[0] - tri.vertB.pos[0],
+                         tri.vertA.pos[1] - tri.vertB.pos[1],
+                         tri.vertA.pos[2] - tri.vertB.pos[2]),
+                    vec3(tri.vertC.pos[0] - tri.vertB.pos[0],
+                         tri.vertC.pos[1] - tri.vertB.pos[1],
+                         tri.vertC.pos[2] - tri.vertB.pos[2]));
+                tri.vertA.nrm[0] = tri.vertB.nrm[0] = tri.vertC.nrm[0] = normal.x;
+                tri.vertA.nrm[1] = tri.vertB.nrm[1] = tri.vertC.nrm[1] = normal.y;
+                tri.vertA.nrm[2] = tri.vertB.nrm[2] = tri.vertC.nrm[2] = normal.z;
+            }
+
             writev( tri.vertA, mesh.packedData );
             writev( tri.vertB, mesh.packedData );
             writev( tri.vertC, mesh.packedData );
@@ -146,6 +161,8 @@ void main (string[] args) {
         backend: SbPlatform_Backend.GLFW3,
         glVersion: SbPlatform_GLVersion.GL_410,
     };
+    StopWatch initTime; initTime.start();
+
     auto platform = sbCreatePlatformContext(
         sbCreateGraphicsLib(GraphicsLibVersion.GL_410),
         platformConfig);
@@ -203,13 +220,21 @@ void main (string[] args) {
             layout(location=0) out vec4 fragColor;
 
             subroutine vec3 shadingModel ();
-            subroutine uniform shadingModel calcLighting;
+            subroutine uniform shadingModel activeShadingModel;
+
+            void getLightValues (out vec3 n, out vec3 s, out vec3 v) {
+                n = normalize(normal);
+                v = normalize(vec3(-position));
+                
+                if (light.position.w == 0.0)
+                    s = normalize(vec3(light.position.xyz));
+                else
+                    s = normalize(vec3(light.position.xyz - position));
+            }
 
             subroutine (shadingModel)
             vec3 phongModel_noHalfwayVector () {
-                vec3 n = normalize(normal);
-                vec3 s = normalize(vec3(light.position) - position);
-                vec3 v = normalize(vec3(-position));
+                vec3 n, s, v; getLightValues(n, s, v);
                 vec3 r = reflect(-s, n);
 
                 return light.intensity * (
@@ -221,9 +246,7 @@ void main (string[] args) {
 
             subroutine (shadingModel)
             vec3 phongModel_halfwayVector () {
-                vec3 n = normalize(normal);
-                vec3 s = normalize(vec3(light.position) - position);
-                vec3 v = normalize(vec3(-position));
+                vec3 n, s, v; getLightValues(n, s, v);
                 vec3 h = normalize(v + s);
 
                 return light.intensity * (
@@ -233,21 +256,36 @@ void main (string[] args) {
                 );
             }
 
+            subroutine (shadingModel)
+            vec3 debug_normals () {
+                return normalize(normal);
+            }
+            subroutine (shadingModel)
+            vec3 debug_lightDir () {
+                vec3 n, s, v; getLightValues(n, s, v);
+                return s;
+            }
+            //subroutine (shadingModel)
+            //vec3 uniformColor_red () {
+            //    return vec3(1,0,0);
+            //}
             void main () {
-                fragColor = vec4(calcLighting(), 1.0);
+                fragColor = vec4(activeShadingModel(), 1.0);
             }
         `);
-        
+        auto gl_init_time = initTime.peek;
+
         struct LightInfo {
-            vec3 pos;
+            vec3 pos = vec3(-25, 9, 0);
             vec3 intensity = vec3(1.0);
+            bool isDirectional = false;
             //vec3 ambient = vec3(0.2);
             //vec3 diffuse = vec3(0.5);
             //vec3 specular = vec3(1.0);
         }
         struct MaterialInfo {
-            vec3 ambient  = vec3(0.5,0.5,1);
-            vec3 diffuse  = vec3(1,0,0);
+            vec3 ambient  = vec3(1e-6);
+            vec3 diffuse  = vec3(1);
             vec3 specular = vec3(1);
             float shininess = 150;
         }
@@ -262,18 +300,29 @@ void main (string[] args) {
         float MIN_SHININESS = 1, MAX_SHININESS = 300, SHININESS_CHANGE_RATE = 0.4;
         float MIN_INTENSITY = 0.1, MAX_INTENSITY = 10.0, INTENSITY_CHANGE_RATE = 0.5;
 
-        void setUseHalfwayVector (bool useHalfwayVector) {
-            g_useHalfwayVector = useHalfwayVector;
+        enum LightingModel : uint {
+            phongModel_halfwayVector,
+            phongModel_noHalfwayVector,
+            debug_normals,
+            debug_lightDir,
+            //uniformColor_red,
+        }
+        LightingModel g_lightModel;
+        void setLightModel (LightingModel lightModel) {
+            writefln("Set lighting model = %s", g_lightModel = lightModel);
             gl.getLocalBatch.execGL({
-                meshShader.useSubroutine(ShaderType.FRAGMENT, useHalfwayVector ?
-                    "phongModel_halfwayVector" :
-                    "phongModel_noHalfwayVector");
+                meshShader.useSubroutine(ShaderType.FRAGMENT, "activeShadingModel", lightModel.to!string);
             });
         }
-        setUseHalfwayVector(g_useHalfwayVector);
+        void advLightModel (uint dir) {
+            setLightModel( cast(LightingModel)((g_lightModel + dir) % (LightingModel.max+1)) );
+        }
 
         void setLight (ref CameraInfo camera, ref LightInfo light) {
-            meshShader.setv("light.position",  camera.view * vec4(light.pos, 1.0));
+            auto eye_pos = camera.view * vec4(light.pos, 1.0);
+            auto light_pos = vec4(eye_pos.xyz + vec3(0,1,0), light.isDirectional ? 0.0 : 1.0);
+
+            meshShader.setv("light.position",  light_pos);
             meshShader.setv("light.intensity", light.intensity);
             //meshShader.setv("useHalfwayVector", cast(int)g_useHalfwayVector);
             //meshShader.setv("light.La", light.ambient);
@@ -294,13 +343,13 @@ void main (string[] args) {
         RenderableMesh[] meshes;
         GLResourcePoolRef[string] resourcePools;
 
-        void loadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true ) {
+        void loadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true, bool genNormals = false ) {
             auto isZip = path.endsWith(".zip");
             auto fileName = isZip ? baseName(path, ".zip") : baseName(path);
             try {
                 StopWatch sw; sw.start();
                 auto contents = isZip ? readArchive(path, fileName) : readFile(path);
-                auto modelData = loadObj(cast(string)contents);
+                auto modelData = loadObj(cast(string)contents, null, genNormals);
                 if (!useCentroid)
                     modelData.centroid = vec3(0, 0, 0);
 
@@ -332,9 +381,12 @@ void main (string[] args) {
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj",
             vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj",
-            vec3(0, 1, 0), vec3(0.025, 0.025, 0.025), quat.xrotation(PI), false);
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip",
-            vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
+            vec3(0, 1, 0), vec3(0.025, 0.025, 0.025), quat.xrotation(PI), false, true);
+        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj",
+        //    vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
+            vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
+        auto load_mesh_time = initTime.peek - gl_init_time;
 
         auto shader = resourcePool.createShader();
         shader.rawSource(ShaderType.VERTEX, `
@@ -400,8 +452,8 @@ void main (string[] args) {
             vao.bindShader( shader );
         });
 
-        auto CAMERA_ORIGIN = vec3( 0, 0, -5 );
-        auto CAMERA_START_ANGLES = vec3(0, PI / 2, 0);
+        auto CAMERA_ORIGIN = vec3( -20, 20, -1 );
+        auto CAMERA_START_ANGLES = vec3(0, PI, 0);
 
         auto cam_pos    = CAMERA_ORIGIN;
         auto cam_angles = CAMERA_START_ANGLES;
@@ -417,6 +469,11 @@ void main (string[] args) {
 
         float fov = 60.0, near = 0.1, far = 1e3;
         bool drawTriArray = false; // draw instanced triangles
+
+        writefln("Loaded in   %s", initTime.peek.to!Duration);
+        writefln("gl-init:    %s", gl_init_time.to!Duration);
+        writefln("model load: %s", load_mesh_time.to!Duration);
+        initTime.stop();
 
         StopWatch sw; sw.start();
         double prevTime = sw.peek.to!("seconds", double);
@@ -491,11 +548,19 @@ void main (string[] args) {
                         cam_angles = CAMERA_START_ANGLES;
                     if (ev.button == BUTTON_Y && ev.pressed)
                         drawTriArray = !drawTriArray;
-                    if (ev.button == BUTTON_A && ev.pressed)
-                        g_light.pos = cam_pos;
+                    
+                    else if (ev.button == BUTTON_A && ev.pressed) {
+                        writefln("Set light = %s, isDirectional = %s",
+                            g_light.pos = cam_pos,
+                            g_light.isDirectional = false);
+                    }
+                    else if (ev.button == BUTTON_X && ev.pressed) {
+                        writefln("Set light = %s, isDirectional = %s",
+                            g_light.pos = fwd,
+                            g_light.isDirectional = true);
+                    }
                     if (ev.button == BUTTON_B && ev.pressed) {
-                        setUseHalfwayVector(!g_useHalfwayVector);
-                        writefln("use halfway vector: %s", g_useHalfwayVector);
+                        advLightModel(+1);
                     }
                 }
             );
