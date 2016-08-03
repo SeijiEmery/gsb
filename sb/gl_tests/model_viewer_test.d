@@ -171,9 +171,20 @@ void main (string[] args) {
             
             out vec3 lightIntensity;
 
-            uniform vec4 lightPos;
-            uniform vec3 Kd;
-            uniform vec3 Ld;
+            struct LightInfo {
+                vec4 position;
+                vec3 La;
+                vec3 Ld;
+                vec3 Ls;
+            };
+            struct MaterialInfo {
+                vec3 Ka;
+                vec3 Kd;
+                vec3 Ks;
+                float shininess;
+            };
+            uniform LightInfo    light;
+            uniform MaterialInfo material;
 
             uniform mat4 modelViewMatrix;
             uniform mat3 normalMatrix;
@@ -182,10 +193,18 @@ void main (string[] args) {
             void main () {
                 vec3 tnorm = normalize( normalMatrix * vertNormal );
                 vec4 eyeCoords = modelViewMatrix * vec4(vertPosition, 1.0);
-                vec3 s = normalize(vec3(lightPos - eyeCoords));
+                vec3 s = normalize(vec3(light.position - eyeCoords));
+                vec3 v = normalize(-eyeCoords.xyz);
+                vec3 r = reflect(-s, tnorm);
+                float sDotN = max(dot(s, tnorm), 0);
 
-                lightIntensity = Ld * Kd * max(dot(s, tnorm), 0.0);
+                vec3 ambient = light.La * material.Ka;
+                vec3 diffuse = light.Ld * material.Kd * sDotN;
+                vec3 spec = sDotN > 0.0 ?
+                    light.Ls * material.Ks * pow(max(dot(r, v), 0.0), material.shininess) :
+                    vec3(0.0);
 
+                lightIntensity = ambient + diffuse + spec;
                 gl_Position = mvp * vec4(vertPosition, 1.0);
             }
         `);
@@ -198,25 +217,43 @@ void main (string[] args) {
                 fragColor = vec4(lightIntensity, 1.0);
             }
         `);
-        //
-        // Set meshShader params
-        //
-        void setLight (vec4 pos, vec3 Kd, vec3 Ld) {
-            meshShader.setv("lightPos", pos);
-            meshShader.setv("Kd", Kd);
-            meshShader.setv("Ld", Ld);
-        }
-        void setMvp (ref mat4 model, ref mat4 view, ref mat4 proj ) {
-            meshShader.setv("modelViewMatrix", view * model);
-            meshShader.setv("normalMatrix", mat3(view * model).inverse.transposed);
-            //meshShader.setv("projMatrix", proj);
-            meshShader.setv("mvp", proj * view * model);
-        }
+        
         struct LightInfo {
-            vec3 pos, Kd, Ld;
+            vec3 pos;
+            vec3 ambient = vec3(0.2);
+            vec3 diffuse = vec3(0.5);
+            vec3 specular = vec3(1.0);
+        }
+        struct MaterialInfo {
+            vec3 ambient  = vec3(0.5,0.5,1);
+            vec3 diffuse  = vec3(1,0,0);
+            vec3 specular = vec3(1);
+            float shininess = 150;
         }
         struct CameraInfo {
             vec3 pos; mat4 view, proj;
+        }
+        auto g_light    = LightInfo();
+        auto g_material = MaterialInfo();
+
+        float MIN_SHININESS = 1, MAX_SHININESS = 200, SHININESS_CHANGE_SPEED = 0.2;
+
+        void setLight (ref CameraInfo camera, ref LightInfo light) {
+            meshShader.setv("light.position", camera.view * vec4(light.pos, 1.0));
+            meshShader.setv("light.La", light.ambient);
+            meshShader.setv("light.Ld", light.diffuse);
+            meshShader.setv("light.Ls", light.specular);
+        }
+        void setModel (ref mat4 model, ref CameraInfo camera, ref MaterialInfo material) {
+            meshShader.setv("material.Ka", material.ambient);
+            meshShader.setv("material.Kd", material.diffuse);
+            meshShader.setv("material.Ks", material.specular);
+            meshShader.setv("material.shininess", material.shininess);
+
+            auto vp = camera.view * model;
+            meshShader.setv("modelViewMatrix", vp);
+            meshShader.setv("normalMatrix", mat3(vp).inverse.transposed);
+            meshShader.setv("mvp", camera.proj * vp);
         }
         RenderableMesh[] meshes;
         GLResourcePoolRef[string] resourcePools;
@@ -247,11 +284,11 @@ void main (string[] args) {
                 writefln("Failed to load '%s':\n%s", fileName, e);
             }
         }
-        void drawMeshes ( CameraInfo camera, LightInfo light ) {
+        void drawMeshes ( CameraInfo camera, ref LightInfo light, ref MaterialInfo material ) {
             gl.getLocalBatch.execGL({
-                setLight(camera.view * vec4(light.pos, 1.0), light.Kd, light.Ld);
+                setLight(camera, light);
                 foreach (ref mesh; meshes) {
-                    setMvp(mesh.transform, camera.view, camera.proj);
+                    setModel(mesh.transform, camera, material);
                     mesh.render();
                 }
             });
@@ -397,7 +434,13 @@ void main (string[] args) {
                     cam_angles.y -= (mouse_axes.x + ev.axes[AXIS_RX]) * dt * CAM_LOOK_SPEED;
 
                     fov = max(MIN_FOV, min(MAX_FOV, fov + (ev.axes[AXIS_TRIGGERS] - scroll_axis) * dt * FOV_CHANGE_SPEED));
-                    far = max(MIN_FAR, min(MAX_FAR, far + ev.axes[AXIS_DPAD_Y] * dt * FAR_CHANGE_SPEED));
+
+                    auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
+                        g_material.shininess + ev.axes[AXIS_DPAD_Y] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_SPEED));
+
+                    if (g_material.shininess != new_shininess) {
+                        writefln("set shininess = %s", g_material.shininess = new_shininess);
+                    }
                 },
                 (const SbGamepadButtonEvent ev) {
                     if (ev.button == BUTTON_LSTICK && ev.pressed)
@@ -407,8 +450,7 @@ void main (string[] args) {
                     if (ev.button == BUTTON_Y && ev.pressed)
                         drawTriArray = !drawTriArray;
                     if (ev.button == BUTTON_B && ev.pressed)
-                        light_pos = cam_pos;
-                        //lightAtCamera = !lightAtCamera;
+                        g_light.pos = cam_pos;
                 }
             );
             auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
@@ -427,13 +469,13 @@ void main (string[] args) {
                 });
             }
 
-            auto lightDist = 5.0;
-            auto lightPos  = lightDist * vec3( cos(t), 0, sin(t) );
+            //auto lightDist = 5.0;
+            //auto lightPos  = lightDist * vec3( cos(t), 0, sin(t) );
 
             drawMeshes( 
-                CameraInfo(cam_pos, view, proj),
-                LightInfo(light_pos, LIGHT_Ld, LIGHT_Kd)
-                //LightInfo( lightPos, LIGHT_Ld, LIGHT_Kd )
+                CameraInfo( cam_pos, view, proj ),
+                g_light,
+                g_material
             );
             platform.swapFrame();
         }
