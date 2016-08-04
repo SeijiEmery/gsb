@@ -67,7 +67,7 @@ void sbLoadObj (
     }
     bool tryParseInt (ref string s, ref int v) {
         auto sv = s.munch("-0123456789");
-        if (sv)
+        if (sv.length)
             return v = sv.parse!int, true;
         return false;
     }
@@ -157,7 +157,7 @@ void sbLoadObj (
     uint parseFloats (ref string s, ref float[] values, uint minCount, uint maxCount) {
         uint n = 0;
         string sv, s_start = s;
-        while (s.length && ((sv = s.munch("-.0123456789")), sv.length) ) {
+        while (s.length && ((sv = s.munch("0123456789e.-")), sv.length) ) {
             enforce(++n <= maxCount, format("too many values (expected %s): %s, '%s', '%s'",
                format(minCount == maxCount ? format("%s", minCount) : format("%s-%s", minCount, maxCount)), n, sv, s));
 
