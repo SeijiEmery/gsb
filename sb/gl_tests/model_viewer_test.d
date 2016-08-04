@@ -49,6 +49,15 @@ class RawModelData {
         meshes ~= mesh;
         return mesh;
     }
+    auto getMesh (string name, size_t triCount) {
+        foreach (mesh; meshes) {
+            if (mesh.name == name) {
+                mesh.triCount += triCount;
+                return mesh;
+            }
+        }
+        return addMesh(name, triCount);
+    }
 }
 RawModelData loadObj ( string obj_file_contents, RawModelData model = null, bool genNormals = false ) {
     if (!model)
@@ -62,14 +71,14 @@ RawModelData loadObj ( string obj_file_contents, RawModelData model = null, bool
         (SbObj_Triangle tri) {
             assert( mesh, "Null mesh!" );
             foreach (ref vert; tri.verts) {
-                mesh.packedData ~= [ vert.v.x, vert.v.y, vert.v.z, vert.v.w, vert.t.x, vert.t.y, vert.n.x, vert.n.y, vert.n.z ];
+                mesh.packedData ~= [ vert.v.x, vert.v.y, vert.v.z, vert.t.x, vert.t.y, vert.n.x, vert.n.y, vert.n.z ];
                 center += vert.v.xyz;
                 ++vertCount;
             }
             //writefln("tri %s", tri);
         },
         (string mtlName, size_t triCount) {
-            mesh = model.addMesh( mtlName, triCount );
+            mesh = model.getMesh( mtlName, triCount );
         },
         (string mtlLibName) {
 
@@ -370,7 +379,21 @@ void main (string[] args) {
         RenderableMesh[] meshes;
         GLResourcePoolRef[string] resourcePools;
 
-        void loadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true, bool genNormals = false ) {
+        import core.sync.mutex;
+        auto resourceLoadMutex = new Mutex();
+        void delegate()[] resourceLoadQueue;
+
+        void pumpQueue () {
+            if (resourceLoadQueue.length) {
+                synchronized (resourceLoadMutex) {
+                    foreach (item; resourceLoadQueue)
+                        item();
+                    resourceLoadQueue.length = 0;
+                }
+            }
+        }
+
+        void asyncLoadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true, bool genNormals = false ) {
             auto isZip = path.endsWith(".zip");
             auto fileName = isZip ? baseName(path, ".zip") : baseName(path);
             try {
@@ -380,23 +403,41 @@ void main (string[] args) {
                 if (!useCentroid)
                     modelData.centroid = vec3(0, 0, 0);
 
-                writefln("Loaded '%s' in %s. %s parts:", fileName, sw.peek.to!Duration, modelData.meshes.length);
-                foreach (mesh; modelData.meshes)
-                    writefln("\t'%s' | %s tris", mesh.name, mesh.triCount);
-                writefln("\tcentroid: %s", modelData.centroid);
-                writeln("");
-
-                auto pool = resourcePools[fileName] = gl.createResourcePrefix( fileName );
-                meshes ~= RenderableMesh(
-                    modelData, 
-                    meshShader, gl, pool,
-                    pos, scale, rotation
-                );
+                synchronized (resourceLoadMutex) {
+                    writefln("Loaded '%s' in %s. %s parts:", fileName, sw.peek.to!Duration, modelData.meshes.length);
+                    foreach (mesh; modelData.meshes)
+                        writefln("\t'%s' | %s tris", mesh.name, mesh.triCount);
+                    writefln("\tcentroid: %s", modelData.centroid);
+                    writeln("");
+                    resourceLoadQueue ~= {
+                        import std.algorithm: move;
+                        auto pool = resourcePools[fileName] = gl.createResourcePrefix( fileName );
+                        auto mesh = RenderableMesh(modelData, meshShader, gl, pool, pos, scale, rotation);
+                        meshes ~= move(mesh);
+                    };
+                }
             } catch (Exception e) {
                 writefln("Failed to load '%s':\n%s", fileName, e);
             }
         }
+        void loadMesh (string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true, bool genNormals = false) {
+            import core.thread;
+            class ThreadTask : Thread {
+                this () { super(&run); }
+                void run () {
+                    try {
+                        writefln("Loading '%s'...", path);
+                        asyncLoadMesh(path, pos, scale, rotation, useCentroid, genNormals);
+                    } catch (Throwable e) {
+                        writefln("%s", e);
+                    }
+                }
+            }
+            auto thread = new ThreadTask().start();
+        }
+
         void drawMeshes ( CameraInfo camera, ref LightInfo light, ref MaterialInfo material ) {
+            pumpQueue();
             gl.getLocalBatch.execGL({
                 setLight(camera, light);
                 foreach (ref mesh; meshes) {
@@ -409,10 +450,15 @@ void main (string[] args) {
             vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj",
             vec3(0, 1, 0), vec3(0.025, 0.025, 0.025), quat.xrotation(PI), false, true);
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj",
-            vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
-        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
-        //    vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
+        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj",
+        //    vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
+            vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
+
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/lost-empire/lost_empire.obj",
+            vec3(100, 0, 0), vec3(1,1,1), quat.xrotation(PI), true, true);
+
+
         auto load_mesh_time = initTime.peek - gl_init_time;
 
         auto shader = resourcePool.createShader();
@@ -479,8 +525,11 @@ void main (string[] args) {
             vao.bindShader( shader );
         });
 
-        auto CAMERA_ORIGIN = vec3( -20, 20, -1 );
-        auto CAMERA_START_ANGLES = vec3(0, PI, 0);
+        auto CAMERA_ORIGIN = vec3( -1, 0, 0 );
+        auto CAMERA_START_ANGLES = vec3(0, 2*PI, 0);
+
+        //auto CAMERA_ORIGIN = vec3( -20, 20, -1 );
+        //auto CAMERA_START_ANGLES = vec3(0, PI, 0);
 
         auto cam_pos    = CAMERA_ORIGIN;
         auto cam_angles = CAMERA_START_ANGLES;
