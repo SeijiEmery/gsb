@@ -148,7 +148,9 @@ subPackage {
 
     dependency "gsb:platform_glfw_gl41" version="*"
     sourcePaths "sb/platform/interface" "sb/gl/interface" \
-        "sb/shared" "sb/model_loaders/tk_objfile/src"
+        "sb/shared" \
+        "sb/model_loaders/tk_objfile/src" \
+        "sb/model_loaders/loadobj"
     lflags "-Lext/libs" "-ltk_objfile"
 }
 

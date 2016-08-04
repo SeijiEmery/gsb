@@ -2,6 +2,7 @@ import sb.platform;
 import sb.gl;
 import sb.events;
 import sb.model_loaders.tk_objfile;
+import sb.model_loaders.loadobj;
 
 import std.stdio;
 import std.datetime: StopWatch;
@@ -55,47 +56,73 @@ RawModelData loadObj ( string obj_file_contents, RawModelData model = null, bool
     RawModelData.SubMesh mesh = null;
     Exception exc = null;
 
-    double cx = 0, cy = 0, cz = 0; size_t vertCount = 0;
-    tkParseObj( obj_file_contents,
-        (const(char)* mtlName, size_t triCount) {
-            mesh = model.addMesh( mtlName.fromStringz.dup, triCount );
-        },
-        (TK_Triangle tri) {
+    vec3 center; size_t vertCount;
+
+    sbLoadObj( obj_file_contents,
+        (SbObj_Triangle tri) {
             assert( mesh, "Null mesh!" );
-            void writev ( TK_TriangleVert v, ref float[] packedData ) {
-                cx += v.pos[0]; cy += v.pos[1]; cz += v.pos[2]; ++vertCount;
-                packedData ~= [ v.pos[0], v.pos[1], v.pos[2], v.st[0], v.st[1], v.nrm[0], v.nrm[1], v.nrm[2] ];
+            foreach (ref vert; tri.verts) {
+                mesh.packedData ~= [ vert.v.x, vert.v.y, vert.v.z, vert.v.w, vert.t.x, vert.t.y, vert.n.x, vert.n.y, vert.n.z ];
+                center += vert.v.xyz;
+                ++vertCount;
             }
-
-            // naive impl; probably wrong
-            if (genNormals) {
-                vec3 normal = -cross(
-                    vec3(tri.vertA.pos[0] - tri.vertB.pos[0],
-                         tri.vertA.pos[1] - tri.vertB.pos[1],
-                         tri.vertA.pos[2] - tri.vertB.pos[2]),
-                    vec3(tri.vertC.pos[0] - tri.vertB.pos[0],
-                         tri.vertC.pos[1] - tri.vertB.pos[1],
-                         tri.vertC.pos[2] - tri.vertB.pos[2]));
-                tri.vertA.nrm[0] = tri.vertB.nrm[0] = tri.vertC.nrm[0] = normal.x;
-                tri.vertA.nrm[1] = tri.vertB.nrm[1] = tri.vertC.nrm[1] = normal.y;
-                tri.vertA.nrm[2] = tri.vertB.nrm[2] = tri.vertC.nrm[2] = normal.z;
-            }
-
-            writev( tri.vertA, mesh.packedData );
-            writev( tri.vertB, mesh.packedData );
-            writev( tri.vertC, mesh.packedData );
+            //writefln("tri %s", tri);
         },
-        (ref TK_ObjDelegate _) {
-            writefln("Finished reading obj file");
+        (string mtlName, size_t triCount) {
+            mesh = model.addMesh( mtlName, triCount );
         },
-        (ref TK_ObjDelegate obj, string error) {
-            exc = new Exception(format("Error reading obj file:\n\t%s\n%s", obj, error));
+        (string mtlLibName) {
+
+        },
+        (uint lineNum, string line) {
+            writefln("Unhandled: line %s '%s'", lineNum, line);
+        },
+        (string msg, uint lineNum, string line) {
+            writefln("Error parsing file: %s (line %s, '%s')", msg, lineNum, line);
         }
     );
+
+    //double cx = 0, cy = 0, cz = 0; size_t vertCount = 0;
+    //tkParseObj( obj_file_contents,
+    //    (const(char)* mtlName, size_t triCount) {
+    //        mesh = model.addMesh( mtlName.fromStringz.dup, triCount );
+    //    },
+    //    (TK_Triangle tri) {
+    //        assert( mesh, "Null mesh!" );
+    //        void writev ( TK_TriangleVert v, ref float[] packedData ) {
+    //            cx += v.pos[0]; cy += v.pos[1]; cz += v.pos[2]; ++vertCount;
+    //            packedData ~= [ v.pos[0], v.pos[1], v.pos[2], v.st[0], v.st[1], v.nrm[0], v.nrm[1], v.nrm[2] ];
+    //        }
+
+    //        // naive impl; probably wrong
+    //        if (genNormals) {
+    //            vec3 normal = -cross(
+    //                vec3(tri.vertA.pos[0] - tri.vertB.pos[0],
+    //                     tri.vertA.pos[1] - tri.vertB.pos[1],
+    //                     tri.vertA.pos[2] - tri.vertB.pos[2]),
+    //                vec3(tri.vertC.pos[0] - tri.vertB.pos[0],
+    //                     tri.vertC.pos[1] - tri.vertB.pos[1],
+    //                     tri.vertC.pos[2] - tri.vertB.pos[2]));
+    //            tri.vertA.nrm[0] = tri.vertB.nrm[0] = tri.vertC.nrm[0] = normal.x;
+    //            tri.vertA.nrm[1] = tri.vertB.nrm[1] = tri.vertC.nrm[1] = normal.y;
+    //            tri.vertA.nrm[2] = tri.vertB.nrm[2] = tri.vertC.nrm[2] = normal.z;
+    //        }
+
+    //        writev( tri.vertA, mesh.packedData );
+    //        writev( tri.vertB, mesh.packedData );
+    //        writev( tri.vertC, mesh.packedData );
+    //    },
+    //    (ref TK_ObjDelegate _) {
+    //        writefln("Finished reading obj file");
+    //    },
+    //    (ref TK_ObjDelegate obj, string error) {
+    //        exc = new Exception(format("Error reading obj file:\n\t%s\n%s", obj, error));
+    //    }
+    //);
     if (exc) throw exc;
 
-    if (!vertCount) vertCount = 1;
-    model.centroid += vec3( cx / vertCount, cy / vertCount, cz / vertCount );
+    //if (!vertCount) vertCount = 1;
+    //model.centroid += center / cast(float)vertCount;
     return model;
 }
 
@@ -382,10 +409,10 @@ void main (string[] args) {
             vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj",
             vec3(0, 1, 0), vec3(0.025, 0.025, 0.025), quat.xrotation(PI), false, true);
-        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj",
-        //    vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
-            vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj",
+            vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
+        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
+        //    vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
         auto load_mesh_time = initTime.peek - gl_init_time;
 
         auto shader = resourcePool.createShader();
