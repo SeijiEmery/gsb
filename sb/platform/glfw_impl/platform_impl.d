@@ -336,6 +336,9 @@ class SbWindow : IPlatformWindow {
         glfwSetCursorEnterCallback(handle, &windowCursorEnterCallback);
         glfwSetMouseButtonCallback(handle, &windowMouseBtnInputCallback);
         glfwSetScrollCallback(handle, &windowScrollInputCallback);
+
+        // turn off sticky keys!
+        glfwSetInputMode(handle, GLFW_STICKY_KEYS, false);
     }
     override void release () {
         platform.unregisterWindow( id );
