@@ -150,8 +150,11 @@ subPackage {
     sourcePaths "sb/platform/interface" "sb/gl/interface" \
         "sb/shared" \
         "sb/model_loaders/tk_objfile/src" \
-        "sb/model_loaders/loadobj"
+        "sb/model_loaders/loadobj" \
+        "sb/image_loaders/stb_image"
+
     lflags "-Lext/libs" "-ltk_objfile"
+    lflags "-Lext/libs" "-lstb_image"
 }
 
 

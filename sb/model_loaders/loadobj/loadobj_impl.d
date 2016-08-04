@@ -15,13 +15,47 @@ struct SbObj_Triangle {
     SbObj_TriVert[3] verts;
 }
 
+public interface ObjLoaderDelegate {
+    void onTriangle (SbObj_Triangle);
+    void onMtl      (string name, size_t triCount);
+    void onMtlLib   (string libName);
+    void onGroup    (string group);
+    void onObject   (string object);
+    void onUnhandledLine (uint lineNum, string line);
+    void onParseError    (string msg, uint lineNum, string line);
+}
+
+
+// Helper method: try parsing a signed integer, advancing s and returning true iff parsed; false otherwise.
+private bool tryParseInt (ref string s, ref int v) {
+    auto sv = s.munch("-0123456789");
+    if (sv.length)
+        return v = sv.parse!int, true;
+    return false;
+}
+
+// Helper method: parse a whitespace-delimited sequence of floats into values, advancing s.
+// Throws an exception if the number of parsed values is not within [minCount, maxCount];
+// otherwise, returns the number of values parsed.
+private uint parseFloats (ref string s, ref float[] values, uint minCount, uint maxCount) {
+    uint n = 0;
+    string sv, s_start = s;
+    while (s.length && ((sv = s.munch("0123456789e.-")), sv.length) ) {
+        enforce(++n <= maxCount, format("too many values (expected %s): %s, '%s', '%s'",
+           format(minCount == maxCount ? format("%s", minCount) : format("%s-%s", minCount, maxCount)), n, sv, s));
+
+        values ~= sv.parse!float;
+        s.munch(" \t");
+    }
+    enforce(n >= minCount, format("not enough values (expected %s, got %s '%s')",
+        format(minCount == maxCount ? format("%s", minCount) : format("%s-%s", minCount, maxCount)), n, s_start));
+    return n;
+}
+
+
 void sbLoadObj ( 
     string fileContents,
-    void delegate (SbObj_Triangle) onTri,
-    void delegate (string mtlName, size_t triCount) onMtl,
-    void delegate (string mtlLibName) onMtlLib,
-    void delegate (uint lineNum, string line) onUnhandledLine,
-    void delegate (string msg, uint lineNum, string line) onParseError,
+    ObjLoaderDelegate dg,
 ) {
     vec4[] verts, gen_normals;
     vec3[] normals;
@@ -33,7 +67,7 @@ void sbLoadObj (
     }
     IntermedTriangle[] intermedTris;
     float[] tempValues;
-    string prevMtl = null;
+    string prevMtl = "<none>";
 
     void emitTris () {
         if (verts.length * 3 != normals.length * 4) {
@@ -41,14 +75,11 @@ void sbLoadObj (
                 n.xyz /= n.w;
             }
         }
-        foreach (ref tri; intermedTris) {
-            //import std.stdio;
-            //writefln("tri!      %s/%s/%s  %s/%s/%s  %s/%s/%s", tri.v0, tri.t0, tri.n0, tri.v1, tri.t1, tri.n1, tri.v2, tri.t2, tri.n2);
-            //writefln("\tvertex: %s, %s, %s", tri.v0, tri.v1, tri.v2);
-            //writefln("\tnormal: %s, %s, %s", tri.n0, tri.n1, tri.n2);
-            //writefln("\tuvs:    %s, %s, %s", tri.t0, tri.t1, tri.t2);
+        if (intermedTris.length && !uvs.length)
+            uvs ~= vec2(0, 0);
 
-            onTri(SbObj_Triangle([
+        foreach (ref tri; intermedTris) {
+            dg.onTriangle(SbObj_Triangle([
                 SbObj_TriVert( verts[tri.v0], tri.hasNormals ? normals[tri.n0] : gen_normals[tri.v0].xyz, uvs[tri.t0] ),
                 SbObj_TriVert( verts[tri.v1], tri.hasNormals ? normals[tri.n1] : gen_normals[tri.v1].xyz, uvs[tri.t1] ),
                 SbObj_TriVert( verts[tri.v2], tri.hasNormals ? normals[tri.n2] : gen_normals[tri.v2].xyz, uvs[tri.t2] ),
@@ -57,11 +88,10 @@ void sbLoadObj (
     }
 
     void changeMtl ( string name ) {
-        if (prevMtl) {
-            onMtl( prevMtl, intermedTris.count );
+        if (prevMtl && intermedTris.length) {
+            dg.onMtl( prevMtl, intermedTris.length );
             emitTris();
             intermedTris.length = 0;
-
             //verts.length = 0;
             //gen_normals.length = 0;
             //normals.length = 0;
@@ -71,13 +101,7 @@ void sbLoadObj (
         prevMtl = name;
 
     }
-    bool tryParseInt (ref string s, ref int v) {
-        auto sv = s.munch("-0123456789");
-        if (sv.length)
-            return v = sv.parse!int, true;
-        return false;
-    }
-
+    
     void parseTri (ref string s) {
         int[4] v, n, t;
         uint i, vcount = 0, ncount = 0, tcount = 0;
@@ -160,20 +184,7 @@ void sbLoadObj (
         }
     }
 
-    uint parseFloats (ref string s, ref float[] values, uint minCount, uint maxCount) {
-        uint n = 0;
-        string sv, s_start = s;
-        while (s.length && ((sv = s.munch("0123456789e.-")), sv.length) ) {
-            enforce(++n <= maxCount, format("too many values (expected %s): %s, '%s', '%s'",
-               format(minCount == maxCount ? format("%s", minCount) : format("%s-%s", minCount, maxCount)), n, sv, s));
-
-            values ~= sv.parse!float;
-            s.munch(" \t");
-        }
-        enforce(n >= minCount, format("not enough values (expected %s, got %s '%s')",
-            format(minCount == maxCount ? format("%s", minCount) : format("%s-%s", minCount, maxCount)), n, s_start));
-        return n;
-    }
+    
 
     string parseLine ( uint lineNum, string line ) {
         line = line.findSplitBefore("#")[0];
@@ -181,7 +192,7 @@ void sbLoadObj (
             return "";
 
         if (line.length < 6) {
-            onUnhandledLine( lineNum, line );
+            dg.onUnhandledLine( lineNum, line );
             return "";
         }
 
@@ -221,7 +232,13 @@ void sbLoadObj (
         } else if (s[0..6] == "mtllib") {
             //import std.stdio;
             //writefln("mtllib! '%s'  ", s[6..$].strip);
-            onMtlLib(s[6..$].strip);
+            dg.onMtlLib(s[6..$].strip);
+
+        } else if (s[0..2] == "g ") {
+            dg.onGroup(s[2..$].strip);
+        
+        } else if (s[0..2] == "o ") {
+            dg.onObject(s[2..$].strip);
     
         } else if (s[0..6] == "usemtl") {
             //import std.stdio;
@@ -229,7 +246,7 @@ void sbLoadObj (
             changeMtl( s[6..$].strip );
 
         } else {
-            onUnhandledLine( lineNum, line );
+            dg.onUnhandledLine( lineNum, line );
         }
         return s;
     }
@@ -238,10 +255,216 @@ void sbLoadObj (
         try {
             parseLine(lineNum, line);
         } catch (Exception e) {
-            onParseError( e.msg, lineNum, line );
+            dg.onParseError( e.msg, lineNum, line );
         }
         ++lineNum;
     }
     changeMtl(null);
 }
+
+enum MtlTextureChannel : uint {
+    R = 0x1, G = 0x2, B = 0x4,
+    M = 0x8, L = 0x10, Z = 0x20,
+}
+enum MtlReflectionMapType : uint {
+    NONE = 0, SPHERE, CUBE_TOP, CUBE_BOTTOM, CUBE_FRONT, CUBE_BACK, CUBE_LEFT, CUBE_RIGHT
+}
+
+struct MtlTextureInfo {
+    string path;
+    uint   channels;  // see MtlTextureChannel
+
+    auto   origin = vec3(0,0,0);
+    auto   scale  = vec3(1,1,1);
+    auto   turbulence = vec3(0,0,0);
+    auto   mapType = MtlReflectionMapType.NONE;
+}
+
+public interface MtlLoaderDelegate {
+    void onNewMtl        (string name);
+    void onUnhandledLine (uint lineNum, string line);
+    void onParseError    (string msg, uint lineNum, string line);
+
+    //
+    // default params (standardized, so 'd' <=> 'Tr', 'bump' <=> 'norm', etc)
+    //
+
+    // ambient
+    void Ka     (vec3 color);
+    void Ka_map (MtlTextureInfo);
+
+    // diffuse
+    void Kd     (vec3 color);
+    void Kd_map (MtlTextureInfo);
+
+    // specular
+    void Ks     (vec3 color);
+    void Ks_map (MtlTextureInfo);
+
+    // shininess (specular)
+    void Ns     (float shininess);
+    void Ns_map (MtlTextureInfo);
+
+    // transparency (note: for our purposes this is actually _opacity_ w/ 1.0 => fully opaque, 0.0 => transparent)
+    void Tr     (float transparency);
+    void Tr_map (MtlTextureInfo);
+
+    // normal, displacement, stencil maps
+    void bump_map (MtlTextureInfo);
+    void disp_map (MtlTextureInfo);
+    void decal_map (MtlTextureInfo);
+    void refl_map (MtlTextureInfo);
+
+    // can probably ignore this...
+    void illum_model (uint);
+
+    //
+    // stuff used by raytracers (can safely ignore this)
+    //
+
+    // refraction index
+    void Ni     (float refraction_index);
+    void Ni_map (MtlTextureInfo);
+
+    // transmission filter
+    void Tf     (vec3 transmission_filter);
+    void Tf_map (MtlTextureInfo);
+
+
+    //
+    // PBR (http://exocortex.com/blog/extending_wavefront_mtl_to_support_pbr)
+    //
+
+    // roughness
+    void Pr     (float);
+    void Pr_map (MtlTextureInfo);
+
+    // metallic
+    void Pm     (float);
+    void Pm_map (MtlTextureInfo);
+
+    // sheen
+    void Ps     (float);
+    void Ps_map (MtlTextureInfo);
+
+    // clearcoat thickness, roughness
+    void Pc     (float);
+    void Pcr    (float);
+
+    // emissive
+    void Ke     (vec3 color);
+    void Ke_map (MtlTextureInfo);
+
+    // anisotropy, rotation
+    void aniso  (vec3);
+    void anisor (vec3);
+}
+void sbLoadMtl (string fileContents, MtlLoaderDelegate dg) {
+    float[] tempValues;
+
+    MtlTextureInfo parseTexture (string s) {
+        return MtlTextureInfo(s.strip);
+    }
+    vec3 parseVec3 (string s) {
+        tempValues.length = 0;
+        s = s.strip;
+        parseFloats(s, tempValues, 3, 3);
+        enforce(!s.length, format("extra chars while parsing float3: '%s'", s));
+        return vec3(tempValues[0], tempValues[1], tempValues[2]);
+    }
+    float parseFloat (string s) {
+        tempValues.length = 0;
+        s = s.strip;
+        parseFloats(s, tempValues, 1, 1);
+        enforce(!s.length, format("exta chars while parsing float: '%s'", s));
+        return tempValues[0];
+    }
+    void parseLine (uint lineNum, string line) {
+        if (line.length > 7 && line[0..4] == "map_") {
+            switch (line[4..7]) {
+                case "Ka ": dg.Ka_map(parseTexture(line[7..$])); return;
+                case "Kd ": dg.Kd_map(parseTexture(line[7..$])); return;
+                case "Ks ": dg.Ks_map(parseTexture(line[7..$])); return;
+                case "Ns ": dg.Ns_map(parseTexture(line[7..$])); return;
+                case "Ni ": dg.Ns_map(parseTexture(line[7..$])); return;
+                case "Tf ": dg.Tf_map(parseTexture(line[7..$])); return;
+                case "Tr ": dg.Tr_map(parseTexture(line[7..$])); return;
+                case "Pr ": dg.Pr_map(parseTexture(line[7..$])); return;
+                case "Pm ": dg.Pm_map(parseTexture(line[7..$])); return;
+                case "Ps ": dg.Ps_map(parseTexture(line[7..$])); return;
+                case "Ke ": dg.Ke_map(parseTexture(line[7..$])); return;
+                default:
+            }
+            if (line[4..6] == "d ") { dg.Tr_map(parseTexture(line[7..$])); return; }
+            else if (line.length > 10) {
+                if (line[4..9] == "bump ") { dg.bump_map(parseTexture(line[9..$])); return; }
+                if (line[4..9] == "norm ") { dg.bump_map(parseTexture(line[9..$])); return; }
+                if (line[4..9] == "disp ") { dg.disp_map(parseTexture(line[9..$])); return; }
+                if (line[4..9] == "refl ") { dg.refl_map(parseTexture(line[9..$])); return; }
+                if (line[4..10] == "decal ") { dg.decal_map(parseTexture(line[10..$])); return; }
+            }
+        }
+
+        else if (line.length >= 3 && (line[0] == 'K' || line[0] == 'P' || line[0] == 'T' || line[0] == 'N')) {
+            switch(line[0..3]) {
+                case "Ka ": dg.Ka(parseVec3(line[3..$])); return;
+                case "Kd ": dg.Kd(parseVec3(line[3..$])); return;
+                case "Ks ": dg.Ks(parseVec3(line[3..$])); return;
+                case "Ns ": dg.Ns(parseFloat(line[3..$])); return;
+                case "Ni ": dg.Ns(parseFloat(line[3..$])); return;
+                case "Tf ": dg.Tf(parseVec3(line[3..$])); return;
+                case "Tr ": dg.Tr(1.0 - parseFloat(line[3..$])); return;
+                case "Pr ": dg.Pr(parseFloat(line[3..$])); return;
+                case "Pm ": dg.Pm(parseFloat(line[3..$])); return;
+                case "Ps ": dg.Ps(parseFloat(line[3..$])); return;
+                case "Pc ": dg.Pc(parseFloat(line[3..$])); return;
+                case "Pcr": if (line[4] == ' ') { dg.Pcr(parseFloat(line[4..$])); return; } else break;
+                case "Ke ": dg.Ke(parseVec3(line[3..$])); return;
+                default:
+            }
+        }
+
+        else {
+            if (line.length >= 7) {
+                if (line[0..7] == "newmtl ") { dg.onNewMtl(line[7..$].strip); return;}
+                if (line[0..5] == "bump ") { dg.bump_map(parseTexture(line[5..$])); return; }
+                if (line[0..5] == "norm ") { dg.bump_map(parseTexture(line[5..$])); return; }
+                if (line[0..5] == "disp ") { dg.disp_map(parseTexture(line[5..$])); return; }
+                if (line[0..5] == "refl ") { dg.refl_map(parseTexture(line[5..$])); return; }
+                if (line[0..6] == "decal ") { dg.decal_map(parseTexture(line[6..$])); return; }
+                if (line[0..6] == "illum ") {
+                    line = line[6..$];
+                    dg.illum_model(line.parse!uint);
+                    return;
+                }
+            }
+            if (line.length >= 2 && line[0..2] == "d ") {
+                dg.Tr(parseFloat(line[2..$])); return;
+            }
+        }
+        dg.onUnhandledLine(lineNum, line);
+    }
+
+    uint lineNum = 0;
+    foreach (line; fileContents.splitLines) {
+        line = line.findSplitBefore("#")[0].strip;
+        if (line.length) {
+            try {
+                parseLine(lineNum, line);
+            } catch (Exception e) {
+                dg.onParseError( e.msg, lineNum, line );
+            }
+        }
+        ++lineNum;
+    }
+}
+
+
+
+
+
+
+
+
+
 

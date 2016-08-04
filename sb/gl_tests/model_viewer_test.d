@@ -59,7 +59,7 @@ class RawModelData {
         return addMesh(name, triCount);
     }
 }
-RawModelData loadObj ( string obj_file_contents, RawModelData model = null, bool genNormals = false ) {
+RawModelData loadObj (string path, string obj_file_contents, RawModelData model = null, bool genNormals = false ) {
     if (!model)
         model = new RawModelData();
     RawModelData.SubMesh mesh = null;
@@ -67,29 +67,139 @@ RawModelData loadObj ( string obj_file_contents, RawModelData model = null, bool
 
     vec3 center; size_t vertCount;
 
-    sbLoadObj( obj_file_contents,
-        (SbObj_Triangle tri) {
+    void loadMtlLib (string name) {
+        void loadMaterials ( ubyte[] contents ) {
+            sbLoadMtl(cast(string)contents, new class MtlLoaderDelegate {
+                override void onNewMtl (string name) {
+                    writefln("material '%s'", name);
+                }
+                override void onUnhandledLine (uint lineNum, string line) {
+                    writefln("Unhandled: %s, line %s '%s'", name, lineNum, line);
+                }
+                override void onParseError (string msg, uint lineNum, string line) {
+                    writefln("Error parsing file %s, line %s: %s (line '%s')", name, lineNum, msg, line);
+                }
+                override void Ka (vec3 color) { 
+                    writefln("\tambient %s", color); 
+                }
+                override void Ka_map (MtlTextureInfo info) {
+                    writefln("\tambient %s", info);
+                }
+ 
+                override void Kd (vec3 color) {
+                    writefln("\tdiffuse %s", color);
+                }
+                override void Kd_map (MtlTextureInfo info) {
+                    writefln("\tdiffuse %s", info);
+                }
+ 
+                override void Ks (vec3 color) {
+                    writefln("\tspecular %s", color);
+                }
+                override void Ks_map (MtlTextureInfo info) {
+                    writefln("\tspecular %s", info);
+                }
+ 
+                override void Ns (float shininess) {
+                    writefln("\tshininess %s", shininess);
+                }
+                override void Ns_map (MtlTextureInfo info) {
+                    writefln("\tshininess %s", info);
+                }
+
+                override void Ni (float refraction) {
+                    writefln("\traytracer refraction index: %s", refraction);
+                }
+                override void Ni_map (MtlTextureInfo info) {
+                    writefln("\traytracer refraction index: %s", info);
+                }
+                override void Tf (vec3 transmission_filter) {
+                    writefln("\traytracer transmission filter: %s", transmission_filter);
+                }
+                override void Tf_map (MtlTextureInfo info) {
+                    writefln("\traytracer transmission filter: %s", info);
+                }
+ 
+                override void Tr (float transparency) {
+                    writefln("\ttransparency %s", transparency);
+                }
+                override void Tr_map (MtlTextureInfo info) {
+                    writefln("\ttransparency %s", info);
+                }
+ 
+                override void illum_model (uint model) {
+                    writefln("\tunused: illum model %s", model);
+                }
+ 
+                override void bump_map (MtlTextureInfo info) {
+                    writefln("\tnormal map %s", info);
+                }
+                override void disp_map (MtlTextureInfo info) {
+                    writefln("\tdisplacement map %s", info);
+                }
+                override void refl_map (MtlTextureInfo info) {
+                    writefln("\treflection map %s", info);
+                }
+                override void decal_map (MtlTextureInfo info) {
+                    writefln("\tdecal map %s", info);
+                }
+ 
+                override void Pr (float roughness) { writefln("\tunused: PBR roughness %s", roughness); }
+                override void Pr_map (MtlTextureInfo info) { writefln("\tunused: PBR roughness %s", info); }
+ 
+                override void Pm (float metallicness) { writefln("\tunused: PBR metallic %s", metallicness); }
+                override void Pm_map (MtlTextureInfo info) { writefln("\tunused: PBR metallic %s", info); }
+ 
+                override void Ps (float sheen) { writefln("\tunused: PBR sheen %s", sheen); }
+                override void Ps_map (MtlTextureInfo info) { writefln("\tunused: PBR sheen %s", info); }
+ 
+                override void Ke (vec3 emissiveness) { writefln("\tunused: PBR emissiveness %s", emissiveness); }
+                override void Ke_map (MtlTextureInfo info) { writefln("\tunused: PBR emissiveness %s", info); }
+ 
+                override void Pc (float clearcoat) { writefln("\tunused: PBR clearcoat %s", clearcoat); }
+                override void Pcr (float clearcoat_roughness) { writefln("\tunused: PBR clearcoat roughness %s", clearcoat_roughness); }
+ 
+                override void aniso (vec3 v) { writefln("\tunused: PBR aniso %s", v); }
+                override void anisor (vec3 v) { writefln("\tunused: PBR anisor %s", v); }
+            });
+        }
+
+        import std.file;
+        import std.path;
+        import std.array;
+        auto localPath = path.dirName.chainPath(name).array;
+
+        if (exists(localPath)) loadMaterials(cast(ubyte[])read(localPath));
+        else if (exists(name)) loadMaterials(cast(ubyte[])read(name));
+        else                   writefln("Could not load mtllib '%s'", name);
+    }
+
+    sbLoadObj(obj_file_contents, new class ObjLoaderDelegate {
+        void onTriangle (SbObj_Triangle tri) {
             assert( mesh, "Null mesh!" );
             foreach (ref vert; tri.verts) {
                 mesh.packedData ~= [ vert.v.x, vert.v.y, vert.v.z, vert.t.x, vert.t.y, vert.n.x, vert.n.y, vert.n.z ];
                 center += vert.v.xyz;
                 ++vertCount;
             }
-            //writefln("tri %s", tri);
-        },
-        (string mtlName, size_t triCount) {
+        }
+        void onMtl (string mtlName, size_t triCount) {
             mesh = model.getMesh( mtlName, triCount );
-        },
-        (string mtlLibName) {
+            //mesh.material = mtlName in model.materials ? model.materials[mtlName] : new SbMaterial();
+        }
+        void onMtlLib (string mtlLibName) {
+            loadMtlLib(mtlLibName);
+        }
+        void onGroup (string name) {}
+        void onObject (string name) {}
 
-        },
-        (uint lineNum, string line) {
+        void onUnhandledLine (uint lineNum, string line) {
             writefln("Unhandled: line %s '%s'", lineNum, line);
-        },
-        (string msg, uint lineNum, string line) {
+        }
+        void onParseError (string msg, uint lineNum, string line) {
             writefln("Error parsing file: %s (line %s, '%s')", msg, lineNum, line);
         }
-    );
+    });
 
     //double cx = 0, cy = 0, cz = 0; size_t vertCount = 0;
     //tkParseObj( obj_file_contents,
@@ -333,8 +443,8 @@ void main (string[] args) {
         float g_lightIntensity = 1.0;
         bool  g_useHalfwayVector = true;
 
-        float MIN_SHININESS = 1, MAX_SHININESS = 300, SHININESS_CHANGE_RATE = 0.4;
-        float MIN_INTENSITY = 0.1, MAX_INTENSITY = 10.0, INTENSITY_CHANGE_RATE = 0.5;
+        float MIN_SHININESS = 1, MAX_SHININESS = 300,    SHININESS_CHANGE_RATE = 0.4;
+        float MIN_INTENSITY = 0.1, MAX_INTENSITY = 10.0, INTENSITY_CHANGE_RATE = 0.2;
 
         enum LightingModel : uint {
             phongModel_halfwayVector,
@@ -399,7 +509,7 @@ void main (string[] args) {
             try {
                 StopWatch sw; sw.start();
                 auto contents = isZip ? readArchive(path, fileName) : readFile(path);
-                auto modelData = loadObj(cast(string)contents, null, genNormals);
+                auto modelData = loadObj(path, cast(string)contents, null, genNormals);
                 if (!useCentroid)
                     modelData.centroid = vec3(0, 0, 0);
 
@@ -450,8 +560,8 @@ void main (string[] args) {
             vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj",
             vec3(0, 1, 0), vec3(0.025, 0.025, 0.025), quat.xrotation(PI), false, true);
-        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj",
-        //    vec3(-10, 0, 0), vec3(1, 1, 1), quat.identity);
+        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip",
+            vec3(-10, 0, 0), vec3(10), quat.zrotation(PI));
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
             vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
 
@@ -536,10 +646,6 @@ void main (string[] args) {
         auto CAM_LOOK_SPEED = 100.0.radians;
         auto CAM_MOVE_SPEED = 15.0;
 
-        auto light_pos = vec3(0,0,0);
-        auto LIGHT_Kd = vec3(0.5,0.5,0.5);
-        auto LIGHT_Ld = vec3(0.9,0.9,0.9);
-
         float MAX_FOV = 360.0, MIN_FOV = 0.5, FOV_CHANGE_SPEED = 120.0;
         float MIN_FAR = 10, MAX_FAR = 2e3, FAR_CHANGE_SPEED = 1e2;
 
@@ -605,13 +711,13 @@ void main (string[] args) {
                     fov = max(MIN_FOV, min(MAX_FOV, fov + (ev.axes[AXIS_TRIGGERS] - scroll_axis) * dt * FOV_CHANGE_SPEED));
 
                     auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
-                        g_material.shininess + ev.axes[AXIS_DPAD_Y] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
+                        g_material.shininess + ev.axes[AXIS_DPAD_X] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
                     if (g_material.shininess != new_shininess) {
                         writefln("set shininess = %s", g_material.shininess = new_shininess);
                     }
 
                     auto new_intensity = max(MIN_INTENSITY, min(MAX_INTENSITY,
-                        g_lightIntensity + ev.axes[AXIS_DPAD_X] * dt * (MAX_INTENSITY - MIN_INTENSITY) * INTENSITY_CHANGE_RATE));
+                        g_lightIntensity + ev.axes[AXIS_DPAD_Y] * dt * (MAX_INTENSITY - MIN_INTENSITY) * INTENSITY_CHANGE_RATE));
                     if (new_intensity != g_lightIntensity) {
                         writefln("set intensity = %s", g_lightIntensity = new_intensity);
                         g_light.intensity = vec3(g_lightIntensity);
