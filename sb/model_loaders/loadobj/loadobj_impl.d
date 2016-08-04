@@ -42,6 +42,12 @@ void sbLoadObj (
             }
         }
         foreach (ref tri; intermedTris) {
+            //import std.stdio;
+            //writefln("tri!      %s/%s/%s  %s/%s/%s  %s/%s/%s", tri.v0, tri.t0, tri.n0, tri.v1, tri.t1, tri.n1, tri.v2, tri.t2, tri.n2);
+            //writefln("\tvertex: %s, %s, %s", tri.v0, tri.v1, tri.v2);
+            //writefln("\tnormal: %s, %s, %s", tri.n0, tri.n1, tri.n2);
+            //writefln("\tuvs:    %s, %s, %s", tri.t0, tri.t1, tri.t2);
+
             onTri(SbObj_Triangle([
                 SbObj_TriVert( verts[tri.v0], tri.hasNormals ? normals[tri.n0] : gen_normals[tri.v0].xyz, uvs[tri.t0] ),
                 SbObj_TriVert( verts[tri.v1], tri.hasNormals ? normals[tri.n1] : gen_normals[tri.v1].xyz, uvs[tri.t1] ),
@@ -143,7 +149,7 @@ void sbLoadObj (
             );
         }
         if (ncount == 0) {
-            auto fnorm = cross(
+            auto fnorm = -cross(
                 verts[v[0]].xyz - verts[v[1]].xyz,
                 verts[v[2]].xyz - verts[v[1]].xyz);
 
@@ -213,13 +219,13 @@ void sbLoadObj (
             parseTri(s);
 
         } else if (s[0..6] == "mtllib") {
-            import std.stdio;
-            writefln("mtllib! '%s'  ", s[6..$].strip);
+            //import std.stdio;
+            //writefln("mtllib! '%s'  ", s[6..$].strip);
             onMtlLib(s[6..$].strip);
     
         } else if (s[0..6] == "usemtl") {
-            import std.stdio;
-            writefln("mtl! '%s'", s[6..$].strip);
+            //import std.stdio;
+            //writefln("mtl! '%s'", s[6..$].strip);
             changeMtl( s[6..$].strip );
 
         } else {
