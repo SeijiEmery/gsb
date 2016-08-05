@@ -3,6 +3,7 @@ import sb.gl;
 import sb.events;
 import sb.model_loaders.tk_objfile;
 import sb.model_loaders.loadobj;
+import sb.image_loaders.stb_imageloader;
 
 import std.stdio;
 import std.datetime: StopWatch;
@@ -13,8 +14,12 @@ import gl3n.math;
 import std.exception: enforce;
 import std.format;
 import std.path: baseName;
-import std.algorithm: endsWith;
+import std.algorithm: endsWith, move;
 import std.string: fromStringz;
+import core.sync.mutex;
+import std.file;
+import std.path;
+import std.array;
 
 auto readFile (string path) {
     import std.file;
@@ -34,16 +39,19 @@ auto readArchive (string path, string file) {
 }
 class RawModelData {
     static class SubMesh {
-        string name;
-        size_t triCount;
-        float[] packedData;
+        string   name;
+        size_t   triCount;
+        float[]  packedData;
+        Material material;
+
         this (string name, size_t triCount) { 
             this.name = name; 
             this.triCount = triCount;
         }
     }
     auto centroid = vec3(0, 0, 0);
-    SubMesh[] meshes;
+    SubMesh[]        meshes;
+
     auto addMesh ( string name, size_t triCount ) { 
         auto mesh = new SubMesh(name, triCount);
         meshes ~= mesh;
@@ -59,19 +67,45 @@ class RawModelData {
         return addMesh(name, triCount);
     }
 }
-RawModelData loadObj (string path, string obj_file_contents, RawModelData model = null, bool genNormals = false ) {
+struct Material {
+    auto ambient  = vec3(0.0);
+    auto diffuse  = vec3(0.5);
+    auto specular = vec3(1.0);
+    float shininess = 1.0;
+    auto emissiveness = vec3(0.0);
+
+    string diffuse_map  = null;
+    string normal_map   = null;
+    string specular_map = null;
+    string emissive_map = null;
+    string disp_map     = null;
+}
+
+RawModelData loadObj (string path, string obj_file_contents, RawModelData model = null) {
     if (!model)
         model = new RawModelData();
     RawModelData.SubMesh mesh = null;
     Exception exc = null;
-
     vec3 center; size_t vertCount;
+
+    import std.path;
+    Material[string] materials;
+    auto objName = path.baseName;
+    auto basePath = path.dirName;
 
     void loadMtlLib (string name) {
         void loadMaterials ( ubyte[] contents ) {
+            string currentMtl = "";
+            materials[currentMtl] = Material.init;
+
+            void setTexture (out string texture, ref MtlTextureInfo info) {
+                texture = cast(string)basePath.chainPath(info.path).array;
+            }
             sbLoadMtl(cast(string)contents, new class MtlLoaderDelegate {
                 override void onNewMtl (string name) {
-                    writefln("material '%s'", name);
+                    if (name !in materials)
+                        materials[name] = Material.init;
+                    currentMtl = name; 
                 }
                 override void onUnhandledLine (uint lineNum, string line) {
                     writefln("Unhandled: %s, line %s '%s'", name, lineNum, line);
@@ -79,88 +113,57 @@ RawModelData loadObj (string path, string obj_file_contents, RawModelData model 
                 override void onParseError (string msg, uint lineNum, string line) {
                     writefln("Error parsing file %s, line %s: %s (line '%s')", name, lineNum, msg, line);
                 }
-                override void Ka (vec3 color) { 
-                    writefln("\tambient %s", color); 
-                }
-                override void Ka_map (MtlTextureInfo info) {
-                    writefln("\tambient %s", info);
-                }
- 
-                override void Kd (vec3 color) {
-                    writefln("\tdiffuse %s", color);
-                }
-                override void Kd_map (MtlTextureInfo info) {
-                    writefln("\tdiffuse %s", info);
-                }
- 
-                override void Ks (vec3 color) {
-                    writefln("\tspecular %s", color);
-                }
-                override void Ks_map (MtlTextureInfo info) {
-                    writefln("\tspecular %s", info);
-                }
- 
-                override void Ns (float shininess) {
-                    writefln("\tshininess %s", shininess);
-                }
-                override void Ns_map (MtlTextureInfo info) {
-                    writefln("\tshininess %s", info);
-                }
 
-                override void Ni (float refraction) {
-                    writefln("\traytracer refraction index: %s", refraction);
-                }
-                override void Ni_map (MtlTextureInfo info) {
-                    writefln("\traytracer refraction index: %s", info);
-                }
-                override void Tf (vec3 transmission_filter) {
-                    writefln("\traytracer transmission filter: %s", transmission_filter);
-                }
-                override void Tf_map (MtlTextureInfo info) {
-                    writefln("\traytracer transmission filter: %s", info);
-                }
- 
-                override void Tr (float transparency) {
-                    writefln("\ttransparency %s", transparency);
-                }
-                override void Tr_map (MtlTextureInfo info) {
-                    writefln("\ttransparency %s", info);
-                }
- 
-                override void illum_model (uint model) {
-                    writefln("\tunused: illum model %s", model);
-                }
- 
-                override void bump_map (MtlTextureInfo info) {
-                    writefln("\tnormal map %s", info);
-                }
-                override void disp_map (MtlTextureInfo info) {
-                    writefln("\tdisplacement map %s", info);
+                // useful stuff
+                override void Ka (vec3 color) { materials[currentMtl].ambient = color; }
+                override void Kd (vec3 color) { materials[currentMtl].diffuse = color; }
+                override void Ks (vec3 color) { materials[currentMtl].specular = color; }
+                override void Ns (float s)    { materials[currentMtl].shininess = s * 20; }
+                override void Ke (vec3 color) { materials[currentMtl].emissiveness = color; }
+
+                override void Ka_map (MtlTextureInfo info) {}
+                override void Kd_map (MtlTextureInfo info) { setTexture(materials[currentMtl].diffuse_map, info); }
+                override void Ks_map (MtlTextureInfo info) { setTexture(materials[currentMtl].specular_map, info); }
+                override void Ke_map (MtlTextureInfo info) { setTexture(materials[currentMtl].emissive_map, info); }
+                override void bump_map (MtlTextureInfo info) { setTexture(materials[currentMtl].normal_map, info); }
+                override void disp_map (MtlTextureInfo info) { setTexture(materials[currentMtl].disp_map, info); }
+
+                override void Ns_map (MtlTextureInfo info) {
+                    writefln("unused shininess map: %s", info);
                 }
                 override void refl_map (MtlTextureInfo info) {
-                    writefln("\treflection map %s", info);
+                    writefln("unused reflective map: %s", info);
                 }
-                override void decal_map (MtlTextureInfo info) {
-                    writefln("\tdecal map %s", info);
-                }
- 
-                override void Pr (float roughness) { writefln("\tunused: PBR roughness %s", roughness); }
-                override void Pr_map (MtlTextureInfo info) { writefln("\tunused: PBR roughness %s", info); }
- 
-                override void Pm (float metallicness) { writefln("\tunused: PBR metallic %s", metallicness); }
-                override void Pm_map (MtlTextureInfo info) { writefln("\tunused: PBR metallic %s", info); }
- 
-                override void Ps (float sheen) { writefln("\tunused: PBR sheen %s", sheen); }
-                override void Ps_map (MtlTextureInfo info) { writefln("\tunused: PBR sheen %s", info); }
- 
-                override void Ke (vec3 emissiveness) { writefln("\tunused: PBR emissiveness %s", emissiveness); }
-                override void Ke_map (MtlTextureInfo info) { writefln("\tunused: PBR emissiveness %s", info); }
- 
-                override void Pc (float clearcoat) { writefln("\tunused: PBR clearcoat %s", clearcoat); }
-                override void Pcr (float clearcoat_roughness) { writefln("\tunused: PBR clearcoat roughness %s", clearcoat_roughness); }
- 
-                override void aniso (vec3 v) { writefln("\tunused: PBR aniso %s", v); }
-                override void anisor (vec3 v) { writefln("\tunused: PBR anisor %s", v); }
+
+                // unused (as of yet)
+                override void Tr (float opacity) {}
+                override void Tr_map (MtlTextureInfo info) {}
+
+                // unused maps
+                override void decal_map (MtlTextureInfo info) {}
+
+                // unused PBR params
+                override void Pr (float roughness) {}
+                override void Pm (float metallicness) {}
+                override void Ps (float sheen) {}
+                override void Pc (float clearcoat) {}
+                override void Pcr (float clearcoat_roughness) {}
+
+                override void Pr_map (MtlTextureInfo info) {}
+                override void Pm_map (MtlTextureInfo info) {}
+                override void Ps_map (MtlTextureInfo info) {}
+
+                override void aniso (vec3 v) {}
+                override void anisor (vec3 v) {}
+
+                // unused raytracer params
+                override void Ni (float refraction) {}
+                override void Tf (vec3 transmission_filter) {}
+                override void Ni_map (MtlTextureInfo info) {}
+                override void Tf_map (MtlTextureInfo info) {}
+
+                // unused illum model
+                override void illum_model (uint model) {}
             });
         }
 
@@ -185,7 +188,11 @@ RawModelData loadObj (string path, string obj_file_contents, RawModelData model 
         }
         void onMtl (string mtlName, size_t triCount) {
             mesh = model.getMesh( mtlName, triCount );
-            //mesh.material = mtlName in model.materials ? model.materials[mtlName] : new SbMaterial();
+            if (mtlName !in materials) {
+                writefln("No material for '%s'", mtlName);
+            } else {
+                mesh.material = materials[mtlName];
+            }
         }
         void onMtlLib (string mtlLibName) {
             loadMtlLib(mtlLibName);
@@ -254,8 +261,14 @@ struct RenderableMeshPart {
     }
     RenderItem[] renderItems;
     GLVboRef[]   vbos;
+    Material     material;
 
-    void render () {
+    void render (ref GLShaderRef shader) {
+        shader.setv("material.Ka", material.ambient);
+        shader.setv("material.Kd", material.diffuse);
+        shader.setv("material.Ks", material.specular);
+        shader.setv("material.shininess", material.shininess);
+
         foreach (ref item; renderItems) {
             item.vao.drawArrays( item.primitive, cast(uint)item.start, cast(uint)item.count );
         }
@@ -263,6 +276,8 @@ struct RenderableMeshPart {
     // Generate from mesh part data
     this ( RawModelData.SubMesh mesh, GLShaderRef shader, IGraphicsContext gl, GLResourcePoolRef resourcePool ) {
         this.name = mesh.name;
+        this.material = mesh.material;
+
         void genTris ( float[] packedData_v3_s2_n3, size_t count ) {
             auto vbo = resourcePool.createVBO();
             gl.getLocalBatch.execGL({ bufferData(vbo, packedData_v3_s2_n3, GLBuffering.STATIC_DRAW); });
@@ -295,9 +310,128 @@ struct RenderableMesh {
             parts ~= RenderableMeshPart( mesh, shader, gl, resourcePool );
         }
     }
-    void render () {
-        foreach (ref part; parts)
-            part.render();
+    void render (ref GLShaderRef shader) {
+        foreach (ref part; parts) {
+            part.render(shader);
+        }
+    }
+}
+
+class ThreadManager {
+    Mutex mtTaskMutex;
+    void delegate()[] mtTaskQueue;
+
+    this () { mtTaskMutex = new Mutex(); }
+    void runAsync (void delegate() task) {
+        import core.thread;
+        void runTask () {
+            try {
+                task();
+            } catch (Throwable e) {
+                writefln("%s", e);
+            }
+        }
+        new Thread(&runTask).start();
+    }
+    void runOnMainThread (void delegate() task) {
+        synchronized (mtTaskMutex) {
+            mtTaskQueue ~= task;
+        }
+    }
+    void runMainThreadTasks () {
+        if (mtTaskQueue.length) {
+            synchronized (mtTaskMutex) {
+                foreach (task; mtTaskQueue) {
+                    try {
+                        task();
+                    } catch (Throwable e) {
+                        writefln("%s", e);
+                    }
+                }
+                mtTaskQueue.length = 0;
+            }
+        }
+    }
+}
+
+enum TextureSlot   { DIFFUSE, NORMAL }
+enum TextureStatus { NOT_LOADED, LOADED, LOAD_ERROR }
+
+struct TextureManager {
+    ThreadManager        threading;
+    GLResourcePoolRef    resourcePool;
+    GLTextureRef[string] textures;
+    TextureStatus[string] textureStatus;
+
+    GLTextureRef[TextureSlot.max+1] defaultTextures;
+    private uint numDefaultTexturesLoaded = 0;
+
+    string[TextureSlot.max+1] lastBoundTexture = null;
+    bool  [TextureSlot.max+1] isDefault = false;
+
+    this (ThreadManager threadManager, GLResourcePoolRef resourcePool) {
+        this.threading = threadManager;
+        this.resourcePool = resourcePool;
+        for (auto i = TextureSlot.max; i --> 0; ) {
+            defaultTextures[i] = resourcePool.createTexture();
+        }
+    }
+    @disable this(this);
+
+    // Not implicitely threadsafe -- call this only from main thread!
+    void loadTexture (string path, void delegate() postAction = null) {
+        if (path !in textures) {
+            textures[path] = resourcePool.createTexture();
+
+            if (!path.exists) {
+                writefln("Cannot load texture: '%s' does not exist", path);
+                textureStatus[path] = TextureStatus.LOAD_ERROR;
+                if (postAction) postAction();
+                return;
+            }
+            textureStatus[path] = TextureStatus.NOT_LOADED;
+            threading.runAsync({
+                try {
+                    auto texture = stb_loadImage(path, cast(ubyte[])read(path));
+                    enforce( texture.data, "null data!" );
+                    threading.runOnMainThread({
+                        // buffer data...
+
+                        textureStatus[path] = TextureStatus.LOADED;
+                        if (postAction) postAction();
+                    });
+                } catch (Exception e) {
+                    writefln("Failed to load texture '%s':\n%s", path, e);
+                    textureStatus[path] = TextureStatus.LOAD_ERROR;
+                    if (postAction) threading.runOnMainThread(postAction);
+                }
+            });
+        }
+    }
+    void loadDefaultTexture (TextureSlot slot, string path) {
+        loadTexture(path, {
+            enforce(textureStatus[path] == TextureStatus.LOADED,
+                format("Could not load default %s texture '%s'! (texture status = %s)", 
+                    slot, path, textureStatus[path]));
+
+            assert(path in textures, format("%s, %s", path, textures));
+            defaultTextures[slot] = textures[path];
+            ++numDefaultTexturesLoaded;
+        });
+    }
+    void bindTexture (string name, TextureSlot slot) {
+        if (name != lastBoundTexture[slot]) {
+            lastBoundTexture[slot] = name;
+
+            if (name in textures) {
+                isDefault[slot] = false;
+                //textures[name].bindTo( cast(uint)slot );
+            
+            } else if (!isDefault[slot]) {
+                isDefault[slot] = true;
+                //defaultTextures[slot].bindTo( cast(uint)slot );
+            }
+        }
     }
 }
 
@@ -420,6 +554,7 @@ void main (string[] args) {
             }
         `);
         auto gl_init_time = initTime.peek;
+        auto threading = new ThreadManager();
 
         struct LightInfo {
             vec3 pos = vec3(-25, 9, 0);
@@ -476,10 +611,10 @@ void main (string[] args) {
             //meshShader.setv("light.Ls", light.specular);
         }
         void setModel (ref mat4 model, ref CameraInfo camera, ref MaterialInfo material) {
-            meshShader.setv("material.Ka", material.ambient);
-            meshShader.setv("material.Kd", material.diffuse);
-            meshShader.setv("material.Ks", material.specular);
-            meshShader.setv("material.shininess", material.shininess);
+            //meshShader.setv("material.Ka", material.ambient);
+            //meshShader.setv("material.Kd", material.diffuse);
+            //meshShader.setv("material.Ks", material.specular);
+            //meshShader.setv("material.shininess", material.shininess);
             
             auto vp = camera.view * model;
             meshShader.setv("modelViewMatrix", vp);
@@ -489,70 +624,66 @@ void main (string[] args) {
         RenderableMesh[] meshes;
         GLResourcePoolRef[string] resourcePools;
 
-        import core.sync.mutex;
-        auto resourceLoadMutex = new Mutex();
-        void delegate()[] resourceLoadQueue;
+        auto textureManager = TextureManager(threading, gl.createResourcePrefix("textures"));
+        bool[string] uniqueTextures;
 
-        void pumpQueue () {
-            if (resourceLoadQueue.length) {
-                synchronized (resourceLoadMutex) {
-                    foreach (item; resourceLoadQueue)
-                        item();
-                    resourceLoadQueue.length = 0;
-                }
-            }
-        }
+        textureManager.loadDefaultTexture( TextureSlot.DIFFUSE, "/Users/semery/misc-projects/GLSandbox/assets/teapot/default.png" );
+        textureManager.loadDefaultTexture( TextureSlot.NORMAL,  "/Users/semery/misc-projects/GLSandbox/assets/teapot/default.png" );
 
-        void asyncLoadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true, bool genNormals = false ) {
+        void asyncLoadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true) {
             auto isZip = path.endsWith(".zip");
             auto fileName = isZip ? baseName(path, ".zip") : baseName(path);
             try {
                 StopWatch sw; sw.start();
                 auto contents = isZip ? readArchive(path, fileName) : readFile(path);
-                auto modelData = loadObj(path, cast(string)contents, null, genNormals);
+                auto modelData = loadObj(path, cast(string)contents, null);
                 if (!useCentroid)
                     modelData.centroid = vec3(0, 0, 0);
+                auto loadTime = sw.peek.to!Duration; sw.stop();
 
-                synchronized (resourceLoadMutex) {
-                    writefln("Loaded '%s' in %s. %s parts:", fileName, sw.peek.to!Duration, modelData.meshes.length);
+                // Assemble set of used textures
+                bool[string] usedTextures;
+                void insertTexturePath (string texture) {
+                    if (texture) usedTextures[texture] = true;
+                }
+                foreach (mesh; modelData.meshes) {
+                    insertTexturePath( mesh.material.diffuse_map );
+                    insertTexturePath( mesh.material.specular_map );
+                    insertTexturePath( mesh.material.normal_map );
+                }
+
+                threading.runOnMainThread({
+                    writefln("Loaded '%s' in %s. %s parts:", fileName, loadTime, modelData.meshes.length);
                     foreach (mesh; modelData.meshes)
                         writefln("\t'%s' | %s tris", mesh.name, mesh.triCount);
                     writefln("\tcentroid: %s", modelData.centroid);
                     writeln("");
-                    resourceLoadQueue ~= {
-                        import std.algorithm: move;
-                        auto pool = resourcePools[fileName] = gl.createResourcePrefix( fileName );
-                        auto mesh = RenderableMesh(modelData, meshShader, gl, pool, pos, scale, rotation);
-                        meshes ~= move(mesh);
-                    };
-                }
+
+                    // And load textures (async operation)
+                    foreach (texture; usedTextures.keys)
+                        textureManager.loadTexture(texture);
+
+                    auto pool = resourcePools[fileName] = gl.createResourcePrefix( fileName );
+                    auto mesh = RenderableMesh(modelData, meshShader, gl, pool, pos, scale, rotation);
+                    meshes ~= move(mesh);
+                });
             } catch (Exception e) {
                 writefln("Failed to load '%s':\n%s", fileName, e);
             }
         }
         void loadMesh (string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true, bool genNormals = false) {
-            import core.thread;
-            class ThreadTask : Thread {
-                this () { super(&run); }
-                void run () {
-                    try {
-                        writefln("Loading '%s'...", path);
-                        asyncLoadMesh(path, pos, scale, rotation, useCentroid, genNormals);
-                    } catch (Throwable e) {
-                        writefln("%s", e);
-                    }
-                }
-            }
-            auto thread = new ThreadTask().start();
+            threading.runAsync({
+                writefln("Loading '%s'...", path);
+                asyncLoadMesh(path, pos, scale, rotation, useCentroid);
+            });
         }
 
         void drawMeshes ( CameraInfo camera, ref LightInfo light, ref MaterialInfo material ) {
-            pumpQueue();
             gl.getLocalBatch.execGL({
                 setLight(camera, light);
                 foreach (ref mesh; meshes) {
                     setModel(mesh.transform, camera, material);
-                    mesh.render();
+                    mesh.render(meshShader);
                 }
             });
         }
@@ -651,6 +782,9 @@ void main (string[] args) {
 
         float fov = 60.0, near = 0.1, far = 1e3;
         bool drawTriArray = false; // draw instanced triangles
+
+        // Finish loading everything (hopefully)
+        threading.runMainThreadTasks();
 
         writefln("Loaded in   %s", initTime.peek.to!Duration);
         writefln("gl-init:    %s", gl_init_time.to!Duration);
@@ -770,6 +904,10 @@ void main (string[] args) {
                 g_light,
                 g_material
             );
+
+            // Run enqueued async operations for finishing file loads, etc
+            threading.runMainThreadTasks();
+
             platform.swapFrame();
         }
     } catch (Throwable e) {
