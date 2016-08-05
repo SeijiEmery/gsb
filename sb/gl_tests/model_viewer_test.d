@@ -397,6 +397,9 @@ struct TextureManager {
                     threading.runOnMainThread({
                         // buffer data...
 
+                        writefln("Loaded texture: '%s' | %s x %s, bit-depth %s",
+                            path, texture.width, texture.height, texture.componentDepth);
+
                         textureStatus[path] = TextureStatus.LOADED;
                         if (postAction) postAction();
                     });
