@@ -73,6 +73,7 @@ struct Material {
     auto specular = vec3(1.0);
     float shininess = 1.0;
     auto emissiveness = vec3(0.0);
+    float opacity = 1.0;
 
     string diffuse_map  = null;
     string normal_map   = null;
@@ -120,6 +121,7 @@ RawModelData loadObj (string path, string obj_file_contents, RawModelData model 
                 override void Ks (vec3 color) { materials[currentMtl].specular = color; }
                 override void Ns (float s)    { materials[currentMtl].shininess = s * 20; }
                 override void Ke (vec3 color) { materials[currentMtl].emissiveness = color; }
+                override void Tr (float opacity) { materials[currentMtl].opacity = opacity; }
 
                 override void Ka_map (MtlTextureInfo info) {}
                 override void Kd_map (MtlTextureInfo info) { setTexture(materials[currentMtl].diffuse_map, info); }
@@ -136,7 +138,6 @@ RawModelData loadObj (string path, string obj_file_contents, RawModelData model 
                 }
 
                 // unused (as of yet)
-                override void Tr (float opacity) {}
                 override void Tr_map (MtlTextureInfo info) {}
 
                 // unused maps
@@ -263,12 +264,7 @@ struct RenderableMeshPart {
     GLVboRef[]   vbos;
     Material     material;
 
-    void render (ref GLShaderRef shader) {
-        shader.setv("material.Ka", material.ambient);
-        shader.setv("material.Kd", material.diffuse);
-        shader.setv("material.Ks", material.specular);
-        shader.setv("material.shininess", material.shininess);
-
+    void render () {
         foreach (ref item; renderItems) {
             item.vao.drawArrays( item.primitive, cast(uint)item.start, cast(uint)item.count );
         }
@@ -308,11 +304,6 @@ struct RenderableMesh {
 
         foreach (mesh; model.meshes) {
             parts ~= RenderableMeshPart( mesh, shader, gl, resourcePool );
-        }
-    }
-    void render (ref GLShaderRef shader) {
-        foreach (ref part; parts) {
-            part.render(shader);
         }
     }
 }
@@ -395,10 +386,17 @@ struct TextureManager {
                     auto texture = stb_loadImage(path, cast(ubyte[])read(path));
                     enforce( texture.data, "null data!" );
                     threading.runOnMainThread({
-                        // buffer data...
-
                         writefln("Loaded texture: '%s' | %s x %s, bit-depth %s",
                             path, texture.width, texture.height, texture.componentDepth);
+
+                        TextureSrcFormat fmt;
+                        switch (texture.componentDepth) {
+                            case 1: fmt = TextureSrcFormat.RED; break;
+                            case 3: fmt = TextureSrcFormat.RGB; break;
+                            case 4: fmt = TextureSrcFormat.RGBA; break;
+                            default: enforce(0, format("Unsupported texture component(s): %s", texture.componentDepth));
+                        }
+                        textures[path].fromBytes(texture.data, vec2i(cast(int)texture.width, cast(int)texture.height), fmt);
 
                         textureStatus[path] = TextureStatus.LOADED;
                         if (postAction) postAction();
@@ -426,13 +424,16 @@ struct TextureManager {
         if (name != lastBoundTexture[slot]) {
             lastBoundTexture[slot] = name;
 
-            if (name in textures) {
+            if (name && name in textures) {
+                //writefln("Binding %s = %s", slot, name);
                 isDefault[slot] = false;
-                //textures[name].bindTo( cast(uint)slot );
+                textures[name].bindTo( cast(int)slot );
             
             } else if (!isDefault[slot]) {
+                //writefln("Binding %s = default: %s", slot, defaultTextures[slot]);
+
                 isDefault[slot] = true;
-                //defaultTextures[slot].bindTo( cast(uint)slot );
+                defaultTextures[slot].bindTo( cast(int)slot );
             }
         }
     }
@@ -475,8 +476,10 @@ void main (string[] args) {
 
             out vec3 position;
             out vec3 normal;
+            out vec2 uv;
             
             void main () {
+                uv = vertUV;
                 normal = normalize(normalMatrix * vertNormal);
                 position = vec3(modelViewMatrix * vec4(vertPosition, 1.0));
                 gl_Position = mvp * vec4(vertPosition, 1.0);
@@ -486,23 +489,27 @@ void main (string[] args) {
             #version 410
             in vec3 position;
             in vec3 normal;
+            in vec2 uv;
 
             struct LightInfo {
                 vec4 position;
                 vec3 intensity;
             };
             struct MaterialInfo {
-                vec3 Ka;
-                vec3 Kd;
-                vec3 Ks;
+                vec4 Ka;
+                vec4 Kd;
+                vec4 Ks;
                 float shininess;
             };
             uniform LightInfo    light;
             uniform MaterialInfo material;
 
+            uniform sampler2D Tex1;
+            uniform sampler2D Tex2;
+
             layout(location=0) out vec4 fragColor;
 
-            subroutine vec3 shadingModel ();
+            subroutine vec4 shadingModel ();
             subroutine uniform shadingModel activeShadingModel;
 
             void getLightValues (out vec3 n, out vec3 s, out vec3 v) {
@@ -516,23 +523,25 @@ void main (string[] args) {
             }
 
             subroutine (shadingModel)
-            vec3 phongModel_noHalfwayVector () {
+            vec4 phongModel_noHalfwayVector () {
                 vec3 n, s, v; getLightValues(n, s, v);
                 vec3 r = reflect(-s, n);
 
-                return light.intensity * (
-                    material.Ka +
-                    material.Kd * max(dot(s, n), 0.0) +
-                    material.Ks * pow(max(dot(r, v), 0.0), material.shininess)
-                );
+                vec4 texColor = texture( Tex1, vec2(uv.x, 1-uv.y) );
+                vec4 bump     = texture( Tex2, uv );
+
+                vec4 diffuse  = material.Ka + material.Kd * max(dot(s, n), 0.0);
+                vec4 specular = material.Ks * pow(max(dot(r, v), 0.0), material.shininess);
+
+                return vec4(light.intensity, 1.0) * (diffuse * texColor.rgba + specular);
             }
 
             subroutine (shadingModel)
-            vec3 phongModel_halfwayVector () {
+            vec4 phongModel_halfwayVector () {
                 vec3 n, s, v; getLightValues(n, s, v);
                 vec3 h = normalize(v + s);
 
-                return light.intensity * (
+                return vec4(light.intensity, 1.0) * (
                     material.Ka +
                     material.Kd * max(dot(s, n), 0.0) +
                     material.Ks * pow(max(dot(h, n), 0.0), material.shininess)
@@ -540,20 +549,37 @@ void main (string[] args) {
             }
 
             subroutine (shadingModel)
-            vec3 debug_normals () {
-                return normalize(normal);
+            vec4 debug_normals () {
+                return vec4(normalize(normal), 1.0);
+            }
+
+            subroutine (shadingModel)
+            vec4 debug_tex0 () {
+                return texture( Tex1, uv ).rgba;
             }
             subroutine (shadingModel)
-            vec3 debug_lightDir () {
+            vec4 debug_tex1 () {
+                return texture( Tex1, vec2(uv.x, 1 - uv.y) ).rgba;
+            }
+            subroutine (shadingModel)
+            vec4 debug_lightDir () {
                 vec3 n, s, v; getLightValues(n, s, v);
-                return s;
+                return vec4(s, 1.0);
+            }
+            subroutine (shadingModel)
+            vec4 debug_alpha () {
+                return phongModel_noHalfwayVector().aaaa;
+            }
+            subroutine (shadingModel)
+            vec4 debug_uvs () {
+                return vec4(uv, 0, 1);
             }
             //subroutine (shadingModel)
             //vec3 uniformColor_red () {
             //    return vec3(1,0,0);
             //}
             void main () {
-                fragColor = vec4(activeShadingModel(), 1.0);
+                fragColor = activeShadingModel();
             }
         `);
         auto gl_init_time = initTime.peek;
@@ -589,6 +615,10 @@ void main (string[] args) {
             phongModel_noHalfwayVector,
             debug_normals,
             debug_lightDir,
+            debug_tex0,
+            debug_tex1,
+            debug_uvs,
+            debug_alpha,
             //uniformColor_red,
         }
         LightingModel g_lightModel;
@@ -684,9 +714,23 @@ void main (string[] args) {
         void drawMeshes ( CameraInfo camera, ref LightInfo light, ref MaterialInfo material ) {
             gl.getLocalBatch.execGL({
                 setLight(camera, light);
+
+                meshShader.setv("Tex1", cast(int)TextureSlot.DIFFUSE);
+                //meshShader.setv("Tex2", cast(int)TextureSlot.NORMAL);
+
                 foreach (ref mesh; meshes) {
                     setModel(mesh.transform, camera, material);
-                    mesh.render(meshShader);
+                    foreach (part; mesh.parts) {
+                        meshShader.setv("material.Ka", vec4(part.material.ambient, part.material.opacity));
+                        meshShader.setv("material.Kd", vec4(part.material.diffuse, part.material.opacity));
+                        meshShader.setv("material.Ks", vec4(part.material.specular, part.material.opacity));
+                        meshShader.setv("material.shininess", part.material.shininess);
+
+                        textureManager.bindTexture( part.material.diffuse_map, TextureSlot.DIFFUSE );
+                        //textureManager.bindTexture( part.material.normal_map,  TextureSlot.NORMAL  );
+
+                        part.render();
+                    }
                 }
             });
         }
@@ -698,9 +742,12 @@ void main (string[] args) {
             vec3(-10, 0, 0), vec3(10), quat.zrotation(PI));
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
             vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
-
         loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/lost-empire/lost_empire.obj",
             vec3(100, 0, 0), vec3(1,1,1), quat.xrotation(PI), true, true);
+
+        // The wierd-ass textures in this one do not make opengl happy :(
+        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dabrovic-sponza/sponza.obj",
+        //    vec3(-100, 0, 0), vec3(1,1,1), quat.xrotation(PI));
 
 
         auto load_mesh_time = initTime.peek - gl_init_time;
@@ -847,11 +894,11 @@ void main (string[] args) {
 
                     fov = max(MIN_FOV, min(MAX_FOV, fov + (ev.axes[AXIS_TRIGGERS] - scroll_axis) * dt * FOV_CHANGE_SPEED));
 
-                    auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
-                        g_material.shininess + ev.axes[AXIS_DPAD_X] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
-                    if (g_material.shininess != new_shininess) {
-                        writefln("set shininess = %s", g_material.shininess = new_shininess);
-                    }
+                    //auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
+                    //    g_material.shininess + ev.axes[AXIS_DPAD_X] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
+                    //if (g_material.shininess != new_shininess) {
+                    //    writefln("set shininess = %s", g_material.shininess = new_shininess);
+                    //}
 
                     auto new_intensity = max(MIN_INTENSITY, min(MAX_INTENSITY,
                         g_lightIntensity + ev.axes[AXIS_DPAD_Y] * dt * (MAX_INTENSITY - MIN_INTENSITY) * INTENSITY_CHANGE_RATE));
@@ -878,6 +925,9 @@ void main (string[] args) {
                             g_light.pos = fwd,
                             g_light.isDirectional = true);
                     }
+                    if (ev.button == BUTTON_DPAD_LEFT && ev.pressed) advLightModel(-1);
+                    if (ev.button == BUTTON_DPAD_RIGHT && ev.pressed) advLightModel(+1);
+
                     if (ev.button == BUTTON_B && ev.pressed) {
                         advLightModel(+1);
                     }

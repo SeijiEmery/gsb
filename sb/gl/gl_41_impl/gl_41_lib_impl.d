@@ -42,6 +42,8 @@ private class GL41_GraphicsLib : IGraphicsLib {
         assert(initialized, "Did not call <gl_lib>.preInit()!");
         DerelictGL3.reload();
         glEnable(GL_DEPTH_TEST);
+        //glEnable (GL_BLEND);
+        //glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
     void teardown () {
         if (context)
@@ -561,9 +563,17 @@ private class Shader : IGraphicsResource, IShader {
 }
 private class Texture : IGraphicsResource, ITexture {
     ResourcePool m_graphicsPool;
+    uint         m_handle = 0;
+    TextureSrcFormat m_currentFormat;
+    auto             m_size = vec2i(0, 0);
+
 
     this (ResourcePool pool) {
         m_graphicsPool = pool;
+    }
+    override string toString () {
+        return format("Texture %s (%s %s x %s) '%s'", 
+            m_handle, m_currentFormat, m_size.x, m_size.y, m_graphicsPool.m_id);
     }
     override ITexture setFormat (TextureInternalFormat textureFormat) {
         assert(0, "Unimplemented!");
@@ -571,11 +581,62 @@ private class Texture : IGraphicsResource, ITexture {
     override ITexture fromFile (string path) {
         assert(0, "Unimplemented!");
     }
+
     override ITexture fromBytes (ubyte[] contents, vec2i dimensions, TextureSrcFormat srcFormat) {
-        assert(0, "Unimplemented!");
+        glFlushErrors();
+        if (!m_handle) {
+            glGenTextures(1, &m_handle);
+
+            glBindTexture(GL_TEXTURE_2D, m_handle); 
+            glAssertOk(format("glBindTexture(GL_TEXTURE_2D, %s)", m_handle));
+        } else {
+            glBindTexture(GL_TEXTURE_2D, m_handle);
+        }
+        GLenum internalFmt, baseFmt;
+        final switch (srcFormat) {
+            case TextureSrcFormat.RED: internalFmt = GL_R8; baseFmt = GL_RED; break;
+            case TextureSrcFormat.RGB: internalFmt = GL_RGB8; baseFmt = GL_RGB; break;
+            case TextureSrcFormat.RGBA: internalFmt = GL_RGBA8; baseFmt = GL_RGBA; break;
+        }
+        glTexStorage2D(GL_TEXTURE_2D, 1, internalFmt, dimensions.x, dimensions.y);
+        glAssertOk(format("glTexStorage2D(GL_TEXTURE_2D, 1, %s, %s, %s)",
+            srcFormat, dimensions.x, dimensions.y));
+    
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, dimensions.x, dimensions.y, baseFmt,
+            GL_UNSIGNED_BYTE, contents.ptr);
+        glAssertOk(format("glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, %s, %s, %s, GL_UNSIGNED_BYTE, %s)",
+            dimensions.x, dimensions.y, srcFormat, contents.ptr));
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glAssertOk("glTexParameteri(...)");
+
+        m_currentFormat = srcFormat;
+        m_size = dimensions;
+
+        import std.stdio;
+        writefln("buffered data: %s", this);
+
+        return this;
+    }
+    override bool bindTo (uint textureSlot) {
+        if (m_handle) {
+            glActiveTexture(GL_TEXTURE0 + textureSlot);
+            glAssertOk(format("glActiveTexture(%s)", textureSlot));
+
+            glBindTexture(GL_TEXTURE_2D, m_handle);
+            glAssertOk(format("glBindTexture(GL_TEXTURE_2D, %s)", m_handle));
+
+            return true;
+        }
+        return false;
     }
     mixin RetainRelease;
-    private void onReleased () { 
+    private void onReleased () {
+        if (m_handle) {
+            glDeleteTextures(1, &m_handle);
+            m_handle = 0;
+        }
         m_graphicsPool.releaseResource(this);
     }
 }
