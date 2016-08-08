@@ -12,14 +12,12 @@ string munchToEol (ref string s) {
     return s;
 }
 unittest {
-    auto s1 = "foobarbaz\n\r;borg\n";
-    assert((s1.munchToEol, s1 == "\n\r;borg\n"));
-
-    auto s2 = "\r\nfoo";
-    assert((s2.munchToEol, s2 == "\r\nfoo"));
-
-    auto s3 = "";
-    assert((s3.munchToEol, s3 == ""));
+    string s;
+    assert(munchToEol(s = " aslfkj \n\r") == "\n\r");
+    assert(munchToEol(s = "asdf# blarg\n\r") == "\n\r");
+    assert(munchToEol(s = "asdf# blarg\r\n") == "\r\n");
+    assert(munchToEol(s = "\nblarg") == "\nblarg");
+    assert(munchToEol(s = "") == "");
 }
 
 string sliceToEol (string s) {
@@ -28,6 +26,12 @@ string sliceToEol (string s) {
         ++i;
     return s[0..i];
 }
+unittest {
+    assert(sliceToEol(" as;lfj\nblarg") == " as;lfj");
+    assert(sliceToEol("\nblarg") == "");
+    assert(sliceToEol("") == "");
+}
+
 bool atEol (string s) { return !s.length || s[0] == '\n' || s[0] == '\r' || s[0] == '\0' || s[0] == '#'; }
 bool munchEol (ref string s) {
     if (!s.length) return true;
@@ -36,17 +40,35 @@ bool munchEol (ref string s) {
         return true;
     return false;
 }
+unittest {
+    string s;
+    assert(munchEol(s = "") && s == "");
+    assert(!munchEol(s = " \n") && s == " \n");
+    assert(munchEol(s = "\n") && s ==    "");
+    assert(munchEol(s = "\n\r asdf\n") && s == " asdf\n");
+    assert(munchEol(s = "# asdfklj \n\rasdf") && s == "asdf");
+    assert(munchEol(s = "# asdf") && s == "");
+}
 bool munchWs (ref string s) {
     auto l = s.length;
     if (l && (s[0] == ' ' || s[0] == '\t')) {
         do {
             s = s[1..$];
-        } while (l --> 0 && (s[0] == ' ' || s[0] == '\t'));
+        } while (l --> 1 && (s[0] == ' ' || s[0] == '\t'));
         return true;
     }
     return false;
     //return s.munch(" \t").length != 0; 
 }
+unittest {
+    string s;
+    assert(!munchWs(s = "") && s == "");
+    assert(munchWs(s = " ") && s == "");
+    assert(munchWs(s = " \t") && s == "");
+    assert(!munchWs(s = "a 01293") && s == "a 01293");
+    assert(!munchWs(s = "\n asdf") && s == "\n asdf");
+}
+
 bool eof (string s) {
     return !s.length;
 }
@@ -60,8 +82,22 @@ uint parseUint ( ref string s ) {
     }
     return v;
 }
+unittest {
+    string s;
+    assert(parseUint(s = "123 456") == 123 && s == " 456");
+    assert(parseUint(s = "-12 34") == 0 && s == "-12 34");
+    assert(parseUint(s = " 12 34") == 0 && s == " 12 34");
+}
+
 bool isNumeric (string s) {
-    return s[0] == '-' || !(s[0] < '0' || s[0] > '9');
+    return s.length && (s[0] == '-' || !(s[0] < '0' || s[0] > '9'));
+}
+unittest {
+    assert(!"".isNumeric);
+    assert(!"askfl;ajs".isNumeric);
+    assert("120938".isNumeric);
+    assert("-12093".isNumeric);
+    assert(!" 9012".isNumeric);
 }
 float parseFloat ( ref string s ) {
     bool sign = false;
@@ -70,36 +106,64 @@ float parseFloat ( ref string s ) {
         s = s[1..$];
     }
     assert(s[0] >= '0' && s[0] <= '9');
-    auto v = cast(double)parseUint(s);
-    if (s[0] == '.') {
+    auto v = sign ?
+        -cast(double)parseUint(s) :
+        cast(double)parseUint(s);
+
+    if (s.length && s[0] == '.') {
         s = s[1..$];
         double m = 0.1;
-        while(!(s[0] < '0' || s[0] > '9')) {
+        while(s.length && !(s[0] < '0' || s[0] > '9')) {
             v += m * cast(double)(s[0] - '0');
             m *= 0.1;
             s = s[1..$];
         }
-        if (s[0] == 'e' || s[0] == 'E') {
-            if (s[1] == '-') {
-                s = s[2..$];
-                auto n = parseUint(s);
-                while (n --> 0)
-                    v *= 0.1;
-            } else {
-                s = s[1] == '+' ?
-                    s[2..$] : s[1..$];
+    }
+    if (s.length && (s[0] == 'e' || s[0] == 'E')) {
+        // TODO: this a terrible way to calculate the exponent value!
+        if (s[1] == '-') {
+            s = s[2..$];
+            auto n = parseUint(s);
+            while (n --> 0)
+                v *= 0.1;
+        } else {
+            s = s[1] == '+' ?
+                s[2..$] : s[1..$];
 
-                auto n = parseUint(s);
-                while (n --> 0)
-                    v *= 10.0;
-            }
-            //return s[1] == '-' ?
-            //    cast(float)(v * pow(10, -parseUint(s = s[2..$]))) :
-            //    cast(float)(v * pow(10, parseUint(s = s[1..$])));
+            auto n = parseUint(s);
+            while (n --> 0)
+                v *= 10.0;
         }
+        //return s[1] == '-' ?
+        //    cast(float)(v * pow(10, -parseUint(s = s[2..$]))) :
+        //    cast(float)(v * pow(10, parseUint(s = s[1..$])));
     }
     return cast(float)v;
 }
+unittest {
+    import core.exception: AssertError;
+    import std.exception: enforce;
+
+    immutable float epsilon = 1e-5;
+    void assertApproxEq (float a, float b, string file = __FILE__, size_t line = __LINE__) {
+        //assert(abs(a - b) < epsilon, format("%s != %s", a, b));
+        enforce!AssertError(abs(a - b) / abs(b) < epsilon, format("%s != %s", a, b), file, line);
+    }
+    string s;
+    assertApproxEq(parseFloat(s = "1"), 1 );
+    assertApproxEq(parseFloat(s = "-1"), -1 );
+    assertApproxEq(parseFloat(s = "-120389012 "), -120389012 );
+    assertApproxEq(parseFloat(s = "01923890"), 1923890);
+    assertApproxEq(parseFloat(s = "34891809)()"), 34891809);
+    assertApproxEq(parseFloat(s = "+213.34210198"), 213.34210198);
+    assertApproxEq(parseFloat(s = "-102.012984091"), -102.012984091);
+    assertApproxEq(parseFloat(s = "120.10293e-10"), 120.10293e-10);
+    assertApproxEq(parseFloat(s = "110298e13"), 110298e13);
+    assertApproxEq(parseFloat(s = "-01928.190284e14"), -1928.190284e14);
+
+    writefln("all tests passed.");
+}
+
 uint parseFloats (ref string s, ref float[] values) {
     uint n = 0;
     s.munch(" \t");
