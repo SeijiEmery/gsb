@@ -1,14 +1,47 @@
 import std.stdio;
-import std.math: pow;
+import std.math;
 
-float parseFloat (string s) {
+
+// http://stackoverflow.com/a/23862121
+uint clz (uint x) {
+    immutable char debruijn32[32] = [
+        0, 31, 9, 30, 3, 8, 13, 29, 2, 5, 7, 21, 12, 24, 28, 19,
+        1, 10, 4, 14, 6, 22, 25, 20, 11, 15, 23, 26, 16, 27, 17, 18
+    ];
+    x |= x>>1;
+    x |= x>>2;
+    x |= x>>4;
+    x |= x>>8;
+    x |= x>>16;
+    x++;
+    return debruijn32[x*0x076be629>>27];
+}
+
+float decimalToFlt (bool sign, uint mantissa, int exp) {
+    if (exp > +128) return +float.nan;
+    if (exp < -127) return -float.nan;
+
+    exp += 127;
+    mantissa = (exp << 23) | (mantissa & 0x7FFFFF);
+    //if (sign) mantissa |= 1 << 31;
+    return *(cast(float*)&mantissa);
+}
+
+void parseDecimal (ref string s, ref bool sign, ref uint mantissa, ref int exp, bool useDecExp = true) {
     auto s0 = s;
+    if (!s.length)
+        return;
 
-    bool sign = false;
-    if (s[0] == '-') { sign = true; s = s[1..$]; }
-    else if (s[0] == '+') s = s[1..$];
+    if (s[0] == '-') { 
+        sign = true; 
+        s = s[1..$]; }
+    else {
+        if (s[0] == '+') 
+            s = s[1..$];
+        sign = false;
+    }
 
-    uint mantissa = 0; int exp = 0;
+    mantissa = 0; exp = 0;
     while (s.length && !(s[0] < '0' || s[0] > '9')) {
         mantissa *= 10;
         mantissa += cast(uint)(s[0] - '0');
@@ -42,14 +75,46 @@ float parseFloat (string s) {
             e += cast(uint)(s[0] - '0');
             s = s[1..$];
         }
-        exp += e_sign ? -e : e;
+        if (useDecExp)
+            exp += e_sign ? -e : e;
+        else
+            exp = e_sign ? -e : e;
     }
+}
+float parseFloat_powMethod (ref string s) {
+    bool sign; uint mantissa; int exp;
+    parseDecimal(s, sign, mantissa, exp);
+    return cast(float)(cast(double)(mantissa) * pow(10, cast(double)exp));
+}
+float parseFloat_shiftMethod (ref string s) {
+    bool sign; uint mantissa; int exp; auto s0 = s;
+    parseDecimal(s, sign, mantissa, exp, false);
 
-    auto v = cast(int)mantissa;
-    if (sign) v = -v;
+    auto v0 = mantissa;
 
-    //writefln("Value '%s' => %se%s", s0, v, exp);
-    return cast(float)(cast(double)(v) * pow(10, cast(double)exp));
+    auto shifts = 0;
+    while ((mantissa & (1 << 23)) == 0) {
+        mantissa <<= 1;
+        ++shifts;
+    }
+    //writefln("%s | %s | %s | %s | shifts: %s", s0, v0, mantissa, exp, shifts);
+    //writefln("%s shifts | exp = %s", shifts, exp);
+    return decimalToFlt(sign, mantissa, 23 - shifts);
+}
+
+float parseFloat_clzMethod (ref string s) {
+    bool sign; uint mantissa; int exp; auto s0 = s;
+    parseDecimal(s, sign, mantissa, exp);
+
+    int shift = cast(int)clz(mantissa) - 8;
+
+    //writefln("%s | %s | %s | %s | adj clz: %s", 
+    //    s0, mantissa, mantissa << (clz(mantissa)-8), 
+    //    exp, shift);
+
+    //writefln("base exp %s + %s => %s", 23 - shift, exp, exp, 23 - shift + exp);
+    mantissa <<= shift;
+    return decimalToFlt(sign, mantissa, 23 - shift);
 }
 
 void main () {
@@ -66,7 +131,40 @@ void main () {
         "1234.456e20"
     ];
     foreach (flt; flts) {
-        writefln("%s => %s (%s)", 
-            flt, parseFloat(flt), parse!float(flt));
+        string s;
+        writefln("%s => %s | %s | %s | %s", flt, parse!float(s = flt),
+            parseFloat_powMethod(s = flt), 
+            parseFloat_shiftMethod(s = flt),
+            parseFloat_clzMethod(s = flt));
     }
+
+    double benchmark (string fcn)() {
+        import std.datetime;
+        string flt, s = "1234.56328947e-89";
+        auto n = 1_000_000;
+        float[] results;
+
+        //writefln("Running benchmark: %s", fcn);
+        StopWatch sw; sw.start();
+        while (n --> 0) {
+            mixin(`results ~= `~fcn~`(flt = s);`);
+        }
+        return cast(double)sw.peek.usecs * 1e-6;
+    }
+    double benchStd () {
+        import std.datetime;
+        string flt, s = "1234.56328947e-89";
+        auto n = 1_000_000;
+        float[] results;
+
+        StopWatch sw; sw.start();
+        while (n --> 0) {
+            results ~= parse!float(flt = s);
+        }
+        return cast(double)sw.peek.usecs * 1e-6;
+    }
+    writefln("bench parse!float:      %s", benchmark!(`parse!float`));
+    writefln("bench parseFloat_pow:   %s", benchmark!(`parseFloat_powMethod`));
+    writefln("bench parseFloat_shift: %s", benchmark!(`parseFloat_shiftMethod`));
+    writefln("bench parseFloat_clz:   %s", benchmark!(`parseFloat_clzMethod`));
 }
