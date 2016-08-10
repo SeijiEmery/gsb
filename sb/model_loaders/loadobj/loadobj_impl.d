@@ -25,7 +25,6 @@ public interface ObjLoaderDelegate {
     void onParseError    (string msg, uint lineNum, string line);
 }
 
-
 // Helper method: try parsing a signed integer, advancing s and returning true iff parsed; false otherwise.
 private bool tryParseInt (ref string s, ref int v) {
     auto sv = s.munch("-0123456789");

@@ -4,7 +4,7 @@ import std.math;
 
 // http://stackoverflow.com/a/23862121
 uint clz (uint x) {
-    immutable char debruijn32[32] = [
+    immutable char[32] debruijn32 = [
         0, 31, 9, 30, 3, 8, 13, 29, 2, 5, 7, 21, 12, 24, 28, 19,
         1, 10, 4, 14, 6, 22, 25, 20, 11, 15, 23, 26, 16, 27, 17, 18
     ];
@@ -128,7 +128,8 @@ void main () {
         "7894.21",
         "1234.456",
         "1234.456e-20",
-        "1234.456e20"
+        "1234.456e20",
+        "1231094801928.021380192012"
     ];
     foreach (flt; flts) {
         string s;
