@@ -5,21 +5,31 @@ import std.conv;
 import std.string;
 import std.stdio;
 import std.math;
+import std.exception: enforce;
 
+// Advance s up to the first eol or eof (incl end-of-string) character.
+// Returns a slice of s from start to the first eol character or comment (#).
 string munchToEol (ref string s) {
-    while (s.length && s[0] != '\n' && s[0] != '\r' && s[0] != '\0')
-        s = s[1..$];
-    return s;
+    size_t i = 0, j = 0;
+    while (i < s.length && s[i] != '\n' && s[i] != '\r' && s[i] != '\0') {
+        if (s[i] == '#' && j == 0)
+            j = i;
+        ++i;
+    }
+    auto slice = j ? s[0..j] : s[0..i];
+    s = s[i..$];
+    return slice;
 }
 unittest {
     string s;
-    assert(munchToEol(s = " aslfkj \n\r") == "\n\r");
-    assert(munchToEol(s = "asdf# blarg\n\r") == "\n\r");
-    assert(munchToEol(s = "asdf# blarg\r\n") == "\r\n");
-    assert(munchToEol(s = "\nblarg") == "\nblarg");
-    assert(munchToEol(s = "") == "");
+    assert(munchToEol(s = " aslfkj \n\r") == " aslfkj " && s == "\n\r");
+    assert(munchToEol(s = "asdf# blarg\n\r") == "asdf" && s == "\n\r");
+    assert(munchToEol(s = "asdf# blarg\r\n") == "asdf" && s == "\r\n");
+    assert(munchToEol(s = "\nblarg") == "" && s == "\nblarg");
+    assert(munchToEol(s = "") == "" && s == "");
 }
 
+// Return a slice of s to eol / eof; ignores comments (#).
 string sliceToEol (string s) {
     size_t i = 0;
     while (i < s.length && s[i] != '\n' && s[i] != '\r' && s[i] != '\0')
@@ -270,6 +280,293 @@ unittest {
     assert(!tryParseInt(s = "123.04e6", value) && s == ".04e6");
 }
 
+
+
+private enum ParseCmd {
+    UNKNOWN = 0, COMMENT,
+    VERTEX, VERTEX_NORMAL, VERTEX_UV, FACE,
+    GROUP, OBJECT, MATERIAL, MATERIAL_LIB
+}
+
+/// Parses a line in an obj file. Returns ParseCmd.UNKNOWN if unparseable, or
+/// ParseCmd.COMMENT for a comment _or_ empty line (possibly containing a comment).
+///
+/// Otherwise, returns a corresponding ParseCmd for that line and advances s up to the
+/// start of that line, at which point it should be parseable.
+private ParseCmd parseLine (ref string s) {
+    s.munchWs();
+    if (s.length < 2 || s.atEol)  // eol includes '#', '\n', '\r'
+        return ParseCmd.COMMENT;
+
+    switch (s[0]) {
+        case 'v': switch (s[1]) {
+            case ' ': return (s = s[2..$]).munchWs, ParseCmd.VERTEX;
+            case 't':
+                if (s[2] == ' ') return (s = s[3..$]).munchWs, ParseCmd.VERTEX_UV;
+                else break;
+            case 'n':
+                if (s[2] == ' ') return (s = s[3..$]).munchWs, ParseCmd.VERTEX_NORMAL;
+                else break;
+            default:
+        } break;
+        case 'f':
+            if (s[1] == ' ') return (s = s[2..$]).munchWs, ParseCmd.FACE;
+            else break;
+        case 'o':
+            if (s[1] == ' ') return (s = s[2..$]).munchWs, ParseCmd.OBJECT;
+            else break;
+        case 'g':
+            if (s[1] == ' ') return (s = s[2..$]).munchWs, ParseCmd.GROUP;
+            else break;
+        case 'u':
+            if (s.length > 7 && s[0..7] == "usemtl ")
+                return (s = s[7..$]).munchWs, ParseCmd.MATERIAL;
+            break;
+        case 'm':
+            if (s.length < 7 && s[0..7] == "mtllib ")
+                return (s = s[7..$]).munchWs, ParseCmd.MATERIAL_LIB;
+            break;
+        default:
+    }
+    return ParseCmd.UNKNOWN;
+}
+unittest {
+    string s;
+    assert(parseLine(s = "") == ParseCmd.COMMENT);
+    assert(parseLine(s = "\t  #asdf") == ParseCmd.COMMENT);
+    assert(parseLine(s = "\t   asdf") == ParseCmd.UNKNOWN);
+    assert(parseLine(s = "\t   v asdf") == ParseCmd.VERTEX && s == "asdf");
+    assert(parseLine(s = "v foo") == ParseCmd.VERTEX && s == "foo");
+    assert(parseLine(s = "vfoo") == ParseCmd.UNKNOWN);
+
+    assert(parseLine(s = "vt foo")   == ParseCmd.VERTEX_UV && s == "foo");
+    assert(parseLine(s = "vn \tfoo") == ParseCmd.VERTEX_NORMAL && s == "foo");
+    assert(parseLine(s = "o  foo")   == ParseCmd.OBJECT && s == "foo");
+    assert(parseLine(s = "g \t bar") == ParseCmd.GROUP && s == "bar");
+    assert(parseLine(s = "usemtl b") == ParseCmd.MATERIAL && s == "b");
+    assert(parseLine(s = "mtllib bar \n") == ParseCmd.MATERIAL_LIB && s == "bar \n");
+}
+
+
+/// Get a detailed error description for an unparseable line in an .obj file.
+/// Line is a slice of the given line where the error occured, from the start 
+/// (includes .obj commands like 'vn', 'o', etc) to the end of the line (does 
+/// not include newline or comment characters)
+string getErrorContext (string line, string err) {
+    // TODO: better error descriptions
+    return format("Could not parse '%s': %s", line, err);
+}
+
+/// Parse an .obj identifier (object / group / material / mtllib).
+/// Can return null; should throw a parse exception on error (invalid name like 'blorg;198791ha alsdfbal hiuf').
+/// Is passed a string that contains no leading whitespace; should advance string to end of line w/ munchToEol.
+string parseIdent (ref string s) {
+    return s.munchToEol.strip();
+}
+unittest {
+    // parseIdent should:
+    // - be capable of taking null strings, and strings w/out eols
+    // - take long strings (not slices) and respect / only slice to eols
+    // - strip surrounding whitespaces from names
+
+    string s;
+    assert(parseIdent(s = "") == "" && s == "");
+    assert(parseIdent(s = "f") == "f" && s == "");
+    assert(parseIdent(s = "foo \n foob blah") == "foo" && s == "\n foob blah");
+    assert(parseIdent(s = "foo blarg  \r\nblah\n\r") == "foo blarg" && s == "\r\nblah\n\r");
+    assert(parseIdent(s = "foo blarg # forb") == "foo blarg" && s == "");
+}
+
+
+// Try parsing vertex after 'v ' (no 'v' or whitespace), storing 3 floats into verts.
+// Should return false or throw to indicate an error.
+private bool parseVertex (ref string s, ref float[] verts) {
+    auto n = parseFloats( s, verts );
+
+    // Accepts 3 floats _or_ 4, according to spec, but discards the last value (for 4)
+    // so we only ever push 3 values onto verts.
+    if (n == 3) return true;
+    if (n == 4) return --verts.length, true;
+    else {
+        // If an unexpected number of floats was parsed, returns false to report an error
+        // but will _also_ do error recovery (pops off parsed values; pushes on 3 nans),
+        // so parse can continue even if there's an error on one line.
+        // (not doing this will mess up triangle indices, causing a cascade of misleading
+        // error messages. The loader may / may not be configured to support multiple and/or
+        // non-critical error messages (the alternative is to just throw, catch, and terminate
+        // w/ an exception on error), but it's important that we support this just in case).
+        if (n) verts.length -= n;
+        verts ~= [ float.nan, float.nan, float.nan ];
+        return false;
+    }
+}
+unittest {
+    string s; float[] values;
+    assert(!parseVertex(s = "", values));
+    assert(!parseVertex(s = " 10.24 2.93 4.4", values));
+    assert(parseVertex(s = "10.24 2.93 4.4 \nfoo", values) && s == "\nfoo" && values[$-3..$] == [ 10.24, 2.93, 4.4 ]);
+    assert(parseVertex(s = "1 2 3 4", values) && s == "" && values[$-3..$] == [ 1f, 2f, 3f ]);
+    assert(!parseVertex(s = "1 2 3 4 5 6\nfoo", values) && s == "\nfoo");
+    assert(!parseVertex(s = "1 2 3 4 5# \r\nfoo", values) && s == "# \r\nfoo");
+    assert(!parseVertex(s = "1 2 ", values) && s == "");
+
+    assert(parseVertex(s = "1 2 3 4\n 4 5 6", values) && s == "\n 4 5 6");
+    assert(parseVertex(s = "1 2 3 4# foo\n", values) && s == "# foo\n");
+    assert(parseVertex(s = "1 2 3 4\t # foo asdf\r", values) && s == "# foo asdf\r");
+}
+
+// Parse vertex normal (vn). Accepts a tuple of 3 floats; always pushes 3 onto normals.
+private bool parseVertexNormal (ref string s, ref float[] normals) {
+
+    // Normal should only ever consist of 3 floats.
+    auto n = parseFloats( s, normals );
+    if (n == 3) return true;
+    else {
+        if (n) normals.length -= n;
+        normals ~= [ float.nan, float.nan, float.nan ];
+        return false;
+    }
+}
+unittest {
+    string s; float[] values;
+    assert(!parseVertexNormal(s = "1 2", values));
+    assert(parseVertexNormal(s = "1 2 3", values) && values[$-3..$] == [ 1f, 2f, 3f ]);
+    assert(!parseVertexNormal(s = "1 2 3 4", values));
+}
+
+// Parse vertex uv / tex coord (vt). Accepts 2-3 floats; always pushes 2 onto uvs.
+private bool parseVertexUv (ref string s, ref float[] uvs) {
+
+    // Uv _may_ consist of 2 floats or 3, according to spec, 
+    // but only 2 are supported so we ignore the 3rd.
+    auto n = parseFloats( s, uvs );
+    if (n == 2) return true;
+    else if (n == 3) return --uvs.length, true;
+    else {
+        if (n) uvs.length -= n;
+        uvs ~= [ float.nan, float.nan ];
+        return false;
+    }
+}
+unittest {
+    string s; float[] values;
+    assert(!parseVertexUv(s = "1 ", values));
+    assert(parseVertexUv(s = "1 2", values) && values[$-2..$] == [ 1f, 2f ]);
+    assert(parseVertexUv(s = "4 5 6", values) && values[$-2..$] == [ 4f, 5f, 6f ]);
+    assert(!parseVertexUv(s = "1 2 3 4", values));
+}
+
+
+
+bool parseFace (ref string s, MeshPart* mesh, const ref ObjParserContext parser) {
+    int[15] indices = 0;
+    int vcount = 0, tcount = 0, ncount = 0;
+
+    auto vertexCount = cast(int)parser.vertexData.length / 3;
+    auto normalCount = cast(int)parser.normalData.length / 3;
+    auto uvCount     = cast(int)parser.uvData.length / 2;
+
+    bool parseIndex ( ref string s, uint i, uint max_bound ) {
+        auto index = s[0] == '-' ?
+            max_bound - parseUint( s = s[1..$] ) + 1 :
+            parseUint( s );
+
+        enforce(index - 1 < max_bound, format("Face index out of bounds: %s > %s",
+            index, max_bound));
+
+        indices[i] = index;
+        return true;
+    }
+    s.munchWs();
+    while (!s.atEol) {
+        enforce(s[0] == '-' || s[0].isDec, format("Expected face index, not '%s'", s.sliceToEol));
+
+        if (++vcount > 4 || !parseIndex(s, vcount * 3, vertexCount))
+            return false;
+
+        if (s[0] == '/') {
+            s = s[1..$];
+            if (s[0] != '/' && parseIndex(s, vcount * 3 + 1, cast(uint)uvCount )) {
+                enforce(++tcount == vcount, format("Unmatched indices: %s verts != %s uvs", vcount, tcount));
+            }
+            if (s[0] == '/') {
+                s = s[1..$];
+                if (parseIndex( s, vcount * 3 + 2, cast(uint)normalCount)) {
+                    enforce(++ncount == vcount, format("Unmatched indices: %s verts != %s normals", vcount, ncount));
+                }
+            }
+        }
+        s.munchWs();
+    }
+    enforce(vcount >= 3, format("Not enough indices for face: %s", vcount));
+    switch (vcount) {
+        case 3:
+            mesh.tris ~= indices[0..9];
+            //writefln("tri %s '%s'", indices, lineStart.sliceToEol);
+            break;
+        case 4:
+            mesh.quads ~= indices[0..12];
+            //writefln("quad %s '%s'", indices, lineStart.sliceToEol);
+            break;
+        default: assert(0, format("%s!", vcount));
+    }
+    return true;
+}
+unittest {
+    ObjParserContext parser;
+    auto mesh = parser.currentMesh;
+    assert(mesh !is null);
+    auto quadLength = mesh.quads.length, triLength = mesh.tris.length;
+    bool pushedQuad = false, pushedTri = false;
+
+    // try/catch wrapper for parseFace since it can signal errors by returning false or
+    // throwing exceptions; we'll convert both of these to 'return false' for unit testing purposes.
+    bool tryParseFace (ref string s) {
+        bool ok = true;
+        try {
+            ok = parseFace(s, mesh, parser);
+        } catch (Exception) {
+            ok = false;
+        }
+        pushedQuad = quadLength != mesh.quads.length; quadLength = mesh.quads.length;
+        pushedTri  = triLength  != mesh.tris.length; triLength = mesh.tris.length;
+        return ok;
+    }
+
+    // "add" verts, uvs, and normals so bounds checks don't kick in!
+    parser.vertexData.length += 3 * 12;
+    parser.normalData.length += 3 * 12;
+    parser.uvData.length     += 2 * 12;
+
+    string s;
+    assert(!tryParseFace(s = "") && !pushedTri && !pushedQuad);
+    assert(!tryParseFace(s = " 12 3 4\n") && s == " 12 3 4\n" && !pushedTri && !pushedQuad);
+    assert(tryParseFace(s = "12 3 4#foo \n") && s == "# foo \n" && pushedTri && !pushedQuad);
+    assert(tryParseFace(s = "12 3 4  # foo \n") && s == "# foo \n" && pushedTri &&
+        mesh.tris[$-9..$] == [ 12, 0, 0, 3, 0, 0, 4, 0, 0 ]);
+    assert(tryParseFace(s = "12 3 4 5  \t \n") && s == "\n" && pushedQuad &&
+        mesh.quads[$-12..$] == [ 12, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0 ]);
+
+    assert(tryParseFace(s = "1// 2// 3// 4//") && pushedQuad &&
+        mesh.quads[$-12..$] == [ 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0 ]);
+    assert(tryParseFace(s = "1/2/ 3/4 \t5/5/ 8/8") && pushedQuad &&
+        mesh.quads[$-12..$] == [ 1, 2, 0, 3, 4, 0, 5, 5, 0, 8, 8, 0 ]);
+    assert(tryParseFace(s = "1//2 3//4 5//2") && pushedTri &&
+        mesh.tris[$-9..$] == [ 1, 0, 2, 3, 0, 4, 5, 0, 2 ]);
+    assert(tryParseFace(s = "1/2/3 4/5/6 7/8/9") && pushedTri &&
+        mesh.tris[$-9..$] == [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ]);
+
+    // Test bounds checking + negative indices
+    assert(tryParseFace(s = "12 9 1") && pushedTri && !pushedQuad);
+    assert(!tryParseFace(s = "13 9 1") && !pushedTri && !pushedQuad);  // out of bounds (0-12 vert indices)
+    assert(!tryParseFace(s = "0 9 1")  && !pushedTri && !pushedQuad);  // .obj indices are 1-based; '0' is invalid
+    assert(!tryParseFace(s = "-0 9 1") && !pushedTri && !pushedQuad);  // ditto (should get interpreted as -0 = 0)
+    assert(tryParseFace(s = "-12 9 1") && pushedTri && mesh.tris[$-9..$] == [ 1, 0, 0, 9, 0, 0, 1, 0, 0 ]);
+    assert(tryParseFace(s = "-1 9 1")  && pushedTri && mesh.tris[$-9..$] == [ 12, 0, 0, 9, 0, 0, 1, 0, 0 ]);
+    assert(!tryParseFace(s = "-13 9 1") && !pushedTri && !pushedQuad); // out of bounds
+}
+
+
 private struct MeshPart {
     string object = null;
     string group  = null;
@@ -294,6 +591,96 @@ private struct MeshPart {
     int[] quads;
 }
 
+struct ObjParserContext {
+    uint                  lineNum = 0;
+    Tuple!(uint,string)[] lineErrors;
+
+    float[] vertexData, normalData, uvData;
+    MeshPart[] parts;
+    string currentObject = null, currentGroup = null, currentMtl = null;
+    MeshPart* currentMesh = null;
+    string[] mtlLibs;
+
+    this (this) { selectMesh(currentObject, currentGroup, currentMtl); }
+
+    void reportError (string err) {
+        lineErrors ~= tuple(lineNum, err);
+    }
+    void selectMesh (string object, string group, string material) {
+        currentObject = object;
+        currentGroup  = group;
+        currentMtl    = material;
+
+        foreach (ref mesh; parts) {
+            if (mesh.object == object && mesh.group == group && mesh.mtl == material) {
+                currentMesh = &mesh;
+                return;
+            }
+        }
+        parts ~= MeshPart( object, group, material );
+    }
+    void materialLib ( string libName ) {
+        foreach (lib; mtlLibs)
+            if (lib == libName)
+                return;
+        mtlLibs ~= libName;
+    }
+}
+unittest {
+    // Test init state + mesh selection (should reselect existing meshes, etc)
+    // Trivial, but worth testing in case the impl changes.
+
+    ObjParserContext parser;
+    assert( parser.currentMesh !is null && parser.parts.length == 1 && 
+        parser.currentMesh.group is null && parser.currentMesh.object is null && parser.currentMesh.mtl is null );
+    auto prevMesh = parser.currentMesh;
+
+    parser.selectMesh(null, null, null);
+    assert( parser.currentMesh == prevMesh && parser.parts.length == 1 );
+
+    parser.selectMesh("foo", null, null);
+    assert( parser.currentMesh != prevMesh && parser.parts.length == 2 &&
+        parser.currentMesh.object == parser.currentObject && parser.currentObject == "foo");
+
+    parser.selectMesh("foo", "blarg", null);
+    parser.selectMesh("foo", null, null);
+    assert( parser.parts.length == 3 );
+}
+
+private void parseLines (ref string s, ref ObjParserContext parser) {
+    bool parseLine () {
+        final switch (s.parseLine) {
+            case ParseCmd.UNKNOWN: return false;
+            case ParseCmd.COMMENT: s.munchToEol; return true;
+            case ParseCmd.VERTEX: return s.parseVertex( parser.vertexData );
+            case ParseCmd.VERTEX_NORMAL: return s.parseVertexNormal( parser.normalData );
+            case ParseCmd.VERTEX_UV:     return s.parseVertexUv( parser.uvData );
+            case ParseCmd.FACE:          return s.parseFace( parser.currentMesh, parser );
+            case ParseCmd.OBJECT: return parser.selectMesh( s.parseIdent, parser.currentGroup, parser.currentMtl ), true;
+            case ParseCmd.GROUP:  return parser.selectMesh( parser.currentObject, s.parseIdent, parser.currentMtl ), true;
+            case ParseCmd.MATERIAL: return parser.selectMesh( parser.currentObject, parser.currentGroup, s.parseIdent ), true;
+            case ParseCmd.MATERIAL_LIB: return parser.materialLib( s.parseIdent ), true;
+        }    
+    }
+    while (s.length) {
+        string s0 = s;
+        try {
+            if (!parseLine()) {
+                parser.reportError(getErrorContext(s0.sliceToEol, "error parsing"));
+                s.munchToEol();
+            }
+        } catch (Exception e) {
+            parser.reportError(getErrorContext(s0.sliceToEol, e.msg));
+            s.munchToEol();
+        }
+        if (!s.atEol) {
+            parser.reportError(format("Unused character(s): '%s'", s.sliceToEol));
+            s.munchToEol();
+        }
+        s.munchEol();
+        ++parser.lineNum;
+    }
+}
 
 void fast_parse_obj (string file) {
     Tuple!(uint, string)[] badLines;
@@ -358,207 +745,8 @@ void fast_parse_obj (string file) {
     //
     // Pass 1: parse vertex, uv, and normal data + mark other lines
     //
-
-    void parseVertex (ref string s) {
-        auto st = s;
-        ++vertexCount;
-
-        s.munchWs();
-        uint n = parseFloats( s, vertexData );
-        if (n < 3 || n > 4) {
-            writefln("Expected 3-4, not %s! '%s'", n, st.sliceToEol);
-            badLine(s);
-            assert(vertexData.length >= n, format("%s < %s!", vertexData.length, n));
-            if (n) 
-                vertexData.length -= n;
-            vertexData ~= [ float.nan, float.nan, float.nan ];
-        }
-        if (n == 4) {
-            --vertexData.length;
-        }
-        //writefln("vertex: %s '%s'", vertexData[$-3..$], lineStart.sliceToEol);
-    }
-    void parseVertexNormal (ref string s) {
-
-        s.munchWs();
-        uint n = parseFloats( s, normalData );
-        ++normalCount;
-
-        if (n != 3) {
-            badLine(s);
-            assert(vertexData.length >= n, format("%s < %s!", normalData.length, n));
-            if (n)
-                normalData.length -= n;
-            normalData ~= [ float.nan, float.nan, float.nan ];
-        } else {
-            //writefln("normal: %s '%s'", normalData[$-3..$], lineStart.sliceToEol);
-        }
-    }
-    void parseVertexUv (ref string s) {
-        s.munchWs();
-        uint n = parseFloats( s, uvData );
-        ++uvCount;
-
-        if (n == 3) uvData.length--;
-        else if (n != 2) {
-            badLine(s);
-            assert(uvData.length >= n, format("%s < %s!", uvData.length, n));
-            if (n)
-                uvData.length -= n;
-            uvData ~= [ float.nan, float.nan ];
-        } else {
-            //writefln("uv: %s '%s'", uvData[$-2..$], lineStart.sliceToEol);
-        }
-    }
-    void parseUsemtl (ref string s) {
-        selectPart(current_obj, current_group, current_mtl = s.strip);
-        s.munchToEol;
-    }
-    void parseObject (ref string s) {
-        selectPart(current_obj = s.strip, current_group, current_mtl);
-        s.munchToEol;
-    }
-    void parseGroup (ref string s) {
-        selectPart(current_obj, current_group = s.strip, current_mtl);
-        s.munchToEol;
-    }
-    void parseMtllib (ref string s) {
-        mtlLibs ~= s.sliceToEol.strip;
-        s.munchToEol; assert(!s.length || s[0] == '\n' || s[0] == '\r');
-        //writefln("mtllib '%s': '%s'", mtlLibs[$-1], lineStart.sliceToEol);
-    }
-
-    void parseFace (ref string s) {
-        int[15] indices = 0;
-        int vcount = 0, tcount = 0, ncount = 0;
-
-        bool parseIndex ( ref string s, uint i, uint max_bound ) {
-            auto index = s[0] == '-' ?
-                max_bound - parseUint( s = s[1..$] ) + 1 :
-                parseUint( s );
-
-            if (index - 1 < max_bound) {
-                indices[i] = index;
-                return true;
-            }
-
-            writefln("Index out of bounds: %s > %s '%s' '%s'",
-                index, max_bound, s.sliceToEol, lineStart.sliceToEol);
-            return false;
-        }
-
-        s.munchWs();
-        while (!s.atEol) {
-            if (s[0] != '-' && (s[0] < '0' || s[0] > '9')) {
-                writefln("Not numeric: '%s' ('%s')", s.sliceToEol, lineStart.sliceToEol);
-                goto parseError;
-            }
-
-            if (!parseIndex( s, ++vcount * 3, cast(uint)vertexCount )) {
-                goto parseError;
-            }
-
-            if (++vcount > 4)
-                goto invalidPairs;
-
-            if (s[0] == '/') {
-                s = s[1..$];
-                if (s[0] != '/' && parseIndex(s, vcount * 3 + 1, cast(uint)uvCount )) {
-                    if (++tcount != vcount)
-                        goto invalidPairs;
-                }
-
-                if (s[0] == '/') {
-                    s = s[1..$];
-                    if (parseIndex( s, vcount * 3 + 2, cast(uint)normalCount)) {
-                        if (++ncount != ncount)
-                            goto invalidPairs;
-                    }
-                }
-            }
-            s.munchWs();
-        }
-        if (vcount < 3) { 
-            writefln("Not enough value pairs (vcount = %s)", vcount);
-            goto invalidPairs;
-        }
-        switch (vcount) {
-            case 3:
-                currentMesh.tris ~= indices[0..9];
-                //writefln("tri %s '%s'", indices, lineStart.sliceToEol);
-                break;
-            case 4:
-                currentMesh.quads ~= indices[0..12];
-                //writefln("quad %s '%s'", indices, lineStart.sliceToEol);
-                break;
-            default: assert(0, format("%s!", vcount));
-        }
-        return;
-    invalidPairs:
-        writefln("Invalid value pair(s): %s, %s, %s '%s'",
-            vcount, tcount, ncount, lineStart.sliceToEol);
-    parseError:
-        //badLine(s);
-    }
-
-    void parseLines (ref string s) {
-        //writefln("Line %s '%s'", lineNum, s.sliceToEol);
-        while (!s.eof) {
-            s.munchWs();
-            while (s.atEol && !s.eof) {
-                advanceLine(s);
-                s.munchWs();
-            }
-            if (s.eof) break;
-
-            switch (s[0]) {
-                case 'v': switch (s[1]) {
-                    case ' ': parseVertex(s = s[2..$]); break;
-                    case 't': 
-                        if (s[2] != ' ') badLine(s);
-                        else parseVertexUv(s = s[3..$]); break;
-                    case 'n':
-                        if (s[2] != ' ') badLine(s);
-                        else parseVertexNormal(s = s[3..$]); break;
-                    default:
-                        writefln("Unhandled: '%s'", s.sliceToEol); 
-                        badLine(s);
-                } break;
-                case 'f': 
-                    if (s[1] != ' ') badLine(s);
-                    else parseFace(s = s[2..$]); break;
-                case 'o':
-                    if (s[1] != ' ') badLine(s);
-                    else parseObject(s = s[2..$]); break;
-                case 'g':
-                    if (s[1] != ' ') badLine(s);
-                    else parseObject(s = s[2..$]); break;
-                case 'u':
-                    if (s.length < 7 || s[0..7] != "usemtl ") badLine(s);
-                    else parseUsemtl(s = s[7..$]); break;
-                case 'm':
-                    if (s.length < 7 || s[0..7] != "mtllib ") badLine(s);
-                    else parseMtllib(s = s[7..$]); break;
-                default: 
-                    writefln("Unhandled: '%s'", s.sliceToEol);
-                    badLine(s);
-            }
-
-            auto s_end = s;
-            if (s.eof) break;
-            else if (s.atEol) {
-                advanceLine(s);
-            } else {
-                warnUnused(s_end);
-                s.munchToEol;
-                if (!s.eof) {
-                    advanceLine(s);
-                }
-            }
-        }
-    }
     void doParse () {
-        parseLines(file);
+        //parseLines(file);
 
         writefln("%s verts, %s uvs, %s normals", vertexCount, uvCount, normalCount);
         writefln("%s, %s, %s", vertexData.length, uvData.length, normalData.length);
@@ -583,6 +771,18 @@ void fast_parse_obj (string file) {
     }
     doParse();
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 string fmtBytes (double bytes) {
     if (bytes < 1e3) return format("%s bytes", bytes);
