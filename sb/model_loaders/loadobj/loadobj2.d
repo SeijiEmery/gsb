@@ -99,55 +99,63 @@ unittest {
     assert("-12093".isNumeric);
     assert(!" 9012".isNumeric);
 }
-float parseFloat ( ref string s ) {
+
+private bool isDec (char c) {
+    return !(c < '0' || c > '9');
+}
+unittest {
+    assert('0'.isDec && '9'.isDec && '5'.isDec && !'a'.isDec);
+}
+
+private float parseFloat ( ref string s ) {
+    string s0 = s;
+
     bool sign = false;
     if (s[0] == '-' || s[0] == '+') {
         sign = s[0] == '-';
         s = s[1..$];
     }
-    assert(s[0] >= '0' && s[0] <= '9');
-    auto v = sign ?
-        -cast(double)parseUint(s) :
-        cast(double)parseUint(s);
+
+    long v = 0; long exp = 0;
+    while (s.length && s[0].isDec) {
+        v *= 10;
+        v += cast(long)(s[0] - '0');
+        s = s[1..$];
+    }
+    if (sign) v = -v;
 
     if (s.length && s[0] == '.') {
         s = s[1..$];
-        double m = 0.1;
-        while(s.length && !(s[0] < '0' || s[0] > '9')) {
-            v += m * cast(double)(s[0] - '0');
-            m *= 0.1;
+        while (s.length && s[0].isDec) {
+            v *= 10;
+            v += cast(long)(s[0] - '0');
+            --exp;
             s = s[1..$];
         }
     }
     if (s.length && (s[0] == 'e' || s[0] == 'E')) {
-        // TODO: this a terrible way to calculate the exponent value!
-        if (s[1] == '-') {
-            s = s[2..$];
-            auto n = parseUint(s);
-            while (n --> 0)
-                v *= 0.1;
-        } else {
-            s = s[1] == '+' ?
-                s[2..$] : s[1..$];
-
-            auto n = parseUint(s);
-            while (n --> 0)
-                v *= 10.0;
+        bool e_sign = s[1] == '-' ?
+            (s = s[2..$], true) :
+            (s = (s[1] == '+' ? s[2..$] : s[1..$]), false);
+        long e = 0;
+        while (s.length && s[0].isDec) {
+            e *= 10;
+            e += cast(long)(s[0] - '0');
+            s = s[1..$];
         }
-        //return s[1] == '-' ?
-        //    cast(float)(v * pow(10, -parseUint(s = s[2..$]))) :
-        //    cast(float)(v * pow(10, parseUint(s = s[1..$])));
+        exp += e_sign ? -e : e;
     }
-    return cast(float)v;
+    return cast(float)(cast(real)v * pow(10, cast(real)exp));
 }
 unittest {
     import core.exception: AssertError;
     import std.exception: enforce;
 
-    immutable float epsilon = 1e-5;
+    immutable float epsilon = 2.6e-3; // up to 0.26% error (converting back via pow() is not always very accurate)
     void assertApproxEq (float a, float b, string file = __FILE__, size_t line = __LINE__) {
         //assert(abs(a - b) < epsilon, format("%s != %s", a, b));
-        enforce!AssertError(abs(a - b) / abs(b) < epsilon, format("%s != %s", a, b), file, line);
+        enforce!AssertError(abs((a - b) / (a + b) * 2) < epsilon, format("%s != %s", a, b), file, line);
+        //writefln("%s vs %s: %s / %s = %s", a, b, abs(a - b), abs(a + b) / 2, abs((a - b) / (a + b) * 2));
     }
     string s;
     assertApproxEq(parseFloat(s = "1"), 1 );
@@ -156,36 +164,48 @@ unittest {
     assertApproxEq(parseFloat(s = "01923890"), 1923890);
     assertApproxEq(parseFloat(s = "34891809)()"), 34891809);
     assertApproxEq(parseFloat(s = "+213.34210198"), 213.34210198);
-    assertApproxEq(parseFloat(s = "-102.012984091"), -102.012984091);
+    assertApproxEq(parseFloat(s = "-102.012984"), -102.012984);
     assertApproxEq(parseFloat(s = "120.10293e-10"), 120.10293e-10);
     assertApproxEq(parseFloat(s = "110298e13"), 110298e13);
     assertApproxEq(parseFloat(s = "-01928.190284e14"), -1928.190284e14);
-
-    writefln("all tests passed.");
+    //writefln("all tests passed.");
 }
 
 uint parseFloats (ref string s, ref float[] values) {
     uint n = 0;
     s.munch(" \t");
     while (isNumeric(s)) {
-        values ~= parseFloat(s);
-
-        //try { values ~= parse!float(s); }
-        //catch (Exception e) { writefln("%s", e.msg); return 0; }
+        //values ~= parseFloat(s);
+        try { values ~= parse!float(s); }
+        catch (Exception e) { writefln("%s", e.msg); return 0; }
         s.munch(" \t");
         ++n;
     }
     return n;
 }
+unittest {
+    float epsilon = 1e-9;
+    bool approxEqual (float a, float b) {
+        if (abs(a - b) > epsilon) {
+            writefln("%s != %s: %s (%s%%)", a, b, abs(a - b), abs((a - b) / (a + b) * 200));
+            return false;
+        }
+        return true;
+    }
 
+    string s; float[] values;
+    assert(parseFloats(s = "2", values) == 1 && s == "" && values[$-1] == 2);
+    assert(parseFloats(s = "2.04e-3 asdf", values) == 1 && s == "asdf" && approxEqual(values[$-1], 2.04e-3));
+    assert(parseFloats(s = "2 3 4 5", values) == 4 && s == "" && values[$-4..$] == [ 2f, 3f, 4f, 5f]);
+    assert(parseFloats(s = " ;alsdfh", values) == 0 && s == ";alsdfh");
+    assert(parseFloats(s = "aslfjsaf", values) == 0 && s == "aslfjsaf");
+}
+
+
+// Combined tests for munchEol, munchToEof, munchWs, and eof.
 unittest {
     import std.exception;
     import core.exception;
-    //void enforceEq (T)(lazy T a, T b) {
-    //    T v;
-    //    assertNotThrown(assert((v = a) == b,
-    //        format("%s != %s", v, b)))
-    //}
 
     auto s1 = "\nfoobarbaz\n\r\n# borg\n  #bazorfoo\n #blarg";
     assertNotThrown!RangeError(assert(s1.munchEol && s1 == "foobarbaz\n\r\n# borg\n  #bazorfoo\n #blarg"));
@@ -208,7 +228,7 @@ unittest {
     assertNotThrown!RangeError(assert(s1.eof));
 }
 
-bool nonIntChar (string s) {
+private bool nonIntChar (string s) {
     return !s.length || ((s[0] < '0' || s[0] > '9') && s[0] != '-');
 }
 unittest {
@@ -218,24 +238,62 @@ unittest {
     assert(".22".nonIntChar);
 }
 
-bool tryParseInt (ref string s, ref int[] vs) {
-    auto sv = s.munch("-0123456789");
-    if (sv.length) {
-        vs ~= sv.parse!int;
+private bool tryParseInt (ref string s, ref int value) {
+    bool sign = false;
+    if (s.length && (s[0] == '-' || s[0] == '+')) {
+        sign = s[0] == '-';
+        s = s[1..$];
+    }
+    writefln("%s", s);
+    if (!s.length || !s[0].isDec)
+        return false;
+
+    long v = 0;
+    while (s.length && s[0].isDec) {
+        v *= 10;
+        v += cast(long)(s[0] - '0');
+        s = s[1..$];
+    }
+    writefln("%s, %s", sign, v);
+    if (!s.length || s[0] == ' ' || s[0] == '\t' || s[0] == '/') {
+        value = sign ? -cast(int)v : cast(int)v;
         return true;
     }
     return false;
 }
-//private uint parseFloats (ref string s, ref float[] values) {
-//    uint n = 0;
-//    string sv;
-//    while (s.length && ((sv = s.munch("-0123456789.e")), sv.length)) {
-//        values ~= sv.parse!float;
-//        s.munchWs;
-//        ++n;
-//    }
-//    return n;
-//}
+unittest {
+    string s; int value;
+    assert(!tryParseInt(s = "", value));
+    assert(!tryParseInt(s = " 1234", value) && s == " 1234");
+    assert(tryParseInt(s = "-1234 asdf", value) && s == " asdf" && value == -1234);
+    assert(tryParseInt(s = "+1234 02193", value) && s == " 02193" && value == 1234);
+    assert(!tryParseInt(s = "123.04e6", value) && s == ".04e6");
+}
+
+private struct MeshPart {
+    string object = null;
+    string group  = null;
+    string mtl    = null;
+
+    // Tris / quads intermed indices.
+    // Note: these are wierd, b/c the .obj format is wierd and lets you specify
+    // separate vertex / uv / normal indices, and since we have to process in two
+    // stages (to detect missing normals or generate them ourselves), we have to
+    // store a _lot_ of extra data (memory consumption for this is probably horrible)
+    //   tris:  v0, t0, n0, v1, t1, n1, v2, t2, n2  for each triangle
+    //   quads: v0, t0, n0, v1, t1, n1, v2, t2, n2, v3, t3, n3 for each quad
+    // 
+    // Each value is a bounds-checked positive integer (ignore the sign) into
+    // the vertexData / normalData / uvData array, _except_:
+    //    t0 == -1  =>  has no uvs
+    //    n0 == -1  =>  has no normals
+    //
+    // See parseTriangle / processTriangles for the implementation.
+    //
+    int[] tris;
+    int[] quads;
+}
+
 
 void fast_parse_obj (string file) {
     Tuple!(uint, string)[] badLines;
@@ -256,29 +314,6 @@ void fast_parse_obj (string file) {
 
     size_t vertexCount = 0, normalCount = 0, uvCount = 0;
 
-    struct MeshPart {
-        string object = null;
-        string group  = null;
-        string mtl    = null;
-
-        // Tris / quads intermed indices.
-        // Note: these are wierd, b/c the .obj format is wierd and lets you specify
-        // separate vertex / uv / normal indices, and since we have to process in two
-        // stages (to detect missing normals or generate them ourselves), we have to
-        // store a _lot_ of extra data (memory consumption for this is probably horrible)
-        //   tris:  v0, t0, n0, v1, t1, n1, v2, t2, n2  for each triangle
-        //   quads: v0, t0, n0, v1, t1, n1, v2, t2, n2, v3, t3, n3 for each quad
-        // 
-        // Each value is a bounds-checked positive integer (ignore the sign) into
-        // the vertexData / normalData / uvData array, _except_:
-        //    t0 == -1  =>  has no uvs
-        //    n0 == -1  =>  has no normals
-        //
-        // See parseTriangle / processTriangles for the implementation.
-        //
-        int[] tris;
-        int[] quads;
-    }
     string current_obj   = null;
     string current_group = null;
     string current_mtl   = null;
@@ -393,19 +428,17 @@ void fast_parse_obj (string file) {
         //writefln("mtllib '%s': '%s'", mtlLibs[$-1], lineStart.sliceToEol);
     }
 
-    int[]  indices;
-    string index_errors;
     void parseFace (ref string s) {
-        indices.length = 0;
+        int[15] indices = 0;
         int vcount = 0, tcount = 0, ncount = 0;
 
-        bool parseIndex ( ref string s, uint max_bound ) {
+        bool parseIndex ( ref string s, uint i, uint max_bound ) {
             auto index = s[0] == '-' ?
                 max_bound - parseUint( s = s[1..$] ) + 1 :
                 parseUint( s );
 
             if (index - 1 < max_bound) {
-                indices ~= index;
+                indices[i] = index;
                 return true;
             }
 
@@ -421,7 +454,7 @@ void fast_parse_obj (string file) {
                 goto parseError;
             }
 
-            if (!parseIndex( s, cast(uint)vertexCount )) {
+            if (!parseIndex( s, ++vcount * 3, cast(uint)vertexCount )) {
                 goto parseError;
             }
 
@@ -430,21 +463,18 @@ void fast_parse_obj (string file) {
 
             if (s[0] == '/') {
                 s = s[1..$];
-                if (s[0] != '/' && parseIndex(s, cast(uint)uvCount )) {
+                if (s[0] != '/' && parseIndex(s, vcount * 3 + 1, cast(uint)uvCount )) {
                     if (++tcount != vcount)
                         goto invalidPairs;
-                } else indices ~= 0;
+                }
 
                 if (s[0] == '/') {
                     s = s[1..$];
-                    if (parseIndex( s, cast(uint)normalCount)) {
+                    if (parseIndex( s, vcount * 3 + 2, cast(uint)normalCount)) {
                         if (++ncount != ncount)
                             goto invalidPairs;
-                    } else indices ~= 0;
-                } else indices ~= 0;
-            } else {
-                indices ~= 0;
-                indices ~= 0;
+                    }
+                }
             }
             s.munchWs();
         }
@@ -453,12 +483,12 @@ void fast_parse_obj (string file) {
             goto invalidPairs;
         }
         switch (vcount) {
-            case 3: assert( indices.length == 9 );
-                currentMesh.tris ~= indices;
+            case 3:
+                currentMesh.tris ~= indices[0..9];
                 //writefln("tri %s '%s'", indices, lineStart.sliceToEol);
                 break;
-            case 4: assert( indices.length == 12 );
-                currentMesh.quads ~= indices;
+            case 4:
+                currentMesh.quads ~= indices[0..12];
                 //writefln("quad %s '%s'", indices, lineStart.sliceToEol);
                 break;
             default: assert(0, format("%s!", vcount));
@@ -469,108 +499,6 @@ void fast_parse_obj (string file) {
             vcount, tcount, ncount, lineStart.sliceToEol);
     parseError:
         //badLine(s);
-    }
-
-    void parseFace_old (ref string s) {
-        indices.length = 0;
-        int vcount = 0, tcount = 0, ncount = 0;
-
-        s.munchWs();
-        while (!s.atEol) {
-            if (s.nonIntChar) {
-                writefln("Invalid: '%s'", s.sliceToEol);
-                goto parseError;
-            }
-
-            if (!tryParseInt(s, indices)) {
-                writefln("Failed to parse: '%s'", s.sliceToEol);
-                goto parseError;
-            }
-
-            if (++vcount > 4) {
-                writefln("vcount > 4: %s", vcount);
-                goto parseError;
-            }
-
-            if (s[0] == '/') {
-                s = s[1..$];
-                if (tryParseInt(s, indices)) {
-                    if (++tcount != vcount) {
-                        writefln("tcount != vcount: %s, %s", vcount, tcount);
-                        goto parseError;
-                    }
-                } else indices ~= 0;
-                
-                if (s[0] == '/') {
-                    s = s[1..$];
-                    if (tryParseInt(s, indices)) {
-                        if (++ncount != vcount) {
-                            writefln("ncount != vcount: %s, %s", vcount, ncount);
-                            goto parseError;
-                        }
-                    } else indices ~= 0;
-                } else indices ~= 0;
-            } else {
-                // skipped vt + vn indices
-                indices ~= 0;
-                indices ~= 0;
-            }
-            s.munchWs();
-            //writefln("%s, %s, %s | %s: %s", vcount, tcount, ncount, indices.length, indices); 
-        }
-        if (vcount < 3) {
-            writefln("vcount < 3: %s", vcount);
-            goto parseError;
-        }
-        {
-            // convert + bounds check indices
-            auto vl = cast(int)vertexData.length;
-            index_errors.length = 0;
-        
-            if (vcount == 3) assert(indices.length == 9,  format("%s!", indices));
-            if (vcount == 4) assert(indices.length == 12, format("%s!", indices));
-
-            void fixup_indices ( int offset, int count, int max_bound ) {
-                for (auto i = (count-1) * 3 + offset; i >= 0; i -= count) {
-                    auto index = indices[i], i0 = index;
-                    if (index < 0) index += max_bound;
-                    else           --index;  // .obj indices are 1-based (note: this turns our "default" indices from 0 to -1)
-
-                    indices[i] = index;
-                    if (index >= max_bound) {
-                        index_errors ~= format("%s (%s) > %s! ", index, i0, max_bound);
-                    }
-                }
-            }
-            //fixup_indices(0, vcount, cast(int)vertexData.length / 3);
-            fixup_indices(0, vcount, cast(int)vertexCount);
-            if (tcount)
-                fixup_indices(1, tcount, cast(int)uvCount);
-                //fixup_indices(1, tcount, cast(int)uvData.length / 2);
-            else
-                indices[1] = -1;
-
-            if (ncount)
-                fixup_indices(2, ncount, cast(int)normalCount);
-                //fixup_indices(2, ncount, cast(int)normalData.length / 3);
-            else
-                indices[2] = -1;
-
-            if (index_errors.length) {
-                lineErrors ~= tuple(lineNum, format("Indices out of range: %s (%s)", index_errors, lineStart.sliceToEol));
-            }
-
-            //writefln("face '%s' => %s %s", lineStart.sliceToEol, vcount == 3 ? "tris" : "quads", indices);
-
-            if (vcount == 3) {
-                currentMesh.tris ~= indices;
-            } else if (vcount == 4) {
-                currentMesh.quads ~= indices;
-            } else assert(0, format("%d", vcount));
-        }
-        return;
-    parseError:
-        badLine(s);
     }
 
     void parseLines (ref string s) {
