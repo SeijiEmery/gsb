@@ -392,7 +392,7 @@ private bool parseVertex (ref string s, ref float[] verts) {
     // Accepts 3 floats _or_ 4, according to spec, but discards the last value (for 4)
     // so we only ever push 3 values onto verts.
     if (n == 3) return true;
-    if (n == 4) return --verts.length, true;
+    else if (n == 4) return --verts.length, true;
     else {
         // If an unexpected number of floats was parsed, returns false to report an error
         // but will _also_ do error recovery (pops off parsed values; pushes on 3 nans),
@@ -690,6 +690,16 @@ struct ObjParserContext {
                 return;
         mtlLibs ~= libName;
     }
+    void reset () {
+        parts.length = 0;
+        selectMesh(currentObject = null, currentGroup = null, currentMtl = null);
+        vertexData.length = 0;
+        normalData.length = 0;
+        uvData.length = 0;
+        lineNum = 0;
+        lineErrors.length = 0;
+        mtlLibs.length = 0;
+    }
 }
 unittest {
     // Test init state + mesh selection (should reselect existing meshes, etc)
@@ -715,16 +725,16 @@ unittest {
 private void parseLines (ref string s, ref ObjParserContext parser) {
     bool parseLine () {
         final switch (s.parseLine) {
-            case ParseCmd.UNKNOWN: return false;
-            case ParseCmd.COMMENT: s.munchToEol; return true;
-            case ParseCmd.VERTEX: return s.parseVertex( parser.vertexData );
+            case ParseCmd.UNKNOWN:       return false;
+            case ParseCmd.COMMENT:       return s.munchToEol, true;
+            case ParseCmd.VERTEX:        return s.parseVertex( parser.vertexData );
             case ParseCmd.VERTEX_NORMAL: return s.parseVertexNormal( parser.normalData );
             case ParseCmd.VERTEX_UV:     return s.parseVertexUv( parser.uvData );
             case ParseCmd.FACE:          return s.parseFace( parser.currentMesh, parser );
-            case ParseCmd.OBJECT: return parser.selectMesh( s.parseIdent, parser.currentGroup, parser.currentMtl ), true;
-            case ParseCmd.GROUP:  return parser.selectMesh( parser.currentObject, s.parseIdent, parser.currentMtl ), true;
-            case ParseCmd.MATERIAL: return parser.selectMesh( parser.currentObject, parser.currentGroup, s.parseIdent ), true;
-            case ParseCmd.MATERIAL_LIB: return parser.materialLib( s.parseIdent ), true;
+            case ParseCmd.OBJECT:        return parser.selectMesh( s.parseIdent, parser.currentGroup, parser.currentMtl ), true;
+            case ParseCmd.GROUP:         return parser.selectMesh( parser.currentObject, s.parseIdent, parser.currentMtl ), true;
+            case ParseCmd.MATERIAL:      return parser.selectMesh( parser.currentObject, parser.currentGroup, s.parseIdent ), true;
+            case ParseCmd.MATERIAL_LIB:  return parser.materialLib( s.parseIdent ), true;
         }    
     }
     while (s.length) {
@@ -766,7 +776,7 @@ void fast_parse_obj (string file) {
         writefln("%s mesh parts:", parser.parts.length);
         foreach (ref mesh; parser.parts) {
             if (mesh.tris.length || mesh.quads.length)
-                writefln("\tobject '%s'.'%s' mtl '%s':\n\t\t %s tri(s) %s quad(s)",
+                writefln("\tobject '%s'.'%s' material '%s':\n\t\t %s tri(s) %s quad(s)",
                     mesh.object ? mesh.object : "<none>",
                     mesh.group  ? mesh.group : "<none>",
                     mesh.mtl ? mesh.mtl : "<none>",
@@ -778,17 +788,86 @@ void fast_parse_obj (string file) {
     }
 }
 
+struct ObjBenchmarkInfo {
+    string fcn;
+    double totalTime = 0;
+    uint runCount = 0;
+    double perCallTime = 0;   // total time / run count
+}
+private string fmtSecs (double seconds) {
+    if (seconds >= 1.0)  return format("%s secs", seconds);
+    if (seconds >= 1e-3) return format("%s ms", seconds * 1e3);
+    if (seconds >= 1e-6) return format("%s µs", seconds * 1e6);
+    return format("%s ns", seconds * 1e9);
+}
 
+private void runBenchmark (string name, void delegate() bench)(uint workCount, uint reqWorkCount) {
+    import std.datetime;
 
+    uint iterations = reqWorkCount / workCount + (reqWorkCount % workCount ? 1 : 0);
+    StopWatch sw; sw.start();
+    for (auto i = iterations; i --> 0; ) {
+        bench();
+    }
+    auto time = cast(double)sw.peek.usecs * 1e-6;
 
+    writefln("%s:\n\ttotal time: %s\n\tper iteration: %s (%s iterations)\n\tper call: %s (%s calls)",
+        name, time.fmtSecs, 
+        (time / cast(double)iterations).fmtSecs, iterations,
+        (time / cast(double)(iterations * workCount)).fmtSecs, iterations * workCount);
+}
 
+void benchmarkObjLoad (string fileName, string file, uint min_line_count = 1000_000) {
+    // Do a pre-pass to mark lines so we can benchmark individual parser functions
+    string[][ParseCmd.max+1] lines;
+    auto s = file;
+    uint totalLineCount = 0;
+    while (s.length) {
+        string s0 = s;
+        try {
+            auto cmd = s.parseLine;
+            if (cmd != ParseCmd.UNKNOWN && cmd != ParseCmd.COMMENT)
+                lines[cmd] ~= s.munchToEol;
+        } catch (Exception e) {}
+        if (!s.atEol)
+            s.munchToEol;
+        s.munchEol;
+        ++totalLineCount;
+    }
+    ObjBenchmarkInfo[] benchResults;
+    ObjParserContext parser;
 
+    writefln("Benchmarking %s (%s, %s lines)", fileName, file.length.fmtBytes, totalLineCount);
+    {
+        runBenchmark!("parseLines", {
+            parseLines(s = file, parser);
+            parser.reset();
+        })(cast(uint)totalLineCount, min_line_count);
+    }
 
+    void benchVertexFcn (string fcn, ParseCmd cmd)(ref float[] values) {
+        if (lines[cmd].length) {
+            runBenchmark!(fcn, {
+                values.length = 0;
+                foreach (line; lines[cmd]) {
+                    mixin(fcn~"(line, values);");
+                }
+            })(cast(uint)lines[cmd].length, min_line_count);
+        }
+    }
+    benchVertexFcn!("parseVertex", ParseCmd.VERTEX)(parser.vertexData);
+    benchVertexFcn!("parseVertexNormal", ParseCmd.VERTEX_NORMAL)(parser.normalData);
+    benchVertexFcn!("parseVertexUv", ParseCmd.VERTEX_UV)(parser.uvData);
 
-
-
-
-
+    {
+        runBenchmark!("parseFace", {
+            auto mesh = parser.currentMesh;
+            foreach (line; lines[ParseCmd.FACE])
+                parseFace(line, mesh, parser);
+            //parser.resetFaces();
+        })(cast(uint)lines[ParseCmd.FACE].length, min_line_count);
+    }
+}
 
 string fmtBytes (double bytes) {
     if (bytes < 1e3) return format("%s bytes", bytes);
@@ -835,21 +914,22 @@ void main (string[]) {
         writefln("parseFloat  1m: %s", cast(double)custom_parseFlt.usecs * 1e-6);
     }
 
-    void testObjLoad () {
+    string readFile (string path) {
         import std.file;
         import std.zip;
-
-        Tuple!(string, double, TickDuration, TickDuration)[] loadTimes;
-        string readFile (string path) {
-            if (path.endsWith(".zip")) {
-                auto archive = new ZipArchive(read(path));
-                auto file = path[0..$-4].baseName;
-                assert(file.endsWith(".obj"), file);
-                assert(file in archive.directory, file);
-                return cast(string)archive.expand(archive.directory[file]);
-            }
-            return readText(path);
+        if (path.endsWith(".zip")) {
+            auto archive = new ZipArchive(read(path));
+            auto file = path[0..$-4].baseName;
+            assert(file.endsWith(".obj"), file);
+            assert(file in archive.directory, file);
+            return cast(string)archive.expand(archive.directory[file]);
         }
+        return readText(path);
+    }
+
+    void testObjLoad () {
+        Tuple!(string, double, TickDuration, TickDuration)[] loadTimes;
+        
         void testObj (string path) {
             if (!path.exists)
                 writefln("Could not open '%s'!", path);
@@ -876,10 +956,19 @@ void main (string[]) {
         foreach (kv; loadTimes) {
             writefln("'%s' %s | read %s ms | load %s ms | %s / sec", 
                 kv[0], kv[1].fmtBytes, kv[2].msecs, kv[3].msecs, (kv[1] / (kv[3].msecs * 1e-3)).fmtBytes);
+        }    
+    }
+    void benchObjLoad () {
+        void benchFile (string path) {
+            benchmarkObjLoad(path.baseName, readFile(path));
         }
+        benchFile("/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj");
+        benchFile("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj");
+        benchFile("/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj");
     }
 
-    testObjLoad();
+    benchObjLoad();
+    //testObjLoad();
     runBenchmarks();
 }
 
