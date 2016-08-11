@@ -43,6 +43,15 @@ unittest {
 }
 
 bool atEol (string s) { return !s.length || s[0] == '\n' || s[0] == '\r' || s[0] == '\0' || s[0] == '#'; }
+unittest {
+    assert(!atEol(" \nlaksdjf "));
+    assert(atEol("# foo"));
+    assert(atEol("\n\r asdf"));
+    assert(atEol("\r\n adsf"));
+    assert(atEol("\0 foob"));
+    assert(atEol(""));
+}
+
 bool munchEol (ref string s) {
     if (!s.length) return true;
     if (s[0] == '#') s.munchToEol;
@@ -97,6 +106,13 @@ unittest {
     assert(parseUint(s = "123 456") == 123 && s == " 456");
     assert(parseUint(s = "-12 34") == 0 && s == "-12 34");
     assert(parseUint(s = " 12 34") == 0 && s == " 12 34");
+
+    // Should only parse up to what can be parsed, and should return 0 if cannot
+    // parse. Detecting errors + predconditions is up to external code (eg. guard w/
+    // isNumeric). The last two cases are important for parseIndex! (parseFace)
+    assert(parseUint(s = "12.34e9") == 12 && s == ".34e9");
+    assert(parseUint(s = "12/4/5")  == 12 && s == "/4/5");
+    assert(parseUint(s = "/4/5")    == 0  && s == "/4/5");
 }
 
 bool isNumeric (string s) {
@@ -221,7 +237,7 @@ unittest {
     assertNotThrown!RangeError(assert(s1.munchEol && s1 == "foobarbaz\n\r\n# borg\n  #bazorfoo\n #blarg"));
     assertNotThrown!RangeError(assert(!s1.munchEol && s1 == "foobarbaz\n\r\n# borg\n  #bazorfoo\n #blarg"));
     assertNotThrown!RangeError(assert(!s1.munchWs  && s1 == "foobarbaz\n\r\n# borg\n  #bazorfoo\n #blarg"));
-    assertNotThrown!RangeError(assert(s1.munchToEol == "\n\r\n# borg\n  #bazorfoo\n #blarg"));
+    assertNotThrown!RangeError(assert(s1.munchToEol && s1 == "\n\r\n# borg\n  #bazorfoo\n #blarg"));
     assertNotThrown!RangeError(assert(s1.munchEol && s1 == "# borg\n  #bazorfoo\n #blarg"));
     assertNotThrown!RangeError(assert(!s1.munchWs && s1 == "# borg\n  #bazorfoo\n #blarg"));
     assertNotThrown!RangeError(assert(s1.munchEol && s1 == "  #bazorfoo\n #blarg"));
@@ -236,16 +252,6 @@ unittest {
     assertNotThrown!RangeError(assert(s1.munchEol && s1 == ""));
     assertNotThrown!RangeError(assert(s1.munchEol && s1 == ""));
     assertNotThrown!RangeError(assert(s1.eof));
-}
-
-private bool nonIntChar (string s) {
-    return !s.length || ((s[0] < '0' || s[0] > '9') && s[0] != '-');
-}
-unittest {
-    assert("asdf".nonIntChar);
-    assert(!"-10".nonIntChar);
-    assert(!"99".nonIntChar);
-    assert(".22".nonIntChar);
 }
 
 private bool tryParseInt (ref string s, ref int value) {
@@ -323,7 +329,7 @@ private ParseCmd parseLine (ref string s) {
                 return (s = s[7..$]).munchWs, ParseCmd.MATERIAL;
             break;
         case 'm':
-            if (s.length < 7 && s[0..7] == "mtllib ")
+            if (s.length > 7 && s[0..7] == "mtllib ")
                 return (s = s[7..$]).munchWs, ParseCmd.MATERIAL_LIB;
             break;
         default:
@@ -401,11 +407,14 @@ private bool parseVertex (ref string s, ref float[] verts) {
     }
 }
 unittest {
+    import std.algorithm: equal;
+    import std.math: approxEqual;
+
     string s; float[] values;
     assert(!parseVertex(s = "", values));
-    assert(!parseVertex(s = " 10.24 2.93 4.4", values));
-    assert(parseVertex(s = "10.24 2.93 4.4 \nfoo", values) && s == "\nfoo" && values[$-3..$] == [ 10.24, 2.93, 4.4 ]);
-    assert(parseVertex(s = "1 2 3 4", values) && s == "" && values[$-3..$] == [ 1f, 2f, 3f ]);
+    assert(!parseVertex(s = "a10.24 2.93 4.4", values));
+    assert(parseVertex(s = "10.24 2.93 4.4 \nfoo", values) && s == "\nfoo" && equal!approxEqual(values[$-3..$], [ 10.24, 2.93, 4.4 ]));
+    assert(parseVertex(s = "1 2 3 4", values) && s == "" && equal!approxEqual(values[$-3..$], [ 1f, 2f, 3f ]));
     assert(!parseVertex(s = "1 2 3 4 5 6\nfoo", values) && s == "\nfoo");
     assert(!parseVertex(s = "1 2 3 4 5# \r\nfoo", values) && s == "# \r\nfoo");
     assert(!parseVertex(s = "1 2 ", values) && s == "");
@@ -449,56 +458,98 @@ private bool parseVertexUv (ref string s, ref float[] uvs) {
     }
 }
 unittest {
+    import std.algorithm: equal;
+    import std.math: approxEqual;
+
     string s; float[] values;
     assert(!parseVertexUv(s = "1 ", values));
-    assert(parseVertexUv(s = "1 2", values) && values[$-2..$] == [ 1f, 2f ]);
-    assert(parseVertexUv(s = "4 5 6", values) && values[$-2..$] == [ 4f, 5f, 6f ]);
+    assert(parseVertexUv(s = "1 2", values) && equal!approxEqual(values[$-2..$], [ 1f, 2f ]));
+    assert(parseVertexUv(s = "4 5 6", values) && equal!approxEqual(values[$-2..$], [ 4f, 5f ]));
     assert(!parseVertexUv(s = "1 2 3 4", values));
 }
 
+private bool parseIndex ( ref string s, ref int index, uint max_bound ) {
+    if (!s.length || !s.isNumeric) {
+        index = 0;
+        return false;
 
+    } else {
+        if (s[0] == '-') {
+            s = s[1..$];
+            enforce(s.length && s.isNumeric, "parse error");
 
-bool parseFace (ref string s, MeshPart* mesh, const ref ObjParserContext parser) {
-    int[15] indices = 0;
+            auto v = cast(int)parseUint(s);
+            enforce(v != 0, ".obj vertex indices cannot be 0");
+
+            index = max_bound - v + 1;
+        } else {
+            auto v = index = parseUint(s);
+            enforce( v != 0, ".obj vertex indices cannot be 0");
+        }
+        enforce(index - 1 < max_bound, format("Face index out of bounds: %s > %s",
+            index, max_bound));
+        return true;
+    }
+}
+unittest {
+    string s; int v; uint max_bound = 20;
+    bool tryParseIndex ( string line ) {
+        v = int.max;
+        try { 
+            return parseIndex(s = line, v, max_bound); 
+        } catch (Exception e) {
+            return false; 
+        }
+    }
+
+    // Basically just an extension of parseUint, but should also check that:
+    // - 0 is illegal (.obj indices are 1-based)
+    // - minor parse errors ("/" => 0) return 0, false
+    // - positive indices are bounded by [1, N]
+    // - negative indices are bounded by [-N, -1] and mapped to [1, N]
+    assert(!tryParseIndex("") && v == 0);
+    assert(!tryParseIndex("0"));
+    assert(!tryParseIndex("-0"));
+    assert(!tryParseIndex("asdf0") && v == 0);
+    assert(!tryParseIndex("/12/")  && v == 0);
+    assert(tryParseIndex("1")  && v == 1);
+    assert(tryParseIndex("20") && v == 20);
+    assert(!tryParseIndex("21"));
+    assert(tryParseIndex("-1")  && v == 20);
+    assert(tryParseIndex("-20") && v == 1);
+}
+
+private bool parseFace (ref string s, MeshPart* mesh, const ref ObjParserContext parser) {
+    int[12] indices = 0;
     int vcount = 0, tcount = 0, ncount = 0;
 
     auto vertexCount = cast(int)parser.vertexData.length / 3;
     auto normalCount = cast(int)parser.normalData.length / 3;
     auto uvCount     = cast(int)parser.uvData.length / 2;
 
-    bool parseIndex ( ref string s, uint i, uint max_bound ) {
-        auto index = s[0] == '-' ?
-            max_bound - parseUint( s = s[1..$] ) + 1 :
-            parseUint( s );
-
-        enforce(index - 1 < max_bound, format("Face index out of bounds: %s > %s",
-            index, max_bound));
-
-        indices[i] = index;
-        return true;
-    }
+    
     s.munchWs();
     while (!s.atEol) {
-        enforce(s[0] == '-' || s[0].isDec, format("Expected face index, not '%s'", s.sliceToEol));
-
-        if (++vcount > 4 || !parseIndex(s, vcount * 3, vertexCount))
+        enforce(s.isNumeric, format("Expected face index, not '%s'", s.sliceToEol));
+        if (vcount > 4 || !parseIndex(s, indices[vcount * 3], vertexCount))
             return false;
 
-        if (s[0] == '/') {
+        if (s.length && s[0] == '/') {
             s = s[1..$];
-            if (s[0] != '/' && parseIndex(s, vcount * 3 + 1, cast(uint)uvCount )) {
-                enforce(++tcount == vcount, format("Unmatched indices: %s verts != %s uvs", vcount, tcount));
+            if (s.isNumeric && parseIndex(s, indices[vcount * 3 + 1], cast(uint)uvCount )) {
+                enforce(tcount++ == vcount, format("Unmatched indices: %s verts != %s uvs", vcount, tcount));
             }
-            if (s[0] == '/') {
+            if (s.length && s[0] == '/') {
                 s = s[1..$];
-                if (parseIndex( s, vcount * 3 + 2, cast(uint)normalCount)) {
-                    enforce(++ncount == vcount, format("Unmatched indices: %s verts != %s normals", vcount, ncount));
+                if (s.isNumeric && parseIndex( s, indices[vcount * 3 + 2], cast(uint)normalCount)) {
+                    enforce(ncount++ == vcount, format("Unmatched indices: %s verts != %s normals", vcount, ncount));
                 }
             }
         }
+        ++vcount;
         s.munchWs();
     }
-    enforce(vcount >= 3, format("Not enough indices for face: %s", vcount));
+    enforce(vcount >= 3, format("Not enough indices for face (%s)", vcount));
     switch (vcount) {
         case 3:
             mesh.tris ~= indices[0..9];
@@ -513,6 +564,9 @@ bool parseFace (ref string s, MeshPart* mesh, const ref ObjParserContext parser)
     return true;
 }
 unittest {
+    import std.algorithm: equal;
+    import std.math: approxEqual;
+
     ObjParserContext parser;
     auto mesh = parser.currentMesh;
     assert(mesh !is null);
@@ -522,10 +576,12 @@ unittest {
     // try/catch wrapper for parseFace since it can signal errors by returning false or
     // throwing exceptions; we'll convert both of these to 'return false' for unit testing purposes.
     bool tryParseFace (ref string s) {
+        auto s0 = s;
         bool ok = true;
         try {
             ok = parseFace(s, mesh, parser);
-        } catch (Exception) {
+        } catch (Exception e) {
+            //writefln("Failed: %s '%s'", e.msg, s0.sliceToEol);
             ok = false;
         }
         pushedQuad = quadLength != mesh.quads.length; quadLength = mesh.quads.length;
@@ -540,28 +596,29 @@ unittest {
 
     string s;
     assert(!tryParseFace(s = "") && !pushedTri && !pushedQuad);
-    assert(!tryParseFace(s = " 12 3 4\n") && s == " 12 3 4\n" && !pushedTri && !pushedQuad);
-    assert(tryParseFace(s = "12 3 4#foo \n") && s == "# foo \n" && pushedTri && !pushedQuad);
+    assert(!tryParseFace(s = "a12 3 4\n") && s == "a12 3 4\n" && !pushedTri && !pushedQuad);
+    assert(tryParseFace(s = "12 3 4#foo \n") && s == "#foo \n" && pushedTri && !pushedQuad);
     assert(tryParseFace(s = "12 3 4  # foo \n") && s == "# foo \n" && pushedTri &&
-        mesh.tris[$-9..$] == [ 12, 0, 0, 3, 0, 0, 4, 0, 0 ]);
+        equal!approxEqual(mesh.tris[$-9..$], [ 12, 0, 0, 3, 0, 0, 4, 0, 0 ]));
     assert(tryParseFace(s = "12 3 4 5  \t \n") && s == "\n" && pushedQuad &&
-        mesh.quads[$-12..$] == [ 12, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0 ]);
+        equal!approxEqual(mesh.quads[$-12..$], [ 12, 0, 0, 3, 0, 0, 4, 0, 0, 5, 0, 0 ]));
 
     assert(tryParseFace(s = "1// 2// 3// 4//") && pushedQuad &&
-        mesh.quads[$-12..$] == [ 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0 ]);
+        equal!approxEqual(mesh.quads[$-12..$], [ 1, 0, 0, 2, 0, 0, 3, 0, 0, 4, 0, 0 ]));
     assert(tryParseFace(s = "1/2/ 3/4 \t5/5/ 8/8") && pushedQuad &&
-        mesh.quads[$-12..$] == [ 1, 2, 0, 3, 4, 0, 5, 5, 0, 8, 8, 0 ]);
+        equal!approxEqual(mesh.quads[$-12..$], [ 1, 2, 0, 3, 4, 0, 5, 5, 0, 8, 8, 0 ]));
     assert(tryParseFace(s = "1//2 3//4 5//2") && pushedTri &&
-        mesh.tris[$-9..$] == [ 1, 0, 2, 3, 0, 4, 5, 0, 2 ]);
+        equal!approxEqual(mesh.tris[$-9..$], [ 1, 0, 2, 3, 0, 4, 5, 0, 2 ]));
     assert(tryParseFace(s = "1/2/3 4/5/6 7/8/9") && pushedTri &&
-        mesh.tris[$-9..$] == [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ]);
+        equal!approxEqual(mesh.tris[$-9..$], [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ]));
 
     // Test bounds checking + negative indices
     assert(tryParseFace(s = "12 9 1") && pushedTri && !pushedQuad);
     assert(!tryParseFace(s = "13 9 1") && !pushedTri && !pushedQuad);  // out of bounds (0-12 vert indices)
     assert(!tryParseFace(s = "0 9 1")  && !pushedTri && !pushedQuad);  // .obj indices are 1-based; '0' is invalid
     assert(!tryParseFace(s = "-0 9 1") && !pushedTri && !pushedQuad);  // ditto (should get interpreted as -0 = 0)
-    assert(tryParseFace(s = "-12 9 1") && pushedTri && mesh.tris[$-9..$] == [ 1, 0, 0, 9, 0, 0, 1, 0, 0 ]);
+    assert(tryParseFace(s = "-12 9 1") && pushedTri && mesh.tris[$-9..$] == [ 1, 0, 0, 9, 0, 0, 1, 0, 0 ],
+        format("%s", mesh.tris[$-9..$]));
     assert(tryParseFace(s = "-1 9 1")  && pushedTri && mesh.tris[$-9..$] == [ 12, 0, 0, 9, 0, 0, 1, 0, 0 ]);
     assert(!tryParseFace(s = "-13 9 1") && !pushedTri && !pushedQuad); // out of bounds
 }
@@ -598,10 +655,14 @@ struct ObjParserContext {
     float[] vertexData, normalData, uvData;
     MeshPart[] parts;
     string currentObject = null, currentGroup = null, currentMtl = null;
-    MeshPart* currentMesh = null;
+    private MeshPart* _currentMesh = null;
     string[] mtlLibs;
 
-    this (this) { selectMesh(currentObject, currentGroup, currentMtl); }
+    @property auto currentMesh () {
+        if (!_currentMesh)
+            selectMesh(currentObject, currentGroup, currentMtl);
+        return _currentMesh;
+    }
 
     void reportError (string err) {
         lineErrors ~= tuple(lineNum, err);
@@ -613,11 +674,12 @@ struct ObjParserContext {
 
         foreach (ref mesh; parts) {
             if (mesh.object == object && mesh.group == group && mesh.mtl == material) {
-                currentMesh = &mesh;
+                _currentMesh = &mesh;
                 return;
             }
         }
         parts ~= MeshPart( object, group, material );
+        _currentMesh = &parts[$-1];
     }
     void materialLib ( string libName ) {
         foreach (lib; mtlLibs)
