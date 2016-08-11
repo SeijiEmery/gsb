@@ -449,8 +449,8 @@ private bool parseVertexUv (ref string s, ref float[] uvs) {
     // Uv _may_ consist of 2 floats or 3, according to spec, 
     // but only 2 are supported so we ignore the 3rd.
     auto n = parseFloats( s, uvs );
-    if (n == 2) return true;
-    else if (n == 3) return --uvs.length, true;
+    if (n == 2 || n == 3) return true;
+    //else if (n == 3) return --uvs.length, true;
     else {
         if (n) uvs.length -= n;
         uvs ~= [ float.nan, float.nan ];
