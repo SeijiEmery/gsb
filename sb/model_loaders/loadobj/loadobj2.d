@@ -663,6 +663,9 @@ struct ObjParserContext {
             selectMesh(currentObject, currentGroup, currentMtl);
         return _currentMesh;
     }
+    @property auto vertexCount () { return vertexData.length / 3; }
+    @property auto normalCount () { return normalData.length / 3; }
+    @property auto uvCount     () { return uvData.length / 3; }
 
     void reportError (string err) {
         lineErrors ~= tuple(lineNum, err);
@@ -745,93 +748,34 @@ private void parseLines (ref string s, ref ObjParserContext parser) {
 }
 
 void fast_parse_obj (string file) {
-    Tuple!(uint, string)[] badLines;
-    Tuple!(uint, string)[] lineWarnings;
-    Tuple!(uint, string)[] lineErrors;
-    uint   lineNum = 0;
-    string lineStart = file;
-
-    // list of material libs by mtllib declaration.
-    // Will probably _not_ handle multiple mtllib statements with conflicting references
-    // to materials with the same name (but then again, most .obj parsers won't handle that
-    // either).
-    string[] mtlLibs;
-
-    float[] vertexData;   // 3 components per vertex
-    float[] normalData;   // 3 components per normal
-    float[] uvData;       // 2 components per uv
-
-    size_t vertexCount = 0, normalCount = 0, uvCount = 0;
-
-    string current_obj   = null;
-    string current_group = null;
-    string current_mtl   = null;
-
-    MeshPart[] parts; parts ~= MeshPart();
-    MeshPart*  currentMesh = &parts[$-1];
-
-    void selectPart (string object, string group, string mtl) {
-        foreach (i, part; parts) {
-            if (part.object == object && part.group == group && part.mtl == mtl) {
-                currentMesh = &parts[i];
-                return;
-            }
+    ObjParserContext parser;
+    parseLines(file, parser);
+    
+    if (parser.lineErrors.length) {
+        writefln("%s error(s):", parser.lineErrors.length);
+        foreach (err; parser.lineErrors) {
+            writefln("\tERROR (line %s): %s", err[0], err[1]);
         }
-        parts ~= MeshPart(object, group, mtl);
-        currentMesh = &parts[$-1];
-    }
-
-    // Signal bad line (do thorough error checking later) and skip to eol
-    void badLine (ref string s) {
-        writefln("Bad line! %s, '%s'", lineNum, lineStart.sliceToEol);
-        //badLines ~= tuple(lineNum, lineStart);
-        s.munchToEol;
-    }
-    // Advance to next line. string must point to an eol character!
-    void advanceLine (ref string s) {
-
-        auto s0 = s;
-
-        bool munched = s.munchEol();
-        assert(munched, format("%s: '%s' => '%s' ('%s')", lineNum, s0.sliceToEol, s.sliceToEol, lineStart.sliceToEol));
-        ++lineNum;
-        lineStart = s;
-        //writefln("line %s: '%s'", lineNum, s.sliceToEol);
-    }
-    // Warn line not fully used; emits a line warning.
-    void warnUnused (string s) {
-        lineWarnings ~= tuple(lineNum, format("Unused '%s' (%s)",
-            s.sliceToEol, lineStart.sliceToEol));
-    }
-
-    //
-    // Pass 1: parse vertex, uv, and normal data + mark other lines
-    //
-    void doParse () {
-        //parseLines(file);
-
-        writefln("%s verts, %s uvs, %s normals", vertexCount, uvCount, normalCount);
-        writefln("%s, %s, %s", vertexData.length, uvData.length, normalData.length);
-
-        if (badLines.length) {
-            writefln("Error parsing %s line(s):", badLines.length);
-            foreach (line; badLines)
-                writefln("\n%s: '%s'", line[0], line[1]);
-            writefln("");
+    } else {
+        writefln("%s verts, %s uvs, %s normals", parser.vertexCount, parser.uvCount, parser.normalCount);
+        assert(parser.vertexData.length % 3 == 0 && parser.uvData.length % 2 == 0 && parser.normalData.length % 3 == 0,
+            format("internal error: uneven vertex / uv / normal counts: %s, %s, %s", 
+                parser.vertexData.length, parser.uvData.length, parser.normalData.length));
+        
+        writefln("mtl lib(s): %s", parser.mtlLibs.join(", "));
+        writefln("%s mesh parts:", parser.parts.length);
+        foreach (ref mesh; parser.parts) {
+            if (mesh.tris.length || mesh.quads.length)
+                writefln("\tobject '%s'.'%s' mtl '%s':\n\t\t %s tri(s) %s quad(s)",
+                    mesh.object ? mesh.object : "<none>",
+                    mesh.group  ? mesh.group : "<none>",
+                    mesh.mtl ? mesh.mtl : "<none>",
+                    mesh.tris.length / 9,
+                    mesh.quads.length / 12
+                );
         }
-        if (lineErrors.length) {
-            writefln("%s error(s):", lineErrors.length);
-            foreach (err; lineErrors)
-                writefln("\tERROR (line %s): %s", err[0], err[1]);
-            writefln("");
-        }
-        if (lineWarnings.length) {
-            writefln("%s warning(s):", lineWarnings.length);
-            foreach (err; lineWarnings)
-                writefln("\tWARNING (line %s): %s", err[0], err[1]);
-        }
+        writefln("");
     }
-    doParse();
 }
 
 
@@ -926,6 +870,7 @@ void main (string[]) {
         testObj("/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj");
         testObj("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj");
         testObj("/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip");
+        testObj("/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj");
 
         writefln("Loaded %s models in %s:", loadTimes.length, sw.peek.msecs * 1e-3);
         foreach (kv; loadTimes) {
