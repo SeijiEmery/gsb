@@ -6,6 +6,7 @@ import std.string;
 import std.stdio;
 import std.math;
 import std.exception: enforce;
+import std.container.array;
 
 // Advance s up to the first eol or eof (incl end-of-string) character.
 // Returns a slice of s from start to the first eol character or comment (#).
@@ -197,7 +198,7 @@ unittest {
     //writefln("all tests passed.");
 }
 
-uint parseFloats (ref string s, ref float[] values) {
+uint parseFloats (ref string s, ref Array!float values) {
     uint n = 0;
     s.munch(" \t");
     while (isNumeric(s)) {
@@ -386,13 +387,13 @@ unittest {
 
 // Try parsing vertex after 'v ' (no 'v' or whitespace), storing 3 floats into verts.
 // Should return false or throw to indicate an error.
-private bool parseVertex (ref string s, ref float[] verts) {
+private bool parseVertex (ref string s, ref Array!float verts) {
     auto n = parseFloats( s, verts );
 
     // Accepts 3 floats _or_ 4, according to spec, but discards the last value (for 4)
     // so we only ever push 3 values onto verts.
     if (n == 3) return true;
-    else if (n == 4) return --verts.length, true;
+    else if (n == 4) return verts.removeBack, true;
     else {
         // If an unexpected number of floats was parsed, returns false to report an error
         // but will _also_ do error recovery (pops off parsed values; pushes on 3 nans),
@@ -401,7 +402,7 @@ private bool parseVertex (ref string s, ref float[] verts) {
         // error messages. The loader may / may not be configured to support multiple and/or
         // non-critical error messages (the alternative is to just throw, catch, and terminate
         // w/ an exception on error), but it's important that we support this just in case).
-        if (n) verts.length -= n;
+        while (n --> 0) verts.removeBack;
         verts ~= [ float.nan, float.nan, float.nan ];
         return false;
     }
@@ -410,7 +411,7 @@ unittest {
     import std.algorithm: equal;
     import std.math: approxEqual;
 
-    string s; float[] values;
+    string s; Array!float values;
     assert(!parseVertex(s = "", values));
     assert(!parseVertex(s = "a10.24 2.93 4.4", values));
     assert(parseVertex(s = "10.24 2.93 4.4 \nfoo", values) && s == "\nfoo" && equal!approxEqual(values[$-3..$], [ 10.24, 2.93, 4.4 ]));
@@ -425,13 +426,13 @@ unittest {
 }
 
 // Parse vertex normal (vn). Accepts a tuple of 3 floats; always pushes 3 onto normals.
-private bool parseVertexNormal (ref string s, ref float[] normals) {
+private bool parseVertexNormal (ref string s, ref Array!float normals) {
 
     // Normal should only ever consist of 3 floats.
     auto n = parseFloats( s, normals );
     if (n == 3) return true;
     else {
-        if (n) normals.length -= n;
+        while (n --> 0) normals.removeBack;
         normals ~= [ float.nan, float.nan, float.nan ];
         return false;
     }
@@ -444,15 +445,15 @@ unittest {
 }
 
 // Parse vertex uv / tex coord (vt). Accepts 2-3 floats; always pushes 2 onto uvs.
-private bool parseVertexUv (ref string s, ref float[] uvs) {
+private bool parseVertexUv (ref string s, ref Array!float uvs) {
 
     // Uv _may_ consist of 2 floats or 3, according to spec, 
     // but only 2 are supported so we ignore the 3rd.
     auto n = parseFloats( s, uvs );
-    if (n == 2 || n == 3) return true;
-    //else if (n == 3) return --uvs.length, true;
+    if (n == 2) return true;
+    else if (n == 3) return uvs.removeBack, true;
     else {
-        if (n) uvs.length -= n;
+        while (n --> 0) uvs.removeBack;
         uvs ~= [ float.nan, float.nan ];
         return false;
     }
@@ -650,9 +651,9 @@ private struct MeshPart {
 
 struct ObjParserContext {
     uint                  lineNum = 0;
-    Tuple!(uint,string)[] lineErrors;
+    Array!(Tuple!(uint,string)) lineErrors;
 
-    float[] vertexData, normalData, uvData;
+    Array!float vertexData, normalData, uvData;
     MeshPart[] parts;
     string currentObject = null, currentGroup = null, currentMtl = null;
     private MeshPart* _currentMesh = null;
@@ -668,7 +669,8 @@ struct ObjParserContext {
     @property auto uvCount     () { return uvData.length / 3; }
 
     void reportError (string err) {
-        lineErrors ~= tuple(lineNum, err);
+        lineErrors.insertBack(tuple(lineNum, err));
+        //lineErrors ~= tuple(lineNum, err);
     }
     void selectMesh (string object, string group, string material) {
         currentObject = object;
@@ -819,7 +821,7 @@ private void runBenchmark (string name, void delegate() bench)(uint workCount, u
 
 void benchmarkObjLoad (string fileName, string file, uint min_line_count = 1000_000) {
     // Do a pre-pass to mark lines so we can benchmark individual parser functions
-    string[][ParseCmd.max+1] lines;
+    Array!string[ParseCmd.max+1] lines;
     auto s = file;
     uint totalLineCount = 0;
     while (s.length) {
@@ -845,7 +847,7 @@ void benchmarkObjLoad (string fileName, string file, uint min_line_count = 1000_
         })(cast(uint)totalLineCount, min_line_count);
     }
 
-    void benchVertexFcn (string fcn, ParseCmd cmd)(ref float[] values) {
+    void benchVertexFcn (string fcn, ParseCmd cmd)(ref Array!float values) {
         if (lines[cmd].length) {
             runBenchmark!(fcn, {
                 values.length = 0;
@@ -968,7 +970,7 @@ void main (string[]) {
     }
 
     benchObjLoad();
-    //testObjLoad();
+    testObjLoad();
     runBenchmarks();
 }
 
