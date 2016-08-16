@@ -789,6 +789,7 @@ private void genSmoothNormals (ref ObjParserContext parser, bool forceGenNormals
         foreach (i; 0 .. parser.vertexData.length) {
             parser.normalData ~= 0f;
         }
+
         // For each triangle + quad, add surface normal to vertex normal (cross product)
         foreach (mesh; parser.parts) {
             assert(mesh.tris.length % 9 == 0, format("%s, %s", mesh.tris.length, mesh.tris.length % 9));
@@ -994,6 +995,12 @@ void benchmarkObjLoad (string fileName, string file, uint min_line_count = 1000_
                 parseFace(line, mesh, parser);
             //parser.resetFaces();
         })(cast(uint)lines[ParseCmd.FACE].length, min_line_count);
+    }
+    {
+        uint vertCount = cast(uint)parser.vertexData.length / 3;
+        runBenchmark!("genSmoothNormals", {
+            genSmoothNormals(parser, true);
+        })(vertCount, vertCount);
     }
 }
 
