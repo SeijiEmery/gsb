@@ -211,6 +211,7 @@ uint parseFloats (ref string s, ref Array!float values) {
     return n;
 }
 unittest {
+    import std.algorithm: equal;
     float epsilon = 1e-9;
     bool approxEqual (float a, float b) {
         if (abs(a - b) > epsilon) {
@@ -220,10 +221,10 @@ unittest {
         return true;
     }
 
-    string s; float[] values;
+    string s; Array!float values;
     assert(parseFloats(s = "2", values) == 1 && s == "" && values[$-1] == 2);
     assert(parseFloats(s = "2.04e-3 asdf", values) == 1 && s == "asdf" && approxEqual(values[$-1], 2.04e-3));
-    assert(parseFloats(s = "2 3 4 5", values) == 4 && s == "" && values[$-4..$] == [ 2f, 3f, 4f, 5f]);
+    assert(parseFloats(s = "2 3 4 5", values) == 4 && s == "" && equal!approxEqual(values[$-4..$].array, [ 2f, 3f, 4f, 5f]));
     assert(parseFloats(s = " ;alsdfh", values) == 0 && s == ";alsdfh");
     assert(parseFloats(s = "aslfjsaf", values) == 0 && s == "aslfjsaf");
 }
@@ -438,9 +439,12 @@ private bool parseVertexNormal (ref string s, ref Array!float normals) {
     }
 }
 unittest {
-    string s; float[] values;
+    import std.algorithm: equal;
+    import std.math: approxEqual;
+
+    string s; Array!float values;
     assert(!parseVertexNormal(s = "1 2", values));
-    assert(parseVertexNormal(s = "1 2 3", values) && values[$-3..$] == [ 1f, 2f, 3f ]);
+    assert(parseVertexNormal(s = "1 2 3", values) && equal!approxEqual(values[$-3..$], [ 1f, 2f, 3f ]));
     assert(!parseVertexNormal(s = "1 2 3 4", values));
 }
 
@@ -462,7 +466,7 @@ unittest {
     import std.algorithm: equal;
     import std.math: approxEqual;
 
-    string s; float[] values;
+    string s; Array!float values;
     assert(!parseVertexUv(s = "1 ", values));
     assert(parseVertexUv(s = "1 2", values) && equal!approxEqual(values[$-2..$], [ 1f, 2f ]));
     assert(parseVertexUv(s = "4 5 6", values) && equal!approxEqual(values[$-2..$], [ 4f, 5f ]));
@@ -591,9 +595,11 @@ unittest {
     }
 
     // "add" verts, uvs, and normals so bounds checks don't kick in!
-    parser.vertexData.length += 3 * 12;
-    parser.normalData.length += 3 * 12;
-    parser.uvData.length     += 2 * 12;
+    for (auto i = 12; i --> 0; ) {
+        parser.vertexData.insertBack([ 0, 0, 0 ]);
+        parser.normalData.insertBack([ 0, 0, 0 ]);
+        parser.uvData.insertBack([ 0, 0 ]);
+    }
 
     string s;
     assert(!tryParseFace(s = "") && !pushedTri && !pushedQuad);
@@ -722,6 +728,126 @@ unittest {
     parser.selectMesh("foo", "blarg", null);
     parser.selectMesh("foo", null, null);
     assert( parser.parts.length == 3 );
+}
+
+// Calculate cross product + add to r.
+private void cp_add (const(float)* a, const(float)* b, const(float)* c, float* r) {
+    auto x0 = a[0] - c[0], x1 = b[0] - c[0];
+    auto y0 = a[1] - c[1], y1 = b[1] - c[1];
+    auto z0 = a[2] - c[2], z1 = b[2] - c[2];
+
+    r[0] += y0 * z1 - z0 * y1;
+    r[1] += z0 * x1 - x0 * z1;
+    r[2] += x0 * y1 - y0 * x1;
+}
+unittest {
+    float[4] a = [ 5, 2, 1, 1 ], b = [ 4, 3, 1, 1 ], c = [ 4, 2, 1, 1 ], r = 0;
+    cp_add(&a[0], &b[0], &c[0], &r[0]);
+    assert(r == [ 0, 0, 1, 0 ], format("%s", r));
+}
+
+//private auto shuffle_yzx (Args...)(Args args) {
+//    //                           x->z    y->x     z->y      w->w
+//    return __simd(SHUFPS, args, (2<<0) | (0<<2) | (1<<4) | (3<<6));
+//}
+//private auto shuffle_zxy (Args...)(Args args) {
+//    return __simd(SHUFPS, args, (1<<0) | (2<<2) | (0<<4) | (3<<6));
+//}
+
+//private void cp_add2 (float* a, float* b, float* c, float* r) {
+//    //float[4] a_yzx = [ a[1], a[2], a[0], 0 ], a_zxy = [ a[2], a[0], a[1], 0 ];
+//    //float[4] b_yzx = [ b[1], b[2], b[0], 0 ], b_zxy = [ b[2], b[0], b[1], 0 ];
+//    //float[4] c_yzx = [ c[1], c[2], c[0], 0 ], c_zxy = [ c[2], c[0], c[1], 0 ];
+//    import core.simd;
+
+//    auto a_yzx = shuffle_yzx(float4(a[0..4])), a_zxy = shuffle_zxy(cast(float4)a[0..4]);
+//    auto b_yzx = shuffle_yzx(cast(float4)b[0..4]), b_zxy = shuffle_zxy(cast(float4)b[0..4]);
+//    auto c_yzx = shuffle_yzx(cast(float4)c[0..4]), c_zxy = shuffle_zxy(cast(float4)c[0..4]);
+
+//    a_yzx -= c_yzx; b_zxy -= c_zxy;
+//    a_yzx *= b_zxy;
+
+//    a_zxy -= c_zxy; b_yzx -= c_yzx;
+//    a_zxy *= b_yzx;
+
+//    a_yzx -= a_zxy;
+//    r[0..3] += a_yzx[0..3];
+//}
+//unittest {
+//    float[4] a = [ 5, 2, 1, 1 ], b = [ 4, 3, 1, 1 ], c = [ 4, 2, 1, 1 ], r = 0;
+//    cp_add2(&a[0], &b[0], &c[0], &r[0]);
+//    assert(r == [ 0, 0, 1, 0 ], format("%s", r));
+//}
+
+
+private void genSmoothNormals (ref ObjParserContext parser, bool forceGenNormals) {
+    if (!parser.normalCount || forceGenNormals) {
+        parser.normalData.clear();
+        parser.normalData.reserve(parser.vertexData.length);
+
+        // Clear + fill normals from 0 .. vertex length w/ vec4(0)
+        foreach (i; 0 .. parser.vertexData.length) {
+            parser.normalData ~= 0f;
+        }
+        // For each triangle + quad, add surface normal to vertex normal (cross product)
+        foreach (mesh; parser.parts) {
+            assert(mesh.tris.length % 9 == 0, format("%s, %s", mesh.tris.length, mesh.tris.length % 9));
+            for (auto i = mesh.tris.length; i > 0; i -= 9) {
+                // Get triangle indices + set normal indices to match vert indices
+                auto a = mesh.tris[i-2] = mesh.tris[i-3];
+                auto b = mesh.tris[i-5] = mesh.tris[i-6];
+                auto c = mesh.tris[i-8] = mesh.tris[i-9];
+
+                float[3] r = 0;
+                cp_add(&parser.vertexData[a], &parser.vertexData[b], &parser.vertexData[c], &r[0]);
+
+                parser.normalData[a+0] += r[0]; parser.normalData[a+1] += r[1]; parser.normalData[a+2] += r[2];
+                parser.normalData[b+0] += r[0]; parser.normalData[b+1] += r[1]; parser.normalData[b+2] += r[2];
+                parser.normalData[c+0] += r[0]; parser.normalData[c+1] += r[1]; parser.normalData[c+2] += r[2];
+            }
+            assert(mesh.quads.length % 12 == 0, format("%s, %s", mesh.quads.length, mesh.quads.length % 12));
+            for (auto i = mesh.quads.length; i > 0; i -= 12) {
+                int[4] v = [
+                    mesh.quads[i-2]  = mesh.quads[i-3],
+                    mesh.quads[i-5]  = mesh.quads[i-6],
+                    mesh.quads[i-8]  = mesh.quads[i-9],
+                    mesh.quads[i-11] = mesh.quads[i-12],
+                ];
+
+                // Calculate avg normal at all verts in case quad is not coplanar
+                float[3] normal = 0;
+                for (auto j = 0; j < 4; ++j) {
+                    auto k = (j+1) % 4; auto l = (j+2) % 4;
+                    cp_add(&parser.vertexData[v[j]], &parser.vertexData[v[k]], &parser.vertexData[v[l]], &normal[0]);
+                }
+                // normalize
+                auto m_inv = 1.0 / sqrt( normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] );
+                normal[0] *= m_inv;
+                normal[1] *= m_inv;
+                normal[2] *= m_inv;
+
+                // Add to vertex normals
+                for (auto j = 0; j < 4; ++j) {
+                    parser.normalData[v[j]+0] += normal[0];
+                    parser.normalData[v[j]+1] += normal[1];
+                    parser.normalData[v[j]+2] += normal[2];
+                }
+            }
+        }
+
+        // Average normals by re-normalizing
+        for (auto i = parser.normalData.length; i > 0; i -= 3) {
+            auto x = parser.normalData[i-3], y = parser.normalData[i-2], z = parser.normalData[i-1];
+            auto m_inv = 1.0 / sqrt(x * x + y * y + z * z);
+
+            parser.normalData[i-3] *= m_inv;
+            parser.normalData[i-2] *= m_inv;
+            parser.normalData[i-1] *= m_inv;
+        }
+    }
+}
+unittest {
+
 }
 
 private void parseLines (ref string s, ref ObjParserContext parser) {
