@@ -96,13 +96,20 @@ private:
 //
 
 private __gshared uint g_lastBoundProgram = 0;
-public bool bind (ref ShaderRef target) {
-    if (target.program && target.program != g_lastBoundProgram) {
-        glUseProgram(target.program);
-        glAssertOk(format("glUseProgram(%s)", target.program));
+
+// Try binding a shader using glUseProgram.
+// Returns true if success (shader is bindable (compiled) and has been bound), or false otherwise.
+public bool tryBind (ref ShaderRef target) {
+    if (target.program != g_lastBoundProgram) {
+        if (target.program && target.status == ShaderStatus.COMPILED) {
+            glUseProgram(target.program);
+            glAssertOk(format("glUseProgram(%s)", target.program));
+            g_lastBoundProgram = target.program;
+        } else {
+            g_lastBoundProgram = 0;
+        }
     }
-    g_lastBoundProgram = target.program;
-    return target.program != 0;
+    return g_lastBoundProgram != 0;
 }
 public void clearBoundShader () {
     g_lastBoundProgram = 0;
@@ -209,7 +216,7 @@ struct GLACommand_ShaderUseSubroutine {
     ShaderRef target;
     string name, value;
 
-    bool canExec () { return target.program && bind(target); }
+    bool canExec () { return target.program && tryBind(target); }
     void exec () {
         assert(target.program != 0 && g_lastBoundProgram == target.program,
             format("%s, %s", target.program, g_lastBoundProgram));
@@ -222,7 +229,7 @@ struct GLACommand_ShaderSetUniform {
     string name;
     ShaderUniformValue value;
 
-    bool canExec () { return target.program && bind(target); }
+    bool canExec () { return target.program && tryBind(target); }
     void exec () {
         assert(target.program != 0 && g_lastBoundProgram == target.program,
             format("%s, %s", target.program, g_lastBoundProgram));
