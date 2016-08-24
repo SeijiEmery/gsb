@@ -94,15 +94,19 @@ private:
 //
 // Internal GL calls -- use only from graphics thread!
 //
+
+private __gshared uint g_lastBoundProgram = 0;
 public bool bind (ref ShaderRef target) {
-    if (target.program) {
+    if (target.program && target.program != g_lastBoundProgram) {
         glUseProgram(target.program);
         glAssertOk(format("glUseProgram(%s)", target.program));
-        return true;
     }
-    return false;
+    g_lastBoundProgram = target.program;
+    return target.program != 0;
 }
-
+public void clearBoundShader () {
+    g_lastBoundProgram = 0;
+}
 
 //
 // Note: GLACommand(s) are only ever called on the graphics thread,
@@ -205,9 +209,10 @@ struct GLACommand_ShaderUseSubroutine {
     ShaderRef target;
     string name, value;
 
-    bool canExec () { return target.program != 0; }
+    bool canExec () { return target.program && bind(target); }
     void exec () {
-        assert(target.program != 0);
+        assert(target.program != 0 && g_lastBoundProgram == target.program,
+            format("%s, %s", target.program, g_lastBoundProgram));
 
         throw new ShaderUsageException(target, "Unimplemented!");
     }
@@ -217,9 +222,10 @@ struct GLACommand_ShaderSetUniform {
     string name;
     ShaderUniformValue value;
 
-    bool canExec () { return target.program != 0; }
+    bool canExec () { return target.program && bind(target); }
     void exec () {
-        assert(target.program != 0);
+        assert(target.program != 0 && g_lastBoundProgram == target.program,
+            format("%s, %s", target.program, g_lastBoundProgram));
 
         // Try getting the uniform location (will be -1 if not found)
         int location = target.getUniformLocation(name);
