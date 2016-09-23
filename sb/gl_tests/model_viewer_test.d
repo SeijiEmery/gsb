@@ -870,36 +870,59 @@ void main (string[] args) {
             auto up    = fwd.cross(right);
 
             auto input = platform.input;
-            auto wasd_axes = vec3(0, 0, 0);
-            if (input.keys[SbKey.KEY_A].down || input.keys[SbKey.KEY_LEFT].down)  wasd_axes.x -= 1.0;
-            if (input.keys[SbKey.KEY_D].down || input.keys[SbKey.KEY_RIGHT].down) wasd_axes.x += 1.0;
-            if (input.keys[SbKey.KEY_S].down || input.keys[SbKey.KEY_DOWN].down)  wasd_axes.y -= 1.0;
-            if (input.keys[SbKey.KEY_W].down || input.keys[SbKey.KEY_UP].down)    wasd_axes.y += 1.0;
-            if (input.keys[SbKey.KEY_SPACE].down || input.keys[SbKey.KEY_Q].down) wasd_axes.z += 1.0;
-            if (input.keys[SbKey.KEY_CTRL].down || input.keys[SbKey.KEY_E].down) wasd_axes.z -= 1.0;
+            auto cam_move_axes = vec3(0,0,0);
+            auto cam_look_axes = vec3(0,0,0);
+            auto fov_delta = 0.0f;
 
-            auto mouse_axes = input.buttons[SbMouseButton.RMB].down ?
-                input.cursorDelta * 0.25 :
-                vec2(0, 0);
-            auto scroll_axis = input.scrollDelta.y * 0.25;
+            auto wasd_axes = vec3(0, 0, 0);
+            if (input.keys[SbKey.KEY_A].down || input.keys[SbKey.KEY_LEFT].down)  cam_move_axes.x += 1.0;
+            if (input.keys[SbKey.KEY_D].down || input.keys[SbKey.KEY_RIGHT].down) cam_move_axes.x -= 1.0;
+            if (input.keys[SbKey.KEY_S].down || input.keys[SbKey.KEY_DOWN].down)  cam_move_axes.y -= 1.0;
+            if (input.keys[SbKey.KEY_W].down || input.keys[SbKey.KEY_UP].down)    cam_move_axes.y += 1.0;
+            if (input.keys[SbKey.KEY_SPACE].down || input.keys[SbKey.KEY_Q].down) cam_move_axes.z += 1.0;
+            if (input.keys[SbKey.KEY_CTRL].down || input.keys[SbKey.KEY_E].down)  cam_move_axes.z -= 1.0;
+
+            if (input.buttons[SbMouseButton.RMB].down)
+                cam_look_axes += vec3(
+                    input.cursorDelta.x.isNaN ? 0 : -input.cursorDelta.x,
+                    input.cursorDelta.y.isNaN ? 0 : input.cursorDelta.y,
+                    0
+                ) * 0.5;
+            //fov_delta -= input.scrollDelta.y * 0.25;
+
+            // Set lighting model w/ number keys
+            for (auto i = 0; i < LightingModel.max; ++i) {
+                if (input.keys[SbKey.KEY_1 + i].pressed) {
+                    setLightModel(cast(LightingModel)(i));
+                }
+            }
+            if (input.keys[SbKey.KEY_R].pressed) {
+                writefln("Set light = %s, isDirectional = %s",
+                    g_light.pos = cam_pos,
+                    g_light.isDirectional = false);
+            }
+            if (input.keys[SbKey.KEY_T].pressed) {
+                writefln("Set light = %s, isDirectional = %s",
+                    g_light.pos = cam_pos,
+                    g_light.isDirectional = false);
+            }
+
 
             platform.events.onEvent!(
                 (const SbGamepadAxisEvent ev) {
-                    cam_pos -= right * (wasd_axes.x + ev.axes [ AXIS_LX ]) * dt * CAM_MOVE_SPEED;
-                    cam_pos += fwd   * (wasd_axes.y - ev.axes [ AXIS_LY ]) * dt * CAM_MOVE_SPEED;
-                    cam_pos += up    * (wasd_axes.z + ev.axes [ AXIS_BUMPERS ]) * dt * CAM_MOVE_SPEED;
+                    cam_move_axes.x -= ev.axes[ AXIS_LX ];
+                    cam_move_axes.z -= ev.axes[ AXIS_LY ];
+                    cam_move_axes.y += ev.axes[ AXIS_BUMPERS ];
 
-                    cam_angles.x += (mouse_axes.y + ev.axes[AXIS_RY]) * dt * CAM_LOOK_SPEED;
-                    cam_angles.y -= (mouse_axes.x + ev.axes[AXIS_RX]) * dt * CAM_LOOK_SPEED;
+                    cam_look_axes.y += ev.axes[ AXIS_RY ];
+                    cam_look_axes.x += ev.axes[ AXIS_RX ];
+                    fov_delta       += ev.axes[ AXIS_TRIGGERS ];
 
-                    fov = max(MIN_FOV, min(MAX_FOV, fov + (ev.axes[AXIS_TRIGGERS] - scroll_axis) * dt * FOV_CHANGE_SPEED));
-
-                    //auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
-                    //    g_material.shininess + ev.axes[AXIS_DPAD_X] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
-                    //if (g_material.shininess != new_shininess) {
-                    //    writefln("set shininess = %s", g_material.shininess = new_shininess);
-                    //}
-
+                    auto new_shininess = max(MIN_SHININESS, min(MAX_SHININESS, 
+                        g_material.shininess + ev.axes[AXIS_DPAD_X] * dt * (MAX_SHININESS - MIN_SHININESS) * SHININESS_CHANGE_RATE));
+                    if (g_material.shininess != new_shininess) {
+                        writefln("set shininess = %s", g_material.shininess = new_shininess);
+                    }
                     auto new_intensity = max(MIN_INTENSITY, min(MAX_INTENSITY,
                         g_lightIntensity + ev.axes[AXIS_DPAD_Y] * dt * (MAX_INTENSITY - MIN_INTENSITY) * INTENSITY_CHANGE_RATE));
                     if (new_intensity != g_lightIntensity) {
@@ -933,6 +956,13 @@ void main (string[] args) {
                     }
                 }
             );
+
+            // Integrate all inputs
+            cam_pos    += (fwd * cam_move_axes.y + right * cam_move_axes.x + up * cam_move_axes.z) * CAM_MOVE_SPEED * dt;
+            cam_angles.x += cam_look_axes.y * CAM_LOOK_SPEED * dt;
+            cam_angles.y += cam_look_axes.x * CAM_LOOK_SPEED * dt;
+            fov = max(MIN_FOV, min(MAX_FOV, fov + fov_delta * FOV_CHANGE_SPEED * dt));
+
             auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
 
             // triangle rotates about y-axis @origin.

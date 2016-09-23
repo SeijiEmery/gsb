@@ -81,6 +81,19 @@ subPackage {
     targetPath  "build/libs/fs"
 }
 
+subPackage {
+    name "loadobj_test"
+    targetType "executable"
+    mainSourceFile "sb/model_loaders/loadobj/loadobj2.d"
+
+    versions "benchmark"
+
+    targetPath "build/tests/loadobj"
+    dependency "gl3n" version="~>1.3.1"
+}
+
+
+
 //
 // Package aliases + base lib
 //
@@ -149,9 +162,12 @@ subPackage {
     dependency "gsb:platform_glfw_gl41" version="*"
     sourcePaths "sb/platform/interface" "sb/gl/interface" \
         "sb/shared" \
-        "sb/model_loaders/tk_objfile/src" \
-        "sb/model_loaders/loadobj" \
+        #"sb/model_loaders/tk_objfile/src" \
+        #"sb/model_loaders/loadobj" \
         "sb/image_loaders/stb_image"
+    sourceFiles "sb/model_loaders/tk_objfile/src/tk_objfile.d" \
+        "sb/model_loaders/loadobj/package.d" \
+        "sb/model_loaders/loadobj/loadobj_impl.d"
 
     lflags "-Lext/libs" "-ltk_objfile"
     lflags "-Lext/libs" "-lstb_image"
