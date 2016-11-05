@@ -208,6 +208,10 @@ struct GLACommand_CompileShader {
 
             // check gl errors before proceeding
             glEnforceOk(format("glLinkProgram(%s)", target.program));
+
+            // and update status
+            target.lastError = null;
+            target.status = ShaderStatus.COMPILED;
         }
     }
 }

@@ -1,8 +1,62 @@
 module sb.taskgraph.impl.task_queue;
+import sb.taskgraph.taskqueue;    // public interface
 import sb.taskgraph.impl.task;
 import core.sync.mutex;
 import core.atomic;
 import std.format;
+import std.functional: toDelegate;
+
+// Public interface impl
+ITaskQueue sbCreateTaskQueue () { 
+    return new SbTaskQueue(); 
+}
+private class SbTaskQueue : ITaskQueue {
+    TaskQueue!SbTask queue;
+    void delegate(SbTaskRef, Throwable) errorHandler;
+
+    this () { 
+        queue = new TaskQueue!SbTask();
+        errorHandler = &defaultErrorHandler;
+    }
+
+    private void defaultErrorHandler (SbTaskRef task, Throwable err) {
+        throw err;
+    }
+    void setErrorHandler (typeof(errorHandler) handler) {
+        this.errorHandler = handler ? handler : &defaultErrorHandler;
+    }
+    void pushTask (void delegate() action) {
+        assert(queue.insertTask(SbTask(action)));
+    }
+    void pushTask (void delegate() action, void delegate(ref SbTask) postAction) {
+        assert(queue.insertTask(SbTask(action, postAction)));
+    }
+    SbTaskRef fetchTask () {
+        return queue.fetchTask();
+    }
+    bool fetchAndRunTask () {
+        auto task = queue.fetchTask();
+        if (task) {
+            auto err = task.tryRun();
+            if (err) { errorHandler(task, err); }
+            return true;
+        }
+        return false;
+    }
+    void purgeInactiveSegments () {
+        queue.purgeInactiveSegments();
+    }
+    SbTaskQueueStats getStats () {
+        return queue.getStats();
+    }
+    string getStringDump () {
+        return queue.dumpState() ~ queue.dumpSegments();
+    }
+}
+
+//
+// Actual impl
+//
 
 private immutable size_t SEGMENT_SIZE = 256;
 private class Segment (Task) {
@@ -30,10 +84,11 @@ private class Segment (Task) {
         return next_insert - acquired; 
     }
     void reset () {
-        atomicStore(fetch_head, 0);
-        atomicStore(next_insert, 0);
-        atomicStore(acquired, 0);
+        fetch_head = 0;
+        next_insert = 0;
+        acquired = 0;
         next = null;
+        atomicFence();
     }
 
     // Task storage
@@ -84,7 +139,7 @@ final:
     auto fetchTask () {
         auto fetchRange (uint start, uint end) {
             for (auto i = start; i < end; ++i) {
-                if (items[i].unclaimed && items[i].tryClaim) {
+                if (items[i].tryClaim) {
 
                     // Update acquire count and fetch_head
                     auto count = atomicOp!"+="(acquired, 1);
@@ -96,7 +151,7 @@ final:
                     // if (count == next_insert) fetch_head = i;
                     while (
                         count == atomicLoad(next_insert) &&
-                        !cas( &fetch_head, fetch_head, i )) {}
+                        !cas( &fetch_head, fetch_head, count )) {}
 
                     static if (is(Task == struct))
                         return &items[i];
@@ -114,8 +169,9 @@ final:
         auto front = fetch_head, last = next_insert;
         do {
             auto task = fetchRange(front, last);
-            if (task)
+            if (task) {
                 return task;
+            }
 
             // check insert index (may have changed while checking!)
             auto l2 = atomicLoad(next_insert);
@@ -126,6 +182,62 @@ final:
             front = last;
             last  = l2;
         } while (1);
+    }
+
+    unittest {
+        import core.thread;
+        auto segment = new Segment!SbTask(0);
+        auto mutex = new Mutex();
+
+        immutable auto NUM_THREADS = 4;
+        shared int toInsert = SEGMENT_SIZE;
+        shared int toFetch  = SEGMENT_SIZE;
+        shared bool startRun = false;
+        Thread[] threads;
+
+        foreach (i; 0 .. NUM_THREADS) {
+            threads ~= new Thread({
+                while (!atomicLoad(startRun)) {}
+
+                while (toInsert >= 0) {
+                    synchronized (mutex) {
+                        auto rv = segment.insertTask(SbTask());
+                        auto count = atomicOp!"-="(toInsert, 1);
+
+                        assert(
+                            (rv is null) == (count < 0),
+                            format("%s, %s!", rv, count)
+                        );
+                    }
+                }
+                assert(segment.next_insert == SEGMENT_SIZE);
+
+                while (toFetch >= 0) {
+                    synchronized (mutex) {
+                        auto rv = segment.fetchTask();
+                        auto count = atomicOp!"-="(toFetch, 1);
+                        assert(
+                            (rv is null) == (count < 0),
+                            format("%s, %s!", rv, count)
+                        );
+                    }
+                }
+                assert(segment.acquired == SEGMENT_SIZE);
+            }).start();
+        }
+        atomicStore(startRun, true);
+        foreach (thread; threads)
+            thread.join();
+        assert(segment.next_insert == SEGMENT_SIZE);
+        assert(segment.acquired == SEGMENT_SIZE);
+
+        segment.reset();
+        assert(segment.next_insert == 0 && segment.acquired == 0);
+        segment.insertTask(SbTask()); segment.insertTask(SbTask());
+        assert(segment.next_insert == 2 && segment.acquired == 0 && segment.fetch_head == 0);
+        assert(segment.fetchTask && segment.fetchTask && !segment.fetchTask);
+        assert(segment.next_insert == 2 && segment.acquired == 2 && segment.fetch_head == 2,
+            format("%s, %s, %s", segment.next_insert, segment.acquired, segment.fetch_head));
     }
 }
 
@@ -203,6 +315,7 @@ class TaskQueue (Task) {
         }
 
         auto head = insertHead; // save head ref -- insertHead is shared + mutable!
+        assert(head !is null);
 
         // Try inserting into insert head (may fail w/ null if insert head is full).
         auto tref = head.insertTask(task);
@@ -227,6 +340,25 @@ class TaskQueue (Task) {
             return taskRef;
         }
     }
+
+    /// Purge all inactive segments. This will (eventually) free a bunch of memory
+    /// if the queue has grown way too big and has a ton of empty segments.
+    /// Returns the number of purged segments.
+    uint purgeInactiveSegments () {
+        synchronized (segmentOpMutex) {
+            auto head = rootHead;
+            uint purgeCount = 0;
+            while (head.next && head != fetchHead && head.canDiscard) {
+                auto next = head.next;
+                head.next = null;
+                head = next;
+                ++purgeCount;
+            }
+            head = rootHead;
+            return purgeCount;
+        }
+    }
+
     /// Fetch the next available task from the queue as a reference (Task* iff @Task
     /// is a struct); returns null if none available.
     /// Note: returned task _must_ be run and cannot be put back; failure to do
@@ -235,9 +367,32 @@ class TaskQueue (Task) {
     /// predicate in the @Task tryClaim() method.
     auto fetchTask () {
         TaskSegment head = fetchHead;
+        assert(head !is null, format("Null segment head! %s", dumpState(this)));
         do {
             auto task = head.fetchTask();
+
+            string dumpTaskState (typeof(task) task) {
+                import std.array;
+                import std.algorithm: map;
+                return format("SEGMENT %s acquired %s / %s, fetch range (%s,%s]\n%s",
+                    head.id, head.acquired, SEGMENT_SIZE, head.fetch_head, head.next_insert,
+                    head.items[0..$]
+                        .map!((a) => format(&a == task ? "[%s]" : "%s", a.state))
+                        .array.join(" ")
+                );
+            }
+            string dumpTaskInfo (typeof(task) task) {
+                synchronized (segmentOpMutex) {
+                    return format("Invalid task state: %s\nQueue dump: %s\nSegment dump: %s",
+                        task.state, dumpState(this), dumpTaskState(task));
+                }
+            }
+            if (task) {
+                assert(!task.unclaimed && !task.finished, dumpTaskInfo(task));
                 return task;
+            }
+            if (!head.next)
+                return null;
 
             if (head.canAdvance) {
                 if (head == fetchHead) {
@@ -248,6 +403,23 @@ class TaskQueue (Task) {
                 } else head = head.next;
             } else head = head.next;
         } while (1);
+    }
+    bool fetchAndRunTask () {
+        auto task = fetchTask();
+        if (task) {
+            auto err = task.tryRun();
+            if (err)
+                throw err;
+            return true;
+        }
+        return false;
+    }
+    SbTaskQueueStats getStats () {
+        synchronized (segmentOpMutex) {
+            SbTaskQueueStats stats;
+
+            return stats;
+        }
     }
 }
 
@@ -322,5 +494,36 @@ string dumpState (Task)(TaskQueue!Task queue) {
         return s.data;
     }
 }
+string dumpSegments (Task)(TaskQueue!Task queue) {
+    synchronized (queue.segmentOpMutex) {
+        import std.array: appender;
+        auto s = appender!string();
+
+        auto seg = queue.rootHead;
+        while (seg) {
+            s ~= format("SEGMENT %s\n\t", seg.id);
+            for (auto i = 0; i < SEGMENT_SIZE; ++i) {
+                final switch (seg.items[i].state) {
+                    case TaskStatus.UNASSIGNED: s ~= "U"; break;
+                    case TaskStatus.RUNNING:    s ~= "R"; break;
+                    case TaskStatus.EXIT_OK:    s ~= "+"; break;
+                    case TaskStatus.EXIT_FAILURE: s ~= "-"; break;
+                }
+                if (i % 64 == 63)
+                    s ~= "\n\t";
+            }
+            s ~= "\n";
+            seg = seg.next;
+        }
+        return s.data;
+    }
+}
+
+
+
+
+
+
+
 
 

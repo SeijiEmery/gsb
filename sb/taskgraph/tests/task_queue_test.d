@@ -232,7 +232,8 @@ void testProducerConsumerQueue (Logger log) {
     StopWatch sw;
     shared bool mayRun = false;
     shared bool threadsShouldDie = false;
-    
+    shared bool lockTasks = false;
+
     class ThreadWorker : Thread {
         shared bool running = false;
         shared bool shouldDie = false;
@@ -254,13 +255,17 @@ void testProducerConsumerQueue (Logger log) {
             running = true;
             try {
                 while (!shouldDie && !threadsShouldDie) {
+                    while (atomicLoad(lockTasks)) {}
                     doRun(this);
                 }
             } catch (Throwable e) {
+                atomicStore(lockTasks, true);
                 auto writeToStdout = log.writeToStdout;
                 log.writeToStdout = true;
                 log.write("Thread %s crashed: %s\ndump: %s\nsegments: %s", id, e, 
                     queue.dumpState(), queue.dumpSegments());
+                atomicStore(lockTasks, false);
+
                 error = e;
                 log.writeToStdout = writeToStdout;
                 threadsShouldDie = true;

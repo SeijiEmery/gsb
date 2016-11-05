@@ -2,8 +2,9 @@ module sb.taskgraph.impl.task;
 import core.atomic;
 import std.format;
 
-private enum TaskStatus : int { UNASSIGNED = 0, RUNNING, EXIT_OK, EXIT_FAILURE }
+enum TaskStatus : int { UNASSIGNED = 0, RUNNING, EXIT_OK, EXIT_FAILURE }
 
+alias SbTaskRef = SbTask*;
 struct SbTask {
     void delegate() action;
     void delegate(ref SbTask) postAction = null;

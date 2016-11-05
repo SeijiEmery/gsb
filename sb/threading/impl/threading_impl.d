@@ -16,227 +16,183 @@ IThreadContext sbCreateThreadContext (IThreadEventListener listener) {
 private immutable Duration DEFAULT_FRAME_TIMEOUT_THRESHOLD = dur!"seconds"(1.0);
 private immutable Duration DEFAULT_WORK_TIMEOUT_THRESHOLD  = dur!"seconds"(5.0);
 
-private struct ThreadInfo {
-    IThreadWorker worker;
-    SbThreadStatus status = SbThreadStatus.NOT_RUNNING;
-}
-private struct Message { SbThreadMask target; SbThreadId assigned = SbThreadId.NONE; void delegate() msg; }
-
-private class MessageBox {
-    Message[][2] frameMessages;
-    Message[][2] asyncMessages;
-    uint[2]      pendingFrameMessage;
-    uint[2]      pendingAsyncMessage;
-
-    uint curFrameId = 0;
-    ReadWriteMutex frameMutex;
-
-    this () { frameMutex = new ReadWriteMutex(); }
-    void pushThisFrame (SbThreadMask target, void delegate msg) {
-        synchronized (frameMutex.read) {
-            frameMessages[curFrameId & 1] ~= Message(target, SbThreadId.NONE, msg);
-            pendingFrameMessage[curFrameId & 1] |= target;
-        }
-    }
-    void pushNextFrame (SbThreadMask target, void delegate msg) {
-        synchronized (frameMutex.read) {
-            frameMessages[(curFrameId+1) & 1] ~= Message(target, SbThreadId.NONE, msg);
-            pendingFrameMessage[(curFrameId+1) & 1] |= target;
-        }
-    }
-    void pushAsync (SbThreadMask target, void delegate msg) {
-        synchronized (frameMutex.read) {
-            asyncMessages[curFrameId & 1] ~= Message(target, SbThreadId.NONE, msg);
-            pendingAsyncMessage[curFrameId & 1] |= target;
-        }
-    }
-
-    Message* fetchFrameMessage (SbThreadId threadId) {
-        synchronized (frameMutex.read) {
-            auto mask = threadId.toMask;
-            auto fid  = curFrameId & 1;
-            if (!pendingFrameMessages[fid] & mask)
-                return null;
-
-            foreach (ref message; frameMessages[fid]) {
-                if (message.assigned != SbThreadId.NONE && 
-                    message.target & mask &&
-                    cas(&message.assigned, SbThreadId.NONE, threadId))
-                {
-                    return &message;
-                }
-            }
-            do {
-                auto current = pendingFrameMessages[fid];
-                auto next    = current & ~threadId.toMask;
-            } while (!cas(&pendingFrameMessages[fid], current, next));
-
-
-            while (!cas(pendingFrameMessages[fid] & ~threadId.toMask,
-                pendingFrameMessages[fid], ))
-
-
-            pendingFrameMessages[curFrameId & 1] &= ~threadId.toMask;
-            return null;
-        }
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-}
-
-
-
-
-
-
-private class ThreadRunner {
-    ThreadContext  tc;
-    IThreadWorker  worker;
-    SbThreadId     threadId;
-    SbThreadStatus status = SbThreadStatus.NOT_RUNNING;
-    bool shouldDie     = false;
-    bool shouldRestart = false;
-    IThreadWorker workerReplacement = null; // use iff shouldRestart
-final:
-    private void startupThread () {
-        status = SbThreadStatus.INITIALIZING;
-        tc.notifyStarted(threadId);
-        worker.onThreadStart(threadId);
-
-        status = SbThreadStatus.RUNNING;
-        tc.notifyRunning(threadId);
-    }
-    private void teardownThread_ok () {
-        status = SbThreadStatus.EXIT_OK;
-        try {
-            worker.onThreadEnd();
-        } catch (Throwable e) {
-            status = SbThreadStatus.EXIT_ERROR;
-            tc.notifyError(threadId);
-            return;
-        }
-        tc.notifyExited(threadId);
-    }
-    private void teardownThread_andReportError (Throwable err) {
-        status = SbThreadStatus.EXIT_ERROR;
-        worker.onThreadEnd();
-        tc.notifyError(threadId);
-    }
-    private void restartThread (ThreadWorker newWorker) {
-        teardownThread_ok();
-        worker = newWorker;
-        startupThread();
-    }
-    private void runLoop () {
-        while (!shouldDie) {
-            if (shouldRestart && workerReplacement) {
-                if (workerReplacement != worker)
-                    restartThread(workerReplacement);
-                shouldRestart = false;
-                workerReplacement = null;
-
-            } else if (nextFrameId != frameId) {
-                worker.onNextFrame();
-                frameId = nextFrameId;
-
-
-
-            } else if (hasExternWork) {
-                doExternWork();
-            } else {
-                worker.doThreadWork();
-            }
-        }
-    }
-    private void swapFrame () {
-        worker.onNextFrame();
-    }
-
-
-
-
-
-
-    void run () {
-        enforce!SbThreadingException(status == SbThreadStatus.NOT_RUNNING,
-            format("Invalid state: %s", status));
-        try {
-            startupThread();
-            runLoop();
-            teardownThread_ok();
-        } catch (Throwable e) {
-            teardownThread_andReportError(e);
-        }
-        shouldDie = shouldRestart = false;
-        workerReplacement = null;
-    }
-}
-
-
-
-
-
-
-
-
 
 private class ThreadContext : IThreadContext {
     IThreadEventListener evh;  // special event handler / event listener
-    ThreadInfo[SbThreadId.max] threadInfo;
     Duration frameTimeoutThreshold = DEFAULT_FRAME_TIMEOUT_THRESHOLD;
     Duration workItemTimeoutThreshold = DEFAULT_WORK_TIMEOUT_THRESHOLD;
+    ThreadRunner[SbThreadId.max] threads;
 
     this (IThreadEventListener evh) {
         this.evh = evh;
     }
-    void bindWorker (SbThreadId thread, IThreadWorker worker, bool reserveExternal = false) {
+    void bindWorker (SbThreadId threadId, IThreadWorker worker, bool reserveExternal = false) {
+        enforce!SbThreadUsageException(worker,
+            format("Illegal: null IThreadWorker passed to %s!", thread));
 
+        // create threadRunner if it doesn't exist
+        if (!threads[threadId])
+            threads[threadId] = new ThreadRunner(threadId);
+
+        // Set worker + maybe launch thread
+        threads[threadId].setWorker(worker);
+        if (!reserveExternal)
+            threads[threadId].launchThread();  // does nothing if thread already assigned + running
     }
-    void enterThread (SbThreadId thread) {
+    void enterThread (SbThreadId threadId) {
+        enforce!SbThreadUsageException(threads[threadId] && threads[threadId].hasWorker,
+            format("Cannot enterThread: no worker bound for %s!", thread));
 
+        threads[threadId].run();
     }
     SbThreadStatus getThreadStatus (SbThreadId thread) {
-        return threadInfo[thread].currentStatus;
+        return threads[threadId] ?
+            threads[threadId].currentStatus :
+            SbThreadStatus.NOT_RUNNING;
     }
-    void restartThread (SbThreadId thread) {
-        threadInfo[thread].shouldRestart = true;
+    void restartThread (SbThreadId threadId) {
+        enforce!SbThreadUsageException(threads[threadId],
+            format("No worker bound to %s! (cannot restart thread)", threadId));
+
+        threads[threadId].signalShouldRestart();
     }
     void killThread (SbThreadId thread) {
-        threadInfo[thread].shouldDie = true;
+        enforce!SbThreadUsageException(threads[threadId],
+            format("No worker bound to %s! (cannot restart thread)", threadId));
+
+        threads[threadId].signalShoulDie();
     }
     void killAllThreads () {
-        foreach (ref thread; threadInfo) {
-            thread.shouldDie = true;
+        foreach (ref thread; threads) {
+            if (thread)
+                thread.signalShouldDie();
         }
-        foreach (ref thread; threadInfo) {
-            thread.waitForDeath();
+        foreach (ref thread; threads) {
+            if (thread)
+                thread.waitForDeath();
         }
     }
     bool runOnThread (SbThreadMask threads, void delegate() workItem) {
-
+        assert(0, "Unimplemented: runOnThread");
     }
     bool runOnThreadNextFrame (SbThreadMask threads, void delegate() workItem) {
-
+        assert(0, "Unimplemented: runOnThreadNextFrame");
     }
     bool runOnThreadThisFrame (SbThreadMask threads, void delegate() workItem) {
-
+        assert(0, "Unimplemented: runOnThreadThisFrame");
     }
     void setUnresponsiveFrameThreshold (double seconds) {
         frameTimeoutThreshold = dur!"seconds"(seconds);
     }
     void setUnresponsiveWorkThreshold (double seconds) {
         workItemTimeoutThreshold = dur!"seconds"(seconds);
+    }
+
+    class ThreadRunner {
+        SbThreadId    threadId;
+        IThreadWorker worker;
+        Mutex syncMutex;
+        bool shouldDie = false;
+        bool shouldRestart = false;
+
+        this (SbThreadId threadId) {
+            this.threadId = threadId;
+            this.syncMutex = new Mutex();
+        }
+        void setWorker (IThreadWorker worker) {
+            bool shouldRestart = false;
+            synchronized (syncMutex) {
+                shouldRestart = worker !is null;
+                this.worker = worker;
+            }
+            if (shouldRestart)
+                restartThread();
+        }
+        void launchThread () {
+            synchronized (syncMutex) {
+                if (!thread && !usingExternalThread) {
+                    internalThreadStatus = SbThreadStatus.INITIALIZING;
+                    thread = new SbThread(&runThread);
+                    thread.start();
+                }
+            }
+        }
+        void restartThread () {
+            bool doLaunch = false;
+            synchronized (syncMutex) {
+                enforce!SbThreadUsageException(!usingExternalThread,
+                    format("Cannot restart external thread! (%s)", threadId));
+
+                if (thread) {
+                    thread.kill();
+                    doLaunch = true;
+                }
+            }
+            if (doLaunch)
+                launchThread();
+        }
+        @property auto threadStatus () {
+            return thread ? SbThreadStatus.NOT_RUNNING :
+                internalThreadStatus;
+        }
+        private void runThread (SbMessageQueue queue) {
+            assert( worker !is null, format("Null worker! %s", threadId) );
+
+            void handleError (Throwable e) {
+                try {
+                    synchronized (syncMutex) { internalThreadStatus = SbThreadStatus.EXIT_ERROR; }
+                    evh.onThreadError(threadId, e);
+                } catch (Throwable e2) {
+                    assert("INVALID: IThreadEventListener.onThreadError may not throw! (thread %s): ",
+                        threadId, e2);
+                }
+            }
+
+            try {
+                worker.onThreadStart();
+            } catch (Throwable e) {
+                handleError(e); return; return;
+            }
+            synchronized (syncMutex) { internalThreadStatus = SbThreadStatus.RUNNING; }
+
+            bool keepRunning = true;
+            bool frameDone   = false;
+            try {
+                while (keepRunning) {
+                    if (queue.hasHighPriorityMessage) {
+                        queue.nextMessage.visit(
+                            (ThreadMsg_Kill _) { keepRunning = false; },
+                            (ThreadMsg_HighPriority msg) {
+                                msg.run();
+                            },
+                            (ThreadMsg_NextFrame _) {
+                                assert(frameDone, format("thread %s frame not done!", frameId));
+                                frameDone = false;
+                                worker.onThreadNextFrame();
+                            }
+                        );
+                    } else if (frameDone && queue.hasAsyncMessage) {
+                        queue.nextAsyncMessage.run();
+                    } else if (frameDone) {
+                        if (!worker.doThreadWork())
+                            queue.waitNextMessage();
+                    } else {
+                        frameDone |= checkThreadFrameDone(threadId);
+                        if (!worker.doThreadWork() && queue.hasAsyncMessage)
+                            queue.nextAsyncMessage.run();
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            handleError(e); return;
+        }
+
+        synchronized (syncMutex) { threadStatus = SbThreadStatus.EXIT_OK; }
+        try {
+            worker.onThreadEnd();
+        } catch (Throwable e) {
+
+        }
     }
 }
 
