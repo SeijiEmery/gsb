@@ -875,8 +875,8 @@ void main (string[] args) {
             auto fov_delta = 0.0f;
 
             auto wasd_axes = vec3(0, 0, 0);
-            if (input.keys[SbKey.KEY_A].down || input.keys[SbKey.KEY_LEFT].down)  cam_move_axes.x += 1.0;
-            if (input.keys[SbKey.KEY_D].down || input.keys[SbKey.KEY_RIGHT].down) cam_move_axes.x -= 1.0;
+            if (input.keys[SbKey.KEY_A].down || input.keys[SbKey.KEY_LEFT].down)  cam_move_axes.x -= 1.0;
+            if (input.keys[SbKey.KEY_D].down || input.keys[SbKey.KEY_RIGHT].down) cam_move_axes.x += 1.0;
             if (input.keys[SbKey.KEY_S].down || input.keys[SbKey.KEY_DOWN].down)  cam_move_axes.y -= 1.0;
             if (input.keys[SbKey.KEY_W].down || input.keys[SbKey.KEY_UP].down)    cam_move_axes.y += 1.0;
             if (input.keys[SbKey.KEY_SPACE].down || input.keys[SbKey.KEY_Q].down) cam_move_axes.z += 1.0;
@@ -884,11 +884,11 @@ void main (string[] args) {
 
             if (input.buttons[SbMouseButton.RMB].down)
                 cam_look_axes += vec3(
-                    input.cursorDelta.x.isNaN ? 0 : -input.cursorDelta.x,
+                    input.cursorDelta.x.isNaN ? 0 : input.cursorDelta.x,
                     input.cursorDelta.y.isNaN ? 0 : input.cursorDelta.y,
                     0
                 ) * 0.5;
-            //fov_delta -= input.scrollDelta.y * 0.25;
+            fov_delta -= input.scrollDelta.y * 0.25;
 
             // Set lighting model w/ number keys
             for (auto i = 0; i < LightingModel.max; ++i) {
@@ -910,9 +910,9 @@ void main (string[] args) {
 
             platform.events.onEvent!(
                 (const SbGamepadAxisEvent ev) {
-                    cam_move_axes.x -= ev.axes[ AXIS_LX ];
-                    cam_move_axes.z -= ev.axes[ AXIS_LY ];
-                    cam_move_axes.y += ev.axes[ AXIS_BUMPERS ];
+                    cam_move_axes.x += ev.axes[ AXIS_LX ];
+                    cam_move_axes.y -= ev.axes[ AXIS_LY ];
+                    cam_move_axes.z += ev.axes[ AXIS_BUMPERS ];
 
                     cam_look_axes.y += ev.axes[ AXIS_RY ];
                     cam_look_axes.x += ev.axes[ AXIS_RX ];
@@ -948,7 +948,7 @@ void main (string[] args) {
                             g_light.pos = fwd,
                             g_light.isDirectional = true);
                     }
-                    if (ev.button == BUTTON_DPAD_LEFT && ev.pressed) advLightModel(-1);
+                    if (ev.button == BUTTON_DPAD_LEFT && ev.pressed)  advLightModel(-1);
                     if (ev.button == BUTTON_DPAD_RIGHT && ev.pressed) advLightModel(+1);
 
                     if (ev.button == BUTTON_B && ev.pressed) {
@@ -957,10 +957,13 @@ void main (string[] args) {
                 }
             );
 
-            // Integrate all inputs
-            cam_pos    += (fwd * cam_move_axes.y + right * cam_move_axes.x + up * cam_move_axes.z) * CAM_MOVE_SPEED * dt;
+            cam_pos -= right * cam_move_axes.x * dt * CAM_MOVE_SPEED;
+            cam_pos += fwd   * cam_move_axes.y * dt * CAM_MOVE_SPEED;
+            cam_pos -= up    * cam_move_axes.z * dt * CAM_MOVE_SPEED;
+
             cam_angles.x += cam_look_axes.y * CAM_LOOK_SPEED * dt;
-            cam_angles.y += cam_look_axes.x * CAM_LOOK_SPEED * dt;
+            cam_angles.y -= cam_look_axes.x * CAM_LOOK_SPEED * dt;
+
             fov = max(MIN_FOV, min(MAX_FOV, fov + fov_delta * FOV_CHANGE_SPEED * dt));
 
             auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
