@@ -133,38 +133,52 @@ void main (string[] args) {
             auto up    = fwd.cross(right);
 
             auto input = platform.input;
-            auto wasd_axes = vec3(0, 0, 0);
-            if (input.keys[SbKey.KEY_A].down || input.keys[SbKey.KEY_LEFT].down)  wasd_axes.x -= 1.0;
-            if (input.keys[SbKey.KEY_D].down || input.keys[SbKey.KEY_RIGHT].down) wasd_axes.x += 1.0;
-            if (input.keys[SbKey.KEY_S].down || input.keys[SbKey.KEY_DOWN].down)  wasd_axes.y -= 1.0;
-            if (input.keys[SbKey.KEY_W].down || input.keys[SbKey.KEY_UP].down)    wasd_axes.y += 1.0;
-            if (input.keys[SbKey.KEY_SPACE].down || input.keys[SbKey.KEY_Q].down) wasd_axes.z += 1.0;
-            if (input.keys[SbKey.KEY_SHIFT].down || input.keys[SbKey.KEY_E].down) wasd_axes.z -= 1.0;
+            auto move_axes = vec3(0, 0, 0);
+            bool reset_cam_pos = false, reset_cam_look = false;
+            if (input.keys[SbKey.KEY_A].down || input.keys[SbKey.KEY_LEFT].down)  move_axes.x -= 1.0;
+            if (input.keys[SbKey.KEY_D].down || input.keys[SbKey.KEY_RIGHT].down) move_axes.x += 1.0;
+            if (input.keys[SbKey.KEY_S].down || input.keys[SbKey.KEY_DOWN].down)  move_axes.y -= 1.0;
+            if (input.keys[SbKey.KEY_W].down || input.keys[SbKey.KEY_UP].down)    move_axes.y += 1.0;
+            if (input.keys[SbKey.KEY_SPACE].down || input.keys[SbKey.KEY_Q].down) move_axes.z += 1.0;
+            if (input.keys[SbKey.KEY_SHIFT].down || input.keys[SbKey.KEY_E].down) move_axes.z -= 1.0;
 
-            auto mouse_axes = input.buttons[SbMouseButton.RMB].down ?
+            auto look_axes = input.buttons[SbMouseButton.RMB].down ?
                 input.cursorDelta * 0.25 :
                 vec2(0, 0);
-            auto scroll_axis = input.scrollDelta.y * 0.25;
+            auto fov_change = -input.scrollDelta.y * 0.25;
+            auto far_change = 0.0;
 
             platform.events.onEvent!(
                 (const SbGamepadAxisEvent ev) {
-                    cam_pos -= right * (wasd_axes.x + ev.axes [ AXIS_LX ]) * dt * CAM_MOVE_SPEED;
-                    cam_pos += fwd   * (wasd_axes.y - ev.axes [ AXIS_LY ]) * dt * CAM_MOVE_SPEED;
-                    cam_pos += up    * (wasd_axes.z + ev.axes [ AXIS_BUMPERS ]) * dt * CAM_MOVE_SPEED;
+                    move_axes.x += ev.axes[AXIS_LX];
+                    move_axes.y -= ev.axes[AXIS_LY];
+                    move_axes.z += ev.axes[AXIS_BUMPERS];
 
-                    cam_angles.x += (mouse_axes.y + ev.axes[AXIS_RY]) * dt * CAM_LOOK_SPEED;
-                    cam_angles.y -= (mouse_axes.x + ev.axes[AXIS_RX]) * dt * CAM_LOOK_SPEED;
+                    look_axes.x += ev.axes[AXIS_RX];
+                    look_axes.y += ev.axes[AXIS_RY];
 
-                    fov = max(MIN_FOV, min(MAX_FOV, fov + (ev.axes[AXIS_TRIGGERS] - scroll_axis) * dt * FOV_CHANGE_SPEED));
-                    far = max(MIN_FAR, min(MAX_FAR, far + ev.axes[AXIS_DPAD_Y] * dt * FAR_CHANGE_SPEED));
+                    fov_change += ev.axes[AXIS_TRIGGERS];
+                    far_change += ev.axes[AXIS_DPAD_Y];
                 },
                 (const SbGamepadButtonEvent ev) {
-                    if (ev.button == BUTTON_LSTICK && ev.pressed)
-                        cam_pos = vec3(0, 0, -5);
-                    if (ev.button == BUTTON_RSTICK && ev.pressed)
-                        cam_angles = vec3(0, 0, 0);
+                    reset_cam_pos  |= (ev.button == BUTTON_LSTICK && ev.pressed);
+                    reset_cam_look |= (ev.button == BUTTON_RSTICK && ev.pressed);
                 }
             );
+
+            cam_pos -= right * move_axes.x * dt * CAM_MOVE_SPEED;
+            cam_pos += fwd   * move_axes.y * dt * CAM_MOVE_SPEED;
+            cam_pos -= up    * move_axes.z * dt * CAM_MOVE_SPEED;
+
+            cam_angles.x += look_axes.y * dt * CAM_LOOK_SPEED;
+            cam_angles.y -= look_axes.x * dt * CAM_LOOK_SPEED;
+
+            fov = max(MIN_FOV, min(MAX_FOV, fov + fov_change * dt * FOV_CHANGE_SPEED));
+            far = max(MIN_FAR, min(MAX_FAR, far + far_change * dt * FAR_CHANGE_SPEED));
+
+            if (reset_cam_pos) cam_pos = vec3(0, 0, -5);
+            if (reset_cam_look) cam_angles = vec3(0, 0, 0);
+
             auto view = mat4.look_at( cam_pos, cam_pos + fwd.normalized, up );
 
             // triangle rotates about y-axis @origin.
