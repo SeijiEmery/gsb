@@ -194,6 +194,14 @@ class Engine : IEngine {
         //tasks ~= tg.createTask!"some-other-task"(TaskType.IMMED, () {
         //    log.write("other task!");
         //});
+
+        // Set fixed / non-fixed screen scale on main window.
+        // See documentation in engineconfig.d
+        if (GSB_FIXED_SCREEN_SCALE != 0) {
+            import gl3n.linalg: vec2;
+            mainWindow.setScreenScale(vec2(GSB_FIXED_SCREEN_SCALE, GSB_FIXED_SCREEN_SCALE));
+        }
+
         tasks ~= tg.createTask!"setup-logging"(TaskType.IMMED, () {
             static if (SHOW_WINDOW_EVENT_LOGGING) {
                 g_mainWindow.onScreenScaleChanged.connect(delegate(float x, float y) {

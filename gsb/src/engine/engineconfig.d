@@ -1,5 +1,19 @@
 module gsb.engine.engineconfig;
 
+// Enable / disable fixed screen scale. 
+//
+//  NOTE: This is experimental, and is intended as a quick fix for an incorrect screen
+//  scale (eg. linux retina / quad rez (?)); it does NOT scale input (only changes the
+//  internal screen scale), so you can't use this as-is to just "make text bigger"
+//  w/out breaking all mouse-based input; use at your own risk.
+//
+//  0.0:    Automatic (recommended! - automatically switches between 1.0 / 2.0 internally + 
+//          detects monitor changes on OSX / any OS that has separate window + framebuffer sizes to handle multiple resolution scales)
+//  1.0:    Fixed, standard resolution / "low res"
+//  2.0:    OSX Retina / "Quad res" (2x in each dimension)
+//  *       Probably unsupported.
+//
+public immutable double GSB_FIXED_SCREEN_SCALE = 0.0;
 
 // Log timing info for each frame. Useful when SHOW_TASK_WORKER_LOGGING is
 // enabled, but will swamp logs.
