@@ -165,9 +165,8 @@ class TextRenderer {
     // – The only instance of this should be owned by the graphics thread
     // - The graphics thread should not touch any other aspects of TextRenderer
     class GThreadHandle {
-    final:
         public int curFrame = 0;
-        void render () {
+        final void render () {
             componentList.processFrame();
         }
     }

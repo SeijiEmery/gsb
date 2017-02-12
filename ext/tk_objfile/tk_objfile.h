@@ -9,6 +9,8 @@
 #ifndef TK_OBJFILE_H_INCLUDED
 #define TK_OBJFILE_H_INCLUDED
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

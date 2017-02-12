@@ -33,32 +33,32 @@ struct MKInputFrame {
 class MKInputDevice {
     // Settings stored as swappable, maybe-eventually-editor-editable PoD.
     public MKInputSettings settings;
-final:
+
     // Register mouse button press w/ an external timestamp
-    void registerMouseBtn ( double timestamp, uint btn, bool pressed ) nothrow @safe {
+    final void registerMouseBtn ( double timestamp, uint btn, bool pressed ) nothrow @safe {
         omp(timestamp, btn, pressed);
     }
     // Register key press. For performance reasons, we don't take timestamps as we
     // don't presently have a need to record double / tripple tapping key actions
     // (this could change)
-    void registerKeyAction ( SbKey key, bool pressed ) nothrow @safe {
+    final void registerKeyAction ( SbKey key, bool pressed ) nothrow @safe {
         okp(key, pressed);
     }
-    void registerMouseMotion ( vec2 newPos ) nothrow @safe {
+    final void registerMouseMotion ( vec2 newPos ) nothrow @safe {
         nextMousePos = newPos;
     }
-    void registerMouseMotionDelta ( vec2 delta ) nothrow @safe {
+    final void registerMouseMotionDelta ( vec2 delta ) nothrow @safe {
         nextMousePos += delta;
     }
-    void registerMouseScrollDelta ( vec2 delta ) nothrow @safe {
+    final void registerMouseScrollDelta ( vec2 delta ) nothrow @safe {
         scrollDelta += delta;
     }
-    void registerCharInput ( dchar chr ) nothrow @trusted {
+    final void registerCharInput ( dchar chr ) nothrow @trusted {
         events ~= SbEvent(SbRawCharEvent( chr ));
     }
 
     // Swap state + fetch last input frame; takes an external timestamp.
-    void fetchInputFrame (IEventProducer eventList, ref SbKBMState state) {
+    final void fetchInputFrame (IEventProducer eventList, ref SbKBMState state) {
         state.cursorDelta = vec2(
             (nextMousePos.x - state.cursorPos.x) * settings.mouse_sensitivity_x,
             (nextMousePos.y - state.cursorPos.y) * settings.mouse_sensitivity_y,
@@ -93,7 +93,7 @@ final:
 private:
     SbPressState [ SB_MAX_MOUSE_BUTTONS ] buttonState;
     double [ SB_MAX_MOUSE_BUTTONS ]       buttonTimestamps;
-    SbPressState [ SbKey.max+1 ]            keyState;
+    SbPressState [ SbKey.max+1 ]          keyState;
 
     vec2 nextMousePos, scrollDelta;
     SbEvent[] events;
@@ -106,7 +106,7 @@ private:
     //PressInfo[ SB_MAX_MOUSE_BUTTONS ] buttonState;
     //bool     [ SB_NUM_KEYS ]          keyPressState, dirtyKeyState;
 
-    private void omp (double t, uint btn, bool pressed) nothrow @trusted {
+    final private void omp (double t, uint btn, bool pressed) nothrow @trusted {
         if (btn >= SB_MAX_MOUSE_BUTTONS) { 
             import std.stdio;
             import std.exception; 
@@ -161,7 +161,7 @@ private:
             }
         }
     }
-    private void okp ( SbKey key, bool pressed ) nothrow @trusted {
+    final private void okp ( SbKey key, bool pressed ) nothrow @trusted {
         if (pressed != keyState[ key ].st_pressed) {
             keyState[ key ].st_pressed = pressed;
             keyState[ key ].st_changed = true;
