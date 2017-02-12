@@ -734,15 +734,15 @@ void main (string[] args) {
                 }
             });
         }
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/cube/cube.obj",
+        loadMesh( "./assets/cube/cube.obj",
             vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/teapot/teapot.obj",
+        loadMesh( "./assets/teapot/teapot.obj",
             vec3(0, 1, 0), vec3(0.025, 0.025, 0.025), quat.xrotation(PI), false, true);
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dragon/dragon.obj.zip",
+        loadMesh( "./assets/dragon/dragon.obj.zip",
             vec3(-10, 0, 0), vec3(10), quat.zrotation(PI));
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/sibenik/sibenik.obj",
+        loadMesh( "./assets/sibenik/sibenik.obj",
             vec3(-10, 0, 0), vec3(1, 1, 1), quat.xrotation(PI), true, true);
-        loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/lost-empire/lost_empire.obj",
+        loadMesh( "./assets/lost-empire/lost_empire.obj",
             vec3(100, 0, 0), vec3(1,1,1), quat.xrotation(PI), true, true);
 
         // The wierd-ass textures in this one do not make opengl happy :(

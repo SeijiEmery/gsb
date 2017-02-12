@@ -127,13 +127,16 @@ want to compare it with unreal 4...
 
 --
 
-Build instructions:
+BUILD INSTRUCTIONS:
 – Install the D runtime and its package system (dub).
 – If you're on OSX / Linux, run the following (if you're on linux, pray):
     
     cd <some temp directory>
-    git clone https://github.com/SeijiEmery/gsb; cd gsb
-    cd ext; make; cd ..
+    git clone https://github.com/SeijiEmery/gsb
+    cd gsb
+    
+    unzip assets.zip              (unzip asset pack)
+    cd ext; make; cd ..           (build external C libs)
 
 To run the sample programs:
     
@@ -173,7 +176,7 @@ Controls + UI, gsb:
             1) recent average run time (in ms), 
             2) recent maximum run time (in ms), 
             3) routine / procedure name (most of these are nested)
-        – green line = graphics thread, red line = graphics thread
+        – green line = graphics thread, red line = main thread
         – horizontal lines mark:
             – 40hz (orange)  (target: < 25 ms)
             – 60hz (yellow)  (target: < 16 ms)
