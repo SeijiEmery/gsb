@@ -7,6 +7,7 @@ enum SbThreadId : uint {
     WORK_THREAD_4,     WORK_THREAD_5, WORK_THREAD_6, WORK_THREAD_7 
 }
 SbThreadMask toMask (SbThreadId threadId) {
+    if (threadId == 0) return cast(SbThreadMask)0;
     return cast(SbThreadMask)(1 << (threadId - 1));
 }
 enum SbThreadMask : uint {
@@ -26,6 +27,8 @@ enum SbThreadMask : uint {
 enum SbThreadStatus : uint { NOT_RUNNING, INITIALIZING, RUNNING, EXIT_OK, EXIT_ERROR }
 
 unittest {
+    assert(SbThreadId.MAIN_THREAD.toMask != 0);
+
     assert(SbThreadId.NONE != SbThreadId.MAIN_THREAD);
     assert(SbThreadId.MAIN_THREAD != SbThreadId.GRAPHICS_THREAD);
     assert(SbThreadId.MAIN_THREAD != SbThreadId.AUDIO_THREAD);
@@ -37,11 +40,11 @@ unittest {
     assert(SbThreadMask.AUDIO_THREAD    == SbThreadId.AUDIO_THREAD.toMask);
     assert(SbThreadMask.WORK_THREAD_0   == SbThreadId.WORK_THREAD_0.toMask);
 
-    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.NONE)            == 0);
-    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.MAIN_THREAD)     == 0);
-    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.GRAPHICS_THREAD) == 0);
-    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.AUDIO_THREAD)    == 0);
+    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.NONE.toMask)            == 0);
+    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.MAIN_THREAD.toMask)     == 0);
+    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.GRAPHICS_THREAD.toMask) == 0);
+    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.AUDIO_THREAD.toMask)    == 0);
 
-    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.WORK_THREAD_0) != 0);
-    assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.WORK_THREAD_7) != 0);
+    static assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.WORK_THREAD_0.toMask) != 0);
+    static assert((SbThreadMask.ANY_WORK_THREAD & SbThreadId.WORK_THREAD_7.toMask) != 0);
 }
