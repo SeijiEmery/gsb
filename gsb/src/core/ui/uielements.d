@@ -341,7 +341,7 @@ class UILayoutContainer : UIContainer {
 
         // Why the hell doesn't gl3n have this?!
         vec2 component_mul (vec2 a, vec2 b) {
-            return a.x *= b.x, a.y *= b.y, a;
+            a.x *= b.x; a.y *= b.y; return a;
         }
 
         // layout scalars: LEFT/TOP = 0.0, RIGHT/BTM = 1.0, CENTER = 0.5

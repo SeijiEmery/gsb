@@ -69,13 +69,15 @@ struct Color {
     this (string colorHash) {
         if ((colorHash.length == 7 || colorHash.length == 9) && colorHash[0] == '#') {
             string s;
-            this.components = vec4(
-                cast(float)parse!int((s = colorHash[1..3], s), 16) * (1 / 255.0),
-                cast(float)parse!int((s = colorHash[3..5], s), 16) * (1 / 255.0),
-                cast(float)parse!int((s = colorHash[5..7], s), 16) * (1 / 255.0),
-                colorHash.length == 9 ?
-                    cast(float)parse!int((s = colorHash[7..9], s), 16) * (1 / 255.0) :
-                    1.0);
+
+            s = colorHash[1..3]; this.components.x = cast(float)parse!int(s, 16) * (1 / 255.0);
+            s = colorHash[3..5]; this.components.y = cast(float)parse!int(s, 16) * (1 / 255.0);
+            s = colorHash[5..7]; this.components.z = cast(float)parse!int(s, 16) * (1 / 255.0);
+            if (colorHash.length == 9) {
+                s = colorHash[7..9]; this.components.w = cast(float)parse!int(s, 16) * (1 / 255.0);
+            } else {
+                this.components.w = 1.0;
+            }
         } else {
             throw new Exception(format("Cannot construct Color from '%s'", colorHash));
         }
