@@ -660,8 +660,8 @@ void main (string[] args) {
         auto textureManager = TextureManager(threading, gl.createResourcePrefix("textures"));
         bool[string] uniqueTextures;
 
-        textureManager.loadDefaultTexture( TextureSlot.DIFFUSE, "/Users/semery/misc-projects/GLSandbox/assets/teapot/default.png" );
-        textureManager.loadDefaultTexture( TextureSlot.NORMAL,  "/Users/semery/misc-projects/GLSandbox/assets/teapot/default.png" );
+        textureManager.loadDefaultTexture( TextureSlot.DIFFUSE, "./assets/teapot/default.png" );
+        textureManager.loadDefaultTexture( TextureSlot.NORMAL,  "./assets/teapot/default.png" );
 
         void asyncLoadMesh ( string path, vec3 pos, vec3 scale, quat rotation, bool useCentroid = true) {
             auto isZip = path.endsWith(".zip");
@@ -746,7 +746,7 @@ void main (string[] args) {
             vec3(100, 0, 0), vec3(1,1,1), quat.xrotation(PI), true, true);
 
         // The wierd-ass textures in this one do not make opengl happy :(
-        //loadMesh( "/Users/semery/misc-projects/GLSandbox/assets/dabrovic-sponza/sponza.obj",
+        //loadMesh( "./assets/dabrovic-sponza/sponza.obj",
         //    vec3(-100, 0, 0), vec3(1,1,1), quat.xrotation(PI));
 
 
