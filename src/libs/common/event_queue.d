@@ -1,7 +1,4 @@
 
-import std.algorithm: max;
-import std.stdio;
-import std.format;
 
 class EventQueue {
 public:
@@ -18,23 +15,24 @@ public:
         }
     }
 private:
-    //static auto makeAllocator () {
-        import std.experimental.allocator.building_blocks.region;
-        import std.experimental.allocator.building_blocks.allocator_list;
-        import std.experimental.allocator.mallocator;
-        alias PoolAllocator =  AllocatorList!(
-            (size_t n) => Region!Mallocator(max(n, 1024 * 1024))
-        );
-    //}
+    import std.experimental.allocator.building_blocks.region;
+    import std.experimental.allocator.building_blocks.allocator_list;
+    import std.experimental.allocator.mallocator;
+    import std.algorithm: max;
+
+    static immutable size_t ALLOCATION_BLOCK_SIZE = 1024 * 1024;   // Default to 1MB
+
+    alias PoolAllocator =  AllocatorList!(
+        (size_t n) => Region!Mallocator(max(n, ALLOCATION_BLOCK_SIZE))
+    );
 
     PoolAllocator pool;
     Node*       first = null;
     Node*       last  = null;
     size_t      count = 0;
 public:
-    this () {
-        //pool = makeAllocator();
-    }
+    this () {}
+    
     void pushEvent (T, Args...) (Args args) if (!is(T == class)) {
         void[] mem = pool.allocate(Node.sizeof + T.sizeof);
 
@@ -100,6 +98,9 @@ public:
         pool.deallocateAll();
     }
     unittest {
+        import std.stdio;
+        import std.format;
+
         struct Fubar { int bar; int baz; }
         struct BarBaz { string what; }
         struct Borg {}
@@ -199,7 +200,6 @@ public:
             }
         }
         for (auto i = 0; i < 10; ++i) {
-            //writefln("Iteration %d", i);
             reapplyTest1();
         }
 
@@ -220,6 +220,8 @@ public:
         }
 
         // Test limits: insert + traverse 24M elements
+        // Note: this is excessively large; on my machine, 1-8M is much more
+        // reasonably and will run near-instantly; 24M takes several seconds.
         int n = 1024 * 1024 * 24;
         for (auto i = 0; i < n; ++i) {
             queue.pushEvent!int(i);
@@ -248,4 +250,7 @@ public:
     }
 }
 
-void main () { writefln("All tests passed."); }
+void main () { 
+    import std.stdio;
+    writefln("All tests passed."); 
+}
