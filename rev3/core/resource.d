@@ -19,8 +19,8 @@ public class ManagedResource {
 mixin template ResourceManager (BaseType, TypeEnum) 
     //if (__traits(compiles, (new BaseType()).rc() >= 0))
 {
-    private BaseType[][TypeEnum.max] deadObjects;
-    private BaseType[][TypeEnum.max] aliveObjects;
+    private BaseType[][TypeEnum.max+1] deadObjects;
+    private BaseType[][TypeEnum.max+1] aliveObjects;
 
     private static auto getEnum (T)() { return mixin(TypeEnum.stringof~"."~T.stringof); }
 
