@@ -39,6 +39,24 @@ public string glGetMessage (GLenum err) {
 // Wrapped calls (Uses D types for better introspection / debugging)
 //
 
+private uint glCreateBuffer () {
+    uint buffer; glGenBuffers(1, &buffer); return buffer;
+}
+private uint glCreateVertexArray () {
+    uint vao; glGenVertexArrays(1, &vao); return vao;
+}
+private uint glCreateTexture () {
+    uint tex; glGenTextures(1, &tex); return tex;
+}
+private void glDeleteBuffer (ref uint buffer) {
+    glDeleteBuffers(1, &buffer); buffer = 0;
+}
+private void glDeleteVertexArray (ref uint vao ) {
+    glDeleteVertexArrays(1, &vao); vao = 0;
+}
+private void glDeleteTexture (ref uint tex) {
+    glDeleteTextures(1, &tex); tex = 0;
+}
 private void glShaderSource (uint shader, string src) {
     const(char)* source = &src[0];
     int          length = cast(int)src.length;
@@ -105,10 +123,48 @@ private void glSetUniform (uint l, vec3i[] v) { glUniform3iv(l, cast(int)v.lengt
 private void glSetUniform (uint l, vec4i[] v) { glUniform4iv(l, cast(int)v.length, v[0].value_ptr); }
 
 
-
-
+enum GLTextureType : GLenum { 
+    GL_TEXTURE_2D   = derelict.opengl3.gl3.GL_TEXTURE_2D 
+}
+enum GLBufferType : GLenum { 
+    GL_ARRAY_BUFFER = derelict.opengl3.gl3.GL_ARRAY_BUFFER
+}
+enum GLBuffering : GLenum {
+    GL_STATIC_DRAW  = derelict.opengl3.gl3.GL_STATIC_DRAW,
+    GL_DYNAMIC_DRAW = derelict.opengl3.gl3.GL_DYNAMIC_DRAW,
+}
+enum GLNormalized : GLboolean {
+    TRUE  = GL_TRUE,
+    FALSE = GL_FALSE,
+}
+enum GLType : GLenum {
+    FLOAT = derelict.opengl3.gl3.GL_FLOAT,
+}
+enum GLPrimitive : GLenum {
+    GL_TRIANGLES = derelict.opengl3.gl3.GL_TRIANGLES,
+    GL_TRIANGLE_STRIP = derelict.opengl3.gl3.GL_TRIANGLE_STRIP,
+    GL_TRIANGLE_FAN = derelict.opengl3.gl3.GL_TRIANGLE_FAN,
+    GL_POINTS = derelict.opengl3.gl3.GL_POINTS,
+}
 
 final class GLContext {
+    struct ContextState {
+        uint shader      = 0;
+        uint vao         = 0;
+        uint buffer      = 0;
+        uint texture     = 0;
+        int  textureSlot = -1;
+    }
+    ContextState m_state;
+
+    private static bool doBind (T)(ref T target, const T value) {
+        if (target != value) {
+            target = value;
+            return true;
+        }
+        return false;
+    }
+
     // Nicely wraps all GL operations with error checking code, etc.
     // We can further "override" by defining functions like "bind" (called as "gl.bind(...)"), etc. 
     template opDispatch (string fcn) {
@@ -186,13 +242,29 @@ final class GLContext {
     // GL Calls, etc...
     //
 
-    uint m_program = 0;
     bool BindProgram (uint program) {
-        if (program != m_program) {
-            this.UseProgram(m_program = program);
-        }
+        if (doBind(m_state.shader, program))
+            this.UseProgram(program);
         return program != 0;
     }
+    bool BindVertexArray (uint vao) {
+        if (doBind(m_state.vao, vao))
+            this.opDispatch!"BindVertexArray"(vao);
+        return vao != 0;
+    }
+    bool BindBuffer (uint buffer, GLBufferType bufferType) {
+        if (doBind(m_state.buffer, buffer))
+            this.opDispatch!"BindBuffer"(bufferType, buffer);
+        return buffer != 0;
+    }
+    bool BindTexture (uint texture, GLTextureType textureType, int textureSlot) {
+        if (doBind(m_state.textureSlot, textureSlot))
+            this.opDispatch!"ActiveTexture"(GL_TEXTURE0 + textureSlot);
+        if (doBind(m_state.texture, texture))
+            this.opDispatch!"BindTexture"(textureType, texture);
+        return texture != 0;
+    }
+
     void CompileAndAttachShader (ref uint program, ref uint shader, GLShaderType shaderType, string src) {
         if (!program) program = this.CreateProgram();
         if (!shader)  shader  = this.CreateShader(shaderType);
@@ -227,7 +299,7 @@ private class GLResource : ManagedResource {
     void resourceInit (GLContext context) { this.gl = context; assert(context !is null); }
 }
 enum GLResourceType {
-    GLShader, GLTexture, GLBuffer, GLVertexArray
+    GLShader, GLTexture, GLVertexBuffer, GLVertexArray
 }
 enum GLShaderType : GLenum { 
     VERTEX   = GL_VERTEX_SHADER, 
@@ -243,8 +315,6 @@ bool none  (GLStatus status) { return status == GLStatus.None;  }
 //void setOk    (ref GLStatus status, bool ok = true)    { status |= (ok ? GLStatus.Ok : GLStatus.Error);  }
 //void setError (ref GLStatus status, bool err = true)   { if (err) status |= GLStatus.Error; }
 //void clear    (ref GLStatus status)                    { status = GLStatus.None;   }
-
-
 
 
 public class GLShader : GLResource {
@@ -355,6 +425,74 @@ public class GLShader : GLResource {
         m_uniformCache.length = 0;
     }
 }
+public class GLVertexArray : GLResource {
+    uint m_object = 0;
+
+    this (GLContext context) { super(context); }
+    override void resourceDtor () { clear(); }
+
+    uint get () {
+        if (!m_object) {
+            m_object = gl.CreateVertexArray();
+        }
+        return m_object;
+    }
+    bool bind () {
+        return gl.BindVertexArray(get());
+    }
+    auto clear () {
+        if (m_object) {
+            gl.DeleteVertexArray(m_object);
+            m_object = 0;
+        }
+        return this;
+    }
+    void bindVertexAttrib (uint index, ref Ref!GLVertexBuffer vbo, int count, GLType type,
+        GLNormalized normalized, size_t stride, size_t offset
+    ) {
+        if (bind() && vbo.bind()) {
+            gl.EnableVertexAttribArray(index);
+            gl.VertexAttribPointer(index, count, type, normalized, cast(int)stride, cast(void*)offset);
+            gl.BindVertexArray(0);
+        }
+    }
+    void setVertexAttribDivisor (uint index, uint divisor) {
+        if (bind()) {
+            gl.VertexAttribDivisor(index, divisor);
+            gl.BindVertexArray(0);
+        }
+    }
+}
+public class GLBuffer (GLBufferType BufferType) : GLResource {
+    uint m_object = 0;
+    this (GLContext context) { super(context); }
+    override void resourceDtor () { clear(); }
+
+    uint get () {
+        if (!m_object) {
+            m_object = gl.CreateBuffer();
+        }
+        return m_object;
+    }
+    bool bind () {
+        return gl.BindBuffer(get(), BufferType);
+    }
+    auto clear () {
+        if (m_object) {
+            gl.DeleteBuffer(m_object);
+        }
+        return this;
+    }
+    void bufferData (T)(T[] data, GLBuffering buffering) {
+        if (bind()) {
+            gl.BufferData(BufferType, data.length, data.ptr, buffering);
+        }
+    }
+}
+public class GLVertexBuffer : GLBuffer!(GLBufferType.GL_ARRAY_BUFFER) {
+    this (GLContext context) { super(context); }
+}
+
 public class GLTexture : GLResource {
     this (GLContext context) { super(context); }
 
@@ -362,21 +500,6 @@ public class GLTexture : GLResource {
 
     }
 }
-public class GLBuffer : GLResource {
-    this (GLContext context) { super(context); }
-
-    override void resourceDtor () {
-
-    }
-}
-public class GLVertexArray : GLResource {
-    this (GLContext context) { super(context); }
-
-    override void resourceDtor () {
-
-    }
-}
-
 
 
 

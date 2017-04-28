@@ -92,26 +92,26 @@ void main (string[] args) {
             r3shader.source(GLShaderType.FRAGMENT, fragmentShader);
             r3shader.bind();
 
-            //auto r3instanceDataVAO = r3gl.create!GLVertexArray();
-            //auto r3instanceDataVBO = r3gl.create!GLBuffer(GL_ARRAY_BUFFER);
-            //auto r3instanceGridVBO = r3gl.create!GLBuffer();
+            auto r3instanceDataVAO = r3gl.create!GLVertexArray();
+            auto r3instanceDataVBO = r3gl.create!GLVertexBuffer();
+            auto r3instanceGridVBO = r3gl.create!GLVertexBuffer();
 
-            //r3instanceDataVBO.bufferData(position_color_data, GL_STATIC_DRAW);
-            //r3instanceDataVAO.bindVertexAttrib( 0, r3instanceDataVBO, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
-            //r3instanceDataVAO.bindVertexAttrib( 1, r3instanceDataVBO, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
+            r3instanceDataVBO.bufferData(position_color_data, GLBuffering.GL_STATIC_DRAW);
+            r3instanceDataVAO.bindVertexAttrib( 0, r3instanceDataVBO, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0UL);
+            r3instanceDataVAO.bindVertexAttrib( 1, r3instanceDataVBO, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
 
-            //r3instanceGridVBO.bufferData(instanceGridData, GL_STATIC_DRAW);
-            //r3instanceDataVAO.bindVertexAttrib( 2, r3instanceGridVBO, 3, GLType.FLOAT, GLNormalized.FALSE, 0, 0);
-            //r3instanceDataVAO.setVertexAttribDivisor(2, 1);
+            r3instanceGridVBO.bufferData(instanceGridData, GLBuffering.GL_STATIC_DRAW);
+            r3instanceDataVAO.bindVertexAttrib( 2, r3instanceGridVBO, 3, GLType.FLOAT, GLNormalized.FALSE, 0UL, 0UL);
+            r3instanceDataVAO.setVertexAttribDivisor(2, 1);
 
             void drawScene (mat4 model, mat4 view, mat4 proj) {
                 auto mvp = proj * view * model;
 
-                //if (r3instanceDataVBO.bind() && r3shader.bind()) {
+                if (r3instanceDataVAO.bind() && r3shader.bind()) {
                     r3shader.setUniform("vp", proj * view);
                     r3shader.setUniform("model", model);
                     r3gl.DrawArraysInstanced(GL_TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y);
-                //}
+                }
             }
         } else { // USE_REV3_RENDERING == false
             auto gl           = platform.getGraphicsContext();
