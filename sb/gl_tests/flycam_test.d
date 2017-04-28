@@ -9,6 +9,9 @@ import std.conv;
 import gl3n.linalg;
 import gl3n.math;
 
+immutable bool USE_REV3_RENDERING = true;
+
+
 void main (string[] args) {
     SbPlatformConfig platformConfig = {
         backend: SbPlatform_Backend.GLFW3,
@@ -26,46 +29,12 @@ void main (string[] args) {
         };
         auto window = platform.createWindow("main-window", windowConfig);
 
-        platform.initGL();
-        auto gl           = platform.getGraphicsContext();
-        auto resourcePool = gl.createResourcePrefix("flycam-test");
 
-        auto shader = resourcePool.createShader();
-        shader.rawSource(ShaderType.VERTEX, `
-            #version 410
-            layout(location=0) in vec3 vertPosition;
-            layout(location=1) in vec3 vertColor;
-            layout(location=2) in vec3 instancePosition;
-            out vec3 color;
-
-            uniform mat4 vp;
-            uniform mat4 model;
-
-            void main () {
-                color = vertColor;
-                gl_Position = vp * (
-                    vec4(instancePosition, 0) +
-                    model * vec4(vertPosition, 1.0));
-            }
-        `);
-        shader.rawSource(ShaderType.FRAGMENT, `
-            #version 410
-            in vec3 color;
-            out vec4 fragColor;
-
-            void main () {
-                fragColor = vec4( color, 1.0 );
-            }
-        `);
         const float[] position_color_data = [
             -0.8f, -0.8f, 0.0f,  1.0f, 0.0f, 0.0f,
              0.8f, -0.8f, 0.0f,  0.0f, 1.0f, 0.0f,
              0.0f,  0.8f, 0.0f,  0.0f, 0.0f, 1.0f
         ];
-
-        auto vao = resourcePool.createVAO();
-        auto vbo = resourcePool.createVBO();
-        auto instance_vbo = resourcePool.createVBO();
 
         immutable auto GRID_DIM   = vec3i( 100, 50, 100 );
         immutable auto GRID_SCALE =  vec3( 100, 50, 100 );
@@ -82,17 +51,103 @@ void main (string[] args) {
                }
             }
         }
-        gl.getLocalBatch.execGL({
-            bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
-            vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
-            vao.bindVertexAttrib( 1, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
 
-            bufferData( instance_vbo, instanceGridData, GLBuffering.STATIC_DRAW );
-            vao.bindVertexAttrib( 2, instance_vbo, 3, GLType.FLOAT, GLNormalized.FALSE, 0, 0 );
-            vao.setVertexAttribDivisor( 2, 1 );
+        auto vertexShader = `
+            #version 410
+            layout(location=0) in vec3 vertPosition;
+            layout(location=1) in vec3 vertColor;
+            layout(location=2) in vec3 instancePosition;
+            out vec3 color;
 
-            vao.bindShader( shader );
-        });
+            uniform mat4 vp;
+            uniform mat4 model;
+
+            void main () {
+                color = vertColor;
+                gl_Position = vp * (
+                    vec4(instancePosition, 0) +
+                    model * vec4(vertPosition, 1.0));
+            }
+        `;
+        auto fragmentShader = `
+            #version 410
+            in vec3 color;
+            out vec4 fragColor;
+
+            void main () {
+                fragColor = vec4( color, 1.0 );
+            }
+        `;
+
+        platform.initGL();
+        
+
+        static if (USE_REV3_RENDERING) {
+
+            import rev3.core.opengl;
+            auto r3gl = new GLContext();
+
+            auto r3shader = r3gl.create!GLShader();
+            r3shader.source(GLShaderType.VERTEX,   vertexShader);
+            r3shader.source(GLShaderType.FRAGMENT, fragmentShader);
+            r3shader.bind();
+
+            auto r3instanceDataVAO = r3gl.create!GLVertexArray();
+            //auto r3instanceDataVBO = r3gl.create!GLBuffer(GL_ARRAY_BUFFER);
+            //auto r3instanceGridVBO = r3gl.create!GLBuffer();
+
+            //r3instanceDataVBO.bufferData(position_color_data, GL_STATIC_DRAW);
+            //r3instanceDataVAO.bindVertexAttrib( 0, r3instanceDataVBO, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
+            //r3instanceDataVAO.bindVertexAttrib( 1, r3instanceDataVBO, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
+
+            //r3instanceGridVBO.bufferData(instanceGridData, GL_STATIC_DRAW);
+            //r3instanceDataVAO.bindVertexAttrib( 2, r3instanceGridVBO, 3, GLType.FLOAT, GLNormalized.FALSE, 0, 0);
+            //r3instanceDataVAO.setVertexAttribDivisor(2, 1);
+
+            void drawScene (mat4 model, mat4 view, mat4 proj) {
+                auto mvp = proj * view * model;
+
+                //if (r3instanceDataVBO.bind() && r3shader.bind()) {
+                    r3shader.setUniform("vp", proj * view);
+                    r3shader.setUniform("model", model);
+                    r3gl.DrawArraysInstanced(GL_TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y);
+                //}
+            }
+        } else { // USE_REV3_RENDERING == false
+            auto gl           = platform.getGraphicsContext();
+            auto resourcePool = gl.createResourcePrefix("flycam-test");
+
+            auto shader = resourcePool.createShader();
+            shader.rawSource(ShaderType.VERTEX, vertexShader);
+            shader.rawSource(ShaderType.FRAGMENT, fragmentShader);
+            
+            auto vao = resourcePool.createVAO();
+            auto vbo = resourcePool.createVBO();
+            auto instance_vbo = resourcePool.createVBO();
+
+            gl.getLocalBatch.execGL({
+                bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
+                vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
+                vao.bindVertexAttrib( 1, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
+
+                bufferData( instance_vbo, instanceGridData, GLBuffering.STATIC_DRAW );
+                vao.bindVertexAttrib( 2, instance_vbo, 3, GLType.FLOAT, GLNormalized.FALSE, 0, 0 );
+                vao.setVertexAttribDivisor( 2, 1 );
+
+                vao.bindShader( shader );
+            });
+
+            void drawScene (mat4 model, mat4 view, mat4 proj) {
+                auto mvp = proj * view * model;
+                gl.getLocalBatch.execGL({
+                    shader.setv("vp", proj * view);
+                    shader.setv("model", model);
+
+                    //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
+                    vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
+                });
+            }
+        }
 
         auto cam_pos    = vec3( 0, 0, -5 );
         auto cam_angles = vec3(0, 0, 0);
@@ -184,15 +239,7 @@ void main (string[] args) {
             // triangle rotates about y-axis @origin.
             auto model = mat4.yrotation(t).scale( 0.25, 0.25, 0.25 );                
 
-            auto mvp = proj * view * model;
-            gl.getLocalBatch.execGL({
-                shader.setv("vp", proj * view);
-                shader.setv("model", model);
-
-                //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
-                vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
-            });
-
+            drawScene(model, view, proj);
             platform.swapFrame();
         }
     } catch (Throwable e) {
