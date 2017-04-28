@@ -7,6 +7,7 @@ public import derelict.opengl3.gl3;
 public import std.format: format;
 import std.exception: enforce;
 import std.string: toStringz;
+import std.variant;
 
 class GLException : Exception {
     this (string message, string file = __FILE__, ulong line = __LINE__) {
@@ -316,6 +317,15 @@ bool none  (GLStatus status) { return status == GLStatus.None;  }
 //void setError (ref GLStatus status, bool err = true)   { if (err) status |= GLStatus.Error; }
 //void clear    (ref GLStatus status)                    { status = GLStatus.None;   }
 
+alias GLShaderUniformValue = Algebraic!(
+    int, vec2i, vec3i, vec4i,
+    float, vec2, vec3, vec4,
+    mat2, mat3, mat4,
+    int[], vec2i[], vec3i[], vec4i[],
+    float[], vec2[], vec3[], vec4[],
+    mat2[], mat3[], mat4[]
+);
+
 
 public class GLShader : GLResource {
     private uint                        m_program = 0;
@@ -333,6 +343,7 @@ public class GLShader : GLResource {
     private struct Uniform {
         string          name;
         uint            location = 0;
+        GLShaderUniformValue value;
     }
 
     this (GLContext context) { super(context); }
@@ -405,21 +416,25 @@ public class GLShader : GLResource {
     }
     auto setUniform (T)(string name, T value) {
         if (bind()) {
-            auto loc = getUniformLocation(name);
-            enforce(loc >= 0, format("No matching uniform for '%s'", name));
-            gl.SetUniform(loc, value);
+            auto uniform = getUniform(name);
+            enforce(uniform.location >= 0, format("No matching uniform for '%s'", name));
+
+            if (uniform.value != value) {
+                uniform.value = GLShaderUniformValue(value);
+                gl.SetUniform(uniform.location, value);    
+            }
         }
         return this;
     }
-    private uint getUniformLocation (string name) {
+    private auto getUniform (string name) {
         foreach (ref uniform; m_uniformCache) {
             if (uniform.name == name) {
-                return uniform.location;
+                return &uniform;
             }
         }
         uint location = gl.GetUniformLocation(m_program, name.toStringz);
         m_uniformCache ~= Uniform(name, location);
-        return location;
+        return &m_uniformCache[$-1];
     }
     private void clearUniformCache () {
         m_uniformCache.length = 0;
