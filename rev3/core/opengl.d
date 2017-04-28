@@ -39,31 +39,43 @@ public string glGetMessage (GLenum err) {
 // Wrapped calls (Uses D types for better introspection / debugging)
 //
 
-private void glShaderSource (uint shader, string src) { 
+private void glShaderSource (uint shader, string src) {
     const(char)* source = &src[0];
     int          length = cast(int)src.length;
     derelict.opengl3.gl3.glShaderSource(shader, 1, &source, &length);
 }
-private bool glGetShaderCompileStatus (uint shader) {
+private bool glCompileShader (uint shader) { 
+    derelict.opengl3.gl3.glCompileShader(shader);
     int result;
     derelict.opengl3.gl3.glGetShaderiv(shader, GL_COMPILE_STATUS, &result);
     return result == GL_TRUE;
 }
-private int glGetShaderInfoLogLength (uint shader) {
+private bool glLinkProgram (uint program) {
+    derelict.opengl3.gl3.glLinkProgram(program);
     int result;
-    derelict.opengl3.gl3.glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &result);
-    return result;
-}
-private bool glGetProgramLinkStatus (uint program) {
-    int result;
-    derelict.opengl3.gl3.glGetShaderiv(program, GL_LINK_STATUS, &result);
+    derelict.opengl3.gl3.glGetProgramiv(program, GL_LINK_STATUS, &result);
     return result == GL_TRUE;
 }
-private int glGetProgramInfoLogLength (uint program) {
-    int result;
-    derelict.opengl3.gl3.glGetProgramiv(program, GL_INFO_LOG_LENGTH, &result);
-    return result;
+private string glGetShaderInfoLog (uint shader) {
+    int length = 0;
+    derelict.opengl3.gl3.glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
+    if (length == 0) return "<Empty Log?!>";
+
+    char[] log; log.length = length;
+    derelict.opengl3.gl3.glGetShaderInfoLog(shader, length, &length, &log[0]);
+    return cast(string)log[0 .. length];
 }
+private string glGetProgramInfoLog (uint program) {
+    int length = 0;
+    derelict.opengl3.gl3.glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
+    if (length == 0) return "<Empty Log?!>";
+
+    char[] log;
+    log.length = length;
+    derelict.opengl3.gl3.glGetProgramInfoLog(program, length, &length, &log[0]);
+    return cast(string)log[0 .. length];
+}
+
 private void glSetUniform (uint l, float v) { glUniform1f(l, v); }
 private void glSetUniform (uint l, vec2  v) { glUniform2fv(l, 1, v.value_ptr); }
 private void glSetUniform (uint l, vec3  v) { glUniform3fv(l, 1, v.value_ptr); }
@@ -120,7 +132,7 @@ final class GLContext {
 
             static if (DEBUG_LOG_GL_CALLS) {
                 import std.stdio;
-                static if (hasReturn) writefln("gl%s(%s) = %s", fcn, joinArgs(args), result);
+                static if (hasReturn) writefln("gl%s(%s) => %s", fcn, joinArgs(args), result);
                 else                  writefln("gl%s(%s)", fcn, joinArgs(args));
             }
 
@@ -170,20 +182,6 @@ final class GLContext {
 
     public auto create (T, Args...)(Args args) { return createResource!T(this, args); }
 
-
-    //private ResourceManager!(GLResource, GLResourceType) resourceManager;
-    //public auto create (T, Args...)(Args args) {
-    //    return resourceManager.create!T(this, args);
-    //}
-    //public void gcResources () {
-    //    resourceManager.gcResources();
-    //}
-    //public auto ref getActiveResources () {
-    //    return resourceManager.getActive();
-    //}
-
-
-
     //
     // GL Calls, etc...
     //
@@ -195,51 +193,19 @@ final class GLContext {
         }
         return program != 0;
     }
-
-    string GetShaderInfoLog (uint shader) {
-        int length = this.GetShaderInfoLogLength(shader);
-        if (length == 0) return "<Empty Log?!>";
-
-        char[] log;
-        log.length = length;
-
-        this.opDispatch!"GetShaderInfoLog"( shader, length, &length, &log[0] );
-        return cast(string)log[ 0 .. length ];
-    }
-    void CheckCompileStatus (uint shader, GLShaderType shaderType) {
-        enforce!GLShaderCompilationException(
-            this.GetShaderCompileStatus(shader),
-            format("Failed to compile %s shader (%s): %s", shaderType, shader, this.GetShaderInfoLog(shader)));
-    }
-
-    string GetProgramInfoLog (uint program) {
-        int length = this.GetProgramInfoLogLength(program);
-        if (length == 0) return "<Empty Log?!>";
-
-        char[] log;
-        log.length = length;
-
-        this.opDispatch!"GetProgramInfoLog"( program, length, &length, &log[0] );
-        return cast(string)log[0 .. length];
-    }
-    void CheckLinkStatus (uint program) {
-        enforce!GLShaderCompilationException(
-            this.GetProgramLinkStatus(program),
-            format("Failed to link shader program (%s): %s", program, this.GetProgramInfoLog(program)));
-    }
-
     void CompileAndAttachShader (ref uint program, ref uint shader, GLShaderType shaderType, string src) {
         if (!program) program = this.CreateProgram();
         if (!shader)  shader  = this.CreateShader(shaderType);
 
         this.ShaderSource(shader, src);
-        this.CheckCompileStatus(shader, shaderType);
+        enforce(this.CompileShader(shader),
+            format("Failed to compile %s shader (%s): %s", shaderType, shader, this.GetShaderInfoLog(shader)));
         this.AttachShader(program, shader);
     }
     void LinkProgram (uint program) {
         enforce!GLException(program != 0, "Failed to link shader program: null program (no bound shaders?)");
-        this.opDispatch!"LinkProgram"(program);
-        this.CheckLinkStatus(program);
+        enforce(this.opDispatch!"LinkProgram"(program),
+            format("Failed to link shader program (%s): %s", program, this.GetProgramInfoLog(program)));
     }
 }
 
@@ -248,21 +214,6 @@ enum GLTracedCalls {
     DrawArrays,
     DrawIndexed,
 };
-
-//public auto GLCall (alias F, string file = __FILE__, ulong line = __LINE__, string externalFunc = __PRETTY_FUNCTION__, Args...)(Args args)
-//    if (__traits__(compiles, F(args)))
-//{
-//    static if (!is(typeof(F(args)) == void))    auto result = F(args);
-//    else                                        F(args);
-
-//    static if (GL_RUNTIME_ERROR_CHECKING_ENABLED) {
-//        auto err = glGetError();
-//        if (err != GL_NO_ERROR) {
-//            throw new GLRuntimeException(glGetMessage(err), F.stringof, args.joinArgs(), externalFunc, file, line);
-//        }
-//    }
-//    static if (!is(typeof(F(args)) == void))    return result;
-//}
 
 //
 // Resources...
@@ -279,8 +230,8 @@ enum GLResourceType {
     GLShader, GLTexture, GLBuffer, GLVertexArray
 }
 enum GLShaderType : GLenum { 
-    FRAGMENT = GL_FRAGMENT_SHADER, 
     VERTEX   = GL_VERTEX_SHADER, 
+    FRAGMENT = GL_FRAGMENT_SHADER, 
     GEOMETRY = GL_GEOMETRY_SHADER,
 }
 enum GLStatus { None = 0x0, Ok = 0x1, Error = 0x3 }
@@ -385,7 +336,7 @@ public class GLShader : GLResource {
     auto setUniform (T)(string name, T value) {
         if (bind()) {
             auto loc = getUniformLocation(name);
-            enforce(loc > 0, format("No matching uniform for '%s'", name));
+            enforce(loc >= 0, format("No matching uniform for '%s'", name));
             gl.SetUniform(loc, value);
         }
         return this;
@@ -403,33 +354,6 @@ public class GLShader : GLResource {
     private void clearUniformCache () {
         m_uniformCache.length = 0;
     }
-    //private void setUniform (uint l, float v) { gl.Uniform1f(l, v); }
-    //private void setUniform (uint l, vec2  v) { gl.Uniform2fv(l, 1, v.value_ptr); }
-    //private void setUniform (uint l, vec3  v) { gl.Uniform3fv(l, 1, v.value_ptr); }
-    //private void setUniform (uint l, vec4  v) { gl.Uniform4fv(l, 1, v.value_ptr); }
-    
-    //private void setUniform (uint l, mat2  v) { gl.UniformMatrix2fv(l, 1, true, v.value_ptr); }
-    //private void setUniform (uint l, mat3  v) { gl.UniformMatrix3fv(l, 1, true, v.value_ptr); }
-    //private void setUniform (uint l, mat4  v) { gl.UniformMatrix4fv(l, 1, true, v.value_ptr); }
-
-    //private void setUniform (uint l, int   v) { gl.Uniform1i(l, v); }
-    //private void setUniform (uint l, vec2i v) { gl.Uniform2iv(l, 1, v.value_ptr); }
-    //private void setUniform (uint l, vec3i v) { gl.Uniform3iv(l, 1, v.value_ptr); }
-    //private void setUniform (uint l, vec4i v) { gl.Uniform4iv(l, 1, v.value_ptr); }
-
-    //private void setUniform (uint l, float[] v) { gl.Uniform1fv(l, cast(int)v.length, &v[0]); }
-    //private void setUniform (uint l, vec2[]  v) { gl.Uniform2fv(l, cast(int)v.length, v[0].value_ptr); }
-    //private void setUniform (uint l, vec3[]  v) { gl.Uniform3fv(l, cast(int)v.length, v[0].value_ptr); }
-    //private void setUniform (uint l, vec4[]  v) { gl.Uniform4fv(l, cast(int)v.length, v[0].value_ptr); }
-    
-    //private void setUniform (uint l, mat2[]  v) { gl.UniformMatrix2fv(l, cast(int)v.length, true, v[0].value_ptr); }
-    //private void setUniform (uint l, mat3[]  v) { gl.UniformMatrix3fv(l, cast(int)v.length, true, v[0].value_ptr); }
-    //private void setUniform (uint l, mat4[]  v) { gl.UniformMatrix4fv(l, cast(int)v.length, true, v[0].value_ptr); }
-
-    //private void setUniform (uint l, int[]   v) { gl.Uniform1iv(l, cast(int)v.length, &v[0]); }
-    //private void setUniform (uint l, vec2i[] v) { gl.Uniform2iv(l, cast(int)v.length, v[0].value_ptr); }
-    //private void setUniform (uint l, vec3i[] v) { gl.Uniform3iv(l, cast(int)v.length, v[0].value_ptr); }
-    //private void setUniform (uint l, vec4i[] v) { gl.Uniform4iv(l, cast(int)v.length, v[0].value_ptr); }
 }
 public class GLTexture : GLResource {
     this (GLContext context) { super(context); }

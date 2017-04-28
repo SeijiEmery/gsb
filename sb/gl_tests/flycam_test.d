@@ -92,7 +92,7 @@ void main (string[] args) {
             r3shader.source(GLShaderType.FRAGMENT, fragmentShader);
             r3shader.bind();
 
-            auto r3instanceDataVAO = r3gl.create!GLVertexArray();
+            //auto r3instanceDataVAO = r3gl.create!GLVertexArray();
             //auto r3instanceDataVBO = r3gl.create!GLBuffer(GL_ARRAY_BUFFER);
             //auto r3instanceGridVBO = r3gl.create!GLBuffer();
 
