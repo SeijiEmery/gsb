@@ -11,9 +11,12 @@ immutable uint SB_NUM_KEYS          = 256;
 enum MKPressAction : ubyte { RELEASED = 0, PRESSED = 1 }
 
 struct MKInputFrame {
-    double    dt;
+    double    dt      = 0.0f;
     SbEvent[] events;
-    vec2      mousePos, mouseDelta, scrollDelta;
+    vec2 mousePos;
+    vec2 mouseDelta  = vec2(0, 0);
+    vec2 scrollDelta = vec2(0, 0);
+
     SbPressState[SB_MAX_MOUSE_BUTTONS] mouseBtnState;
     SbPressState[SB_NUM_KEYS]          keyState;
 
@@ -63,6 +66,10 @@ class MKInputDevice {
             (nextMousePos.x - state.cursorPos.x) * settings.mouse_sensitivity_x,
             (nextMousePos.y - state.cursorPos.y) * settings.mouse_sensitivity_y,
         );
+
+        if (state.cursorDelta.x.isNaN) state.cursorDelta.x = 0;
+        if (state.cursorDelta.y.isNaN) state.cursorDelta.y = 0;
+
         if ( nextMousePos != state.cursorPos ) {
             eventList.pushEvent(SbMouseMoveEvent( state.cursorPos, state.cursorDelta ));
         }
@@ -95,7 +102,9 @@ private:
     double [ SB_MAX_MOUSE_BUTTONS ]       buttonTimestamps;
     SbPressState [ SbKey.max+1 ]          keyState;
 
-    vec2 nextMousePos, scrollDelta;
+    vec2 nextMousePos;
+    auto scrollDelta  = vec2(0, 0);
+
     SbEvent[] events;
 
     //private struct PressInfo {
