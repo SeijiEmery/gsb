@@ -5,6 +5,12 @@ authors "Seiji Emery"
 targetType "none"
 
 //
+// Rev3
+//
+
+subPackage {
+    name "rev3_core"
+    targetType "library"
 // Old app
 //
 subPackage {

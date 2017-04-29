@@ -125,10 +125,12 @@ private void glSetUniform (uint l, vec4i[] v) { glUniform4iv(l, cast(int)v.lengt
 
 
 enum GLTextureType : GLenum { 
-    GL_TEXTURE_2D   = derelict.opengl3.gl3.GL_TEXTURE_2D 
+    GL_TEXTURE_2D   = derelict.opengl3.gl3.GL_TEXTURE_2D,
 }
 enum GLBufferType : GLenum { 
-    GL_ARRAY_BUFFER = derelict.opengl3.gl3.GL_ARRAY_BUFFER
+    GL_ARRAY_BUFFER = derelict.opengl3.gl3.GL_ARRAY_BUFFER,
+    GL_ELEMENT_ARRAY_BUFFER = derelict.opengl3.gl3.GL_ELEMENT_ARRAY_BUFFER,
+    GL_UNIFORM_BUFFER = derelict.opengl3.gl3.GL_UNIFORM_BUFFER,
 }
 enum GLBuffering : GLenum {
     GL_STATIC_DRAW  = derelict.opengl3.gl3.GL_STATIC_DRAW,
@@ -184,7 +186,7 @@ final class GLContext {
  
             // If value in enum to track call #s, update that call value
             static if (__traits(compiles, mixin("GLTracedCalls."~fcn))) {
-                mixin("callTraceCount[GLTracedCalls."~fcn~"]++");
+                mixin("callTraceCount[GLTracedCalls."~fcn~"]++;");
             }
 
             static if (DEBUG_LOG_GL_CALLS) {
@@ -300,7 +302,7 @@ private class GLResource : ManagedResource {
     void resourceInit (GLContext context) { this.gl = context; assert(context !is null); }
 }
 enum GLResourceType {
-    GLShader, GLTexture, GLVertexBuffer, GLVertexArray
+    GLShader, GLTexture, GLVao, GLVbo, GLEbo, 
 }
 enum GLShaderType : GLenum { 
     VERTEX   = GL_VERTEX_SHADER, 
@@ -348,6 +350,8 @@ public class GLShader : GLResource {
 
     this (GLContext context) { super(context); }
     override void resourceDtor () { clear(); }
+
+    auto handle () { return m_program; }
 
     auto source (GLShaderType shaderType, string src) {
         m_shaders[shaderType].pendingSrc = src;
@@ -440,7 +444,7 @@ public class GLShader : GLResource {
         m_uniformCache.length = 0;
     }
 }
-public class GLVertexArray : GLResource {
+public class GLVao : GLResource {
     uint m_object = 0;
 
     this (GLContext context) { super(context); }
@@ -462,7 +466,7 @@ public class GLVertexArray : GLResource {
         }
         return this;
     }
-    void bindVertexAttrib (uint index, ref Ref!GLVertexBuffer vbo, int count, GLType type,
+    void bindVertexAttrib (uint index, ref Ref!GLVbo vbo, int count, GLType type,
         GLNormalized normalized, size_t stride, size_t offset
     ) {
         if (bind() && vbo.bind()) {
@@ -504,7 +508,10 @@ public class GLBuffer (GLBufferType BufferType) : GLResource {
         }
     }
 }
-public class GLVertexBuffer : GLBuffer!(GLBufferType.GL_ARRAY_BUFFER) {
+public class GLVbo : GLBuffer!(GLBufferType.GL_ARRAY_BUFFER) {
+    this (GLContext context) { super(context); }
+}
+public class GLEbo : GLBuffer!(GLBufferType.GL_ELEMENT_ARRAY_BUFFER) {
     this (GLContext context) { super(context); }
 }
 
