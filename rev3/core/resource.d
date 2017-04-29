@@ -86,7 +86,7 @@ public struct Ref (T) if (is(T == class)) {
         if (value)  value.retain();
         value = _value;
     }
-
+    void release () { if (_value) _value.release(); _value = null; }
     auto get () { return _value; }
     //auto ref opDispatch (string member)()
     //    if (__traits__(compiles, mixin("get()."member))) 

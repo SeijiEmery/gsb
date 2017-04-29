@@ -1,7 +1,6 @@
 module rev3.core.opengl;
 private import rev3.core.config;
 private import rev3.core.resource;
-
 public import rev3.core.math;
 public import derelict.opengl3.gl3;
 public import std.format: format;
@@ -189,10 +188,10 @@ final class GLContext {
                 mixin("callTraceCount[GLTracedCalls."~fcn~"]++;");
             }
 
-            static if (DEBUG_LOG_GL_CALLS) {
+            debug static if (DEBUG_LOG_GL_CALLS) {
                 import std.stdio;
-                static if (hasReturn) writefln("gl%s(%s) => %s", fcn, joinArgs(args), result);
-                else                  writefln("gl%s(%s)", fcn, joinArgs(args));
+                static if (hasReturn) writefln("(opengl-debug) gl%s(%s) => %s", fcn, joinArgs(args), result);
+                else                  writefln("(opengl-debug) gl%s(%s)", fcn, joinArgs(args));
             }
 
             // Check for errors.
