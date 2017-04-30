@@ -70,7 +70,8 @@ class GLFWApplication {
         this.window = glfwCreateWindow(config.windowSize.x, config.windowSize.y, config.windowTitle.toStringz, null, null);
         enforce(this.window, "Failed to create glfw window");
         window.glfwMakeContextCurrent();
-        
+        DerelictGL3.reload();               // NEED THIS CALL!!!!!
+
         // Create "GLContext" mock object (note: this is a high-level object that adds a nice
         // abstraction layer with better error handling, call tracing, and introspection; 
         // despite the name, it does NOT own the opengl context, and will only have accurate,
@@ -96,8 +97,6 @@ class GLFWApplication {
         // Main event loop
         while (!window.glfwWindowShouldClose) {
             glfwPollEvents();
-            gl.ClearColor(0, 0, 0, 0);
-            gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             
             // Run application per-frame code
             onFrame();

@@ -5,7 +5,7 @@ public import rev3.core.math;
 public import derelict.opengl3.gl3;
 public import std.format: format;
 import std.exception: enforce;
-import std.string: toStringz;
+import std.string;
 import std.variant;
 
 class GLException : Exception {
@@ -131,7 +131,7 @@ enum GLBufferType : GLenum {
     GL_ELEMENT_ARRAY_BUFFER = derelict.opengl3.gl3.GL_ELEMENT_ARRAY_BUFFER,
     GL_UNIFORM_BUFFER = derelict.opengl3.gl3.GL_UNIFORM_BUFFER,
 }
-enum GLBuffering : GLenum {
+enum GLBufferUsage : GLenum {
     GL_STATIC_DRAW  = derelict.opengl3.gl3.GL_STATIC_DRAW,
     GL_DYNAMIC_DRAW = derelict.opengl3.gl3.GL_DYNAMIC_DRAW,
 }
@@ -468,9 +468,14 @@ public class GLVao : GLResource {
     void bindVertexAttrib (uint index, ref Ref!GLVbo vbo, int count, GLType type,
         GLNormalized normalized, size_t stride, size_t offset
     ) {
+        bindVertexAttrib(index, vbo.get, count, type, normalized, stride, offset);
+    }
+    void bindVertexAttrib (uint index, GLVbo vbo, int count, GLType type,
+        GLNormalized normalized, size_t stride, size_t offset
+    ) {
         if (bind() && vbo.bind()) {
-            gl.EnableVertexAttribArray(index);
             gl.VertexAttribPointer(index, count, type, normalized, cast(int)stride, cast(void*)offset);
+            gl.EnableVertexAttribArray(index);
             gl.BindVertexArray(0);
         }
     }
@@ -501,9 +506,12 @@ public class GLBuffer (GLBufferType BufferType) : GLResource {
         }
         return this;
     }
-    void bufferData (T)(T[] data, GLBuffering buffering) {
+    void bufferData (GLenum usage, T)(T[] data) {
+        bufferData(data, cast(GLBufferUsage)usage);
+    }
+    void bufferData (T)(T[] data, GLBufferUsage buffering) {
         if (bind()) {
-            gl.BufferData(BufferType, data.length, data.ptr, buffering);
+            gl.BufferData(BufferType, data.length * T.sizeof, data.ptr, buffering);
         }
     }
 }

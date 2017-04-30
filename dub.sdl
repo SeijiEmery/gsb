@@ -33,7 +33,7 @@ subPackage {
     mainSourceFile "rev3/tests/opengl_triangle_test/opengl_triangle_test.d"
     sourcePaths "rev3/tests"
     dependency "gsb:rev3_core"  version="*"
-    dependency "derelict-glfw3" version="*"
+    #dependency "derelict-glfw3" version="*"
 }
 
 //
