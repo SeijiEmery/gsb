@@ -124,30 +124,53 @@ private void glSetUniform (uint l, vec4i[] v) { glUniform4iv(l, cast(int)v.lengt
 
 
 enum GLTextureType : GLenum { 
-    GL_TEXTURE_2D   = derelict.opengl3.gl3.GL_TEXTURE_2D,
+    GL_TEXTURE_2D           = derelict.opengl3.gl3.GL_TEXTURE_2D,
 }
 enum GLBufferType : GLenum { 
-    GL_ARRAY_BUFFER = derelict.opengl3.gl3.GL_ARRAY_BUFFER,
+    GL_ARRAY_BUFFER         = derelict.opengl3.gl3.GL_ARRAY_BUFFER,
     GL_ELEMENT_ARRAY_BUFFER = derelict.opengl3.gl3.GL_ELEMENT_ARRAY_BUFFER,
-    GL_UNIFORM_BUFFER = derelict.opengl3.gl3.GL_UNIFORM_BUFFER,
+    GL_UNIFORM_BUFFER       = derelict.opengl3.gl3.GL_UNIFORM_BUFFER,
 }
 enum GLBufferUsage : GLenum {
-    GL_STATIC_DRAW  = derelict.opengl3.gl3.GL_STATIC_DRAW,
-    GL_DYNAMIC_DRAW = derelict.opengl3.gl3.GL_DYNAMIC_DRAW,
+    GL_STATIC_DRAW          = derelict.opengl3.gl3.GL_STATIC_DRAW,
+    GL_DYNAMIC_DRAW         = derelict.opengl3.gl3.GL_DYNAMIC_DRAW,
+    GL_STREAM_DRAW          = derelict.opengl3.gl3.GL_STREAM_DRAW,
 }
 enum GLNormalized : GLboolean {
-    TRUE  = GL_TRUE,
-    FALSE = GL_FALSE,
+    TRUE                    = GL_TRUE,
+    FALSE                   = GL_FALSE,
 }
 enum GLType : GLenum {
-    FLOAT = derelict.opengl3.gl3.GL_FLOAT,
+    GL_BYTE = derelict.opengl3.gl3.GL_BYTE,
+    GL_UNSIGNED_BYTE = derelict.opengl3.gl3.GL_UNSIGNED_BYTE,
+    GL_SHORT = derelict.opengl3.gl3.GL_SHORT,
+    GL_UNSIGNED_SHORT = derelict.opengl3.gl3.GL_UNSIGNED_SHORT,
+    GL_INT = derelict.opengl3.gl3.GL_INT,
+    GL_UNSIGNED_INT = derelict.opengl3.gl3.GL_UNSIGNED_INT,
+    GL_FIXED = derelict.opengl3.gl3.GL_FIXED,
+    GL_HALF_FLOAT = derelict.opengl3.gl3.GL_HALF_FLOAT,
+    GL_FLOAT = derelict.opengl3.gl3.GL_FLOAT,
+    GL_DOUBLE = derelict.opengl3.gl3.GL_DOUBLE,
 }
 enum GLPrimitive : GLenum {
+    GL_POINTS = derelict.opengl3.gl3.GL_POINTS,
+    GL_LINES = derelict.opengl3.gl3.GL_LINES,
+    GL_LINE_STRIP = derelict.opengl3.gl3.GL_LINE_STRIP,
+    GL_LINE_LOOP = derelict.opengl3.gl3.GL_LINE_LOOP,
     GL_TRIANGLES = derelict.opengl3.gl3.GL_TRIANGLES,
     GL_TRIANGLE_STRIP = derelict.opengl3.gl3.GL_TRIANGLE_STRIP,
     GL_TRIANGLE_FAN = derelict.opengl3.gl3.GL_TRIANGLE_FAN,
-    GL_POINTS = derelict.opengl3.gl3.GL_POINTS,
 }
+enum GLShaderType : GLenum { 
+    VERTEX   = derelict.opengl3.gl3.GL_VERTEX_SHADER, 
+    FRAGMENT = derelict.opengl3.gl3.GL_FRAGMENT_SHADER, 
+    GEOMETRY = derelict.opengl3.gl3.GL_GEOMETRY_SHADER,
+}
+enum GLStatus { None = 0x0, Ok = 0x1, Error = 0x3 }
+
+bool ok    (GLStatus status) { return status == GLStatus.Ok;    }
+bool error (GLStatus status) { return status == GLStatus.Error; }
+bool none  (GLStatus status) { return status == GLStatus.None;  }
 
 final class GLContext {
     struct ContextState {
@@ -254,11 +277,13 @@ final class GLContext {
             this.opDispatch!"BindVertexArray"(vao);
         return vao != 0;
     }
+    bool BindBuffer (uint buffer, GLenum type) { return BindBuffer(buffer, cast(GLBufferType)type); }
     bool BindBuffer (uint buffer, GLBufferType bufferType) {
         if (doBind(m_state.buffer, buffer))
             this.opDispatch!"BindBuffer"(bufferType, buffer);
         return buffer != 0;
     }
+    bool BindTexture (uint texture, GLenum type, int slot) { return BindTexture(texture, cast(GLTextureType)type, slot); }
     bool BindTexture (uint texture, GLTextureType textureType, int textureSlot) {
         if (doBind(m_state.textureSlot, textureSlot))
             this.opDispatch!"ActiveTexture"(GL_TEXTURE0 + textureSlot);
@@ -267,6 +292,9 @@ final class GLContext {
         return texture != 0;
     }
 
+    void CompileAndAttachShader (ref uint program, ref uint shader, GLenum type, string src) {
+        CompileAndAttachShader(program, shader, cast(GLShaderType)type, src);
+    }
     void CompileAndAttachShader (ref uint program, ref uint shader, GLShaderType shaderType, string src) {
         if (!program) program = this.CreateProgram();
         if (!shader)  shader  = this.CreateShader(shaderType);
@@ -303,16 +331,7 @@ private class GLResource : ManagedResource {
 enum GLResourceType {
     GLShader, GLTexture, GLVao, GLVbo, GLEbo, 
 }
-enum GLShaderType : GLenum { 
-    VERTEX   = GL_VERTEX_SHADER, 
-    FRAGMENT = GL_FRAGMENT_SHADER, 
-    GEOMETRY = GL_GEOMETRY_SHADER,
-}
-enum GLStatus { None = 0x0, Ok = 0x1, Error = 0x3 }
 
-bool ok    (GLStatus status) { return status == GLStatus.Ok;    }
-bool error (GLStatus status) { return status == GLStatus.Error; }
-bool none  (GLStatus status) { return status == GLStatus.None;  }
 
 //void setOk    (ref GLStatus status, bool ok = true)    { status |= (ok ? GLStatus.Ok : GLStatus.Error);  }
 //void setError (ref GLStatus status, bool err = true)   { if (err) status |= GLStatus.Error; }
@@ -352,6 +371,9 @@ public class GLShader : GLResource {
 
     auto handle () { return m_program; }
 
+    auto source (GLenum type, string src) {
+        return source(cast(GLShaderType)type, src);
+    }
     auto source (GLShaderType shaderType, string src) {
         m_shaders[shaderType].pendingSrc = src;
         m_shaders[shaderType].status     = GLStatus.None;
@@ -465,20 +487,27 @@ public class GLVao : GLResource {
         }
         return this;
     }
-    void bindVertexAttrib (uint index, ref Ref!GLVbo vbo, int count, GLType type,
-        GLNormalized normalized, size_t stride, size_t offset
-    ) {
-        bindVertexAttrib(index, vbo.get, count, type, normalized, stride, offset);
-    }
-    void bindVertexAttrib (uint index, GLVbo vbo, int count, GLType type,
-        GLNormalized normalized, size_t stride, size_t offset
-    ) {
+    void bindVertexAttrib (GLVbo vbo, uint index, int count, GLenum type, bool normalized, size_t stride, size_t offset) {
         if (bind() && vbo.bind()) {
-            gl.VertexAttribPointer(index, count, type, normalized, cast(int)stride, cast(void*)offset);
+            gl.VertexAttribPointer(index, count, cast(GLType)type, cast(GLNormalized)normalized, cast(int)stride, cast(void*)offset);
             gl.EnableVertexAttribArray(index);
             gl.BindVertexArray(0);
         }
     }
+    //void bindVertexAttrib (uint index, ref Ref!GLVbo vbo, int count, GLType type,
+    //    GLNormalized normalized, size_t stride, size_t offset
+    //) {
+    //    bindVertexAttrib(index, vbo.get, count, type, normalized, stride, offset);
+    //}
+    //void bindVertexAttrib (uint index, GLVbo vbo, int count, GLType type,
+    //    GLNormalized normalized, size_t stride, size_t offset
+    //) {
+    //    if (bind() && vbo.bind()) {
+    //        gl.VertexAttribPointer(index, count, type, normalized, cast(int)stride, cast(void*)offset);
+    //        gl.EnableVertexAttribArray(index);
+    //        gl.BindVertexArray(0);
+    //    }
+    //}
     void setVertexAttribDivisor (uint index, uint divisor) {
         if (bind()) {
             gl.VertexAttribDivisor(index, divisor);

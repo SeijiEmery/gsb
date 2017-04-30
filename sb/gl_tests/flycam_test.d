@@ -9,7 +9,7 @@ import std.conv;
 import gl3n.linalg;
 import gl3n.math;
 
-immutable bool USE_REV3_RENDERING = true;
+immutable bool USE_REV3_RENDERING = false;
 
 
 void main (string[] args) {
@@ -126,12 +126,12 @@ void main (string[] args) {
             auto instance_vbo = resourcePool.createVBO();
 
             gl.getLocalBatch.execGL({
-                bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
-                vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
-                vao.bindVertexAttrib( 1, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
+                bufferData( vbo, position_color_data, GLBufferUsage.GL_STATIC_DRAW);
+                vao.bindVertexAttrib( 0, vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
+                vao.bindVertexAttrib( 1, vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
 
-                bufferData( instance_vbo, instanceGridData, GLBuffering.STATIC_DRAW );
-                vao.bindVertexAttrib( 2, instance_vbo, 3, GLType.FLOAT, GLNormalized.FALSE, 0, 0 );
+                bufferData( instance_vbo, instanceGridData, GLBufferUsage.GL_STATIC_DRAW );
+                vao.bindVertexAttrib( 2, instance_vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, 0, 0 );
                 vao.setVertexAttribDivisor( 2, 1 );
 
                 vao.bindShader( shader );
@@ -144,7 +144,7 @@ void main (string[] args) {
                     shader.setv("model", model);
 
                     //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
-                    vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
+                    vao.drawArraysInstanced( GLPrimitive.GL_TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
                 });
             }
         }

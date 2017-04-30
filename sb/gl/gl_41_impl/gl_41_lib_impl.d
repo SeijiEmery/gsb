@@ -1,6 +1,7 @@
 module sb.gl.gl_impl;
 import sb.gl;
 
+import rev3.core.opengl;
 import derelict.opengl3.gl3;
 import gl3n.linalg;
 import std.exception: enforce;
@@ -60,6 +61,7 @@ private class GL41_GraphicsLib : IGraphicsLib {
 }
 
 private class GL41_GraphicsContext : IGraphicsContext {
+    auto gl = new GLContext();
     this () { m_mutex = new Mutex(); }
 
     override IBatch   createBatch   () { return getLocalBatch(); }
@@ -193,22 +195,21 @@ private class ResourcePool : IGraphicsResourcePool {
         m_mutex = new Mutex();
     }
     override GLTextureRef createTexture () {
-        auto texture = new Texture(this);
+        auto texture = new Texture(this, m_graphicsContext.gl);
         synchronized (m_mutex) { m_activeResources ~= texture; }
         return GLTextureRef(texture);
     }
     override GLShaderRef createShader () {
-        auto shader = new Shader(this);
+        auto shader = new Shader(this, m_graphicsContext.gl);
         synchronized (m_mutex) { m_activeResources ~= shader; }
         return GLShaderRef(shader);
     }
     override GLVboRef createVBO () {
-        auto vbo = new Vbo(this);
+        auto vbo = new Vbo(this, m_graphicsContext.gl);
         synchronized (m_mutex) { m_activeResources ~= vbo; }
         return GLVboRef(vbo);
     }
     override GLVaoRef createVAO () {
-        auto vao = new Vao(this, m_graphicsContext);
         synchronized (m_mutex) { m_activeResources ~= vao; }
         return GLVaoRef(vao);
     }
@@ -250,13 +251,6 @@ private class ResourcePool : IGraphicsResourcePool {
 
 // GL utilities
 
-private auto toGLEnum (ShaderType type) {
-    final switch (type) {
-        case ShaderType.VERTEX:  return GL_VERTEX_SHADER;
-        case ShaderType.FRAGMENT: return GL_FRAGMENT_SHADER;
-        case ShaderType.GEOMETRY: return GL_GEOMETRY_SHADER;
-    }
-}
 private auto glGetCompileStatus ( uint shader ) {
     int result;
     glGetShaderiv( shader, GL_COMPILE_STATUS, &result );
@@ -334,6 +328,7 @@ private auto unwrap (ref GLVboRef vbo) { return cast(Vbo)(vbo._value); }
 
 private class Shader : IGraphicsResource, IShader {
     ResourcePool m_graphicsPool;
+    GLContext    gl;
 
     bool                   m_hasPendingRecompile = false;
     string[ShaderType.max] m_pendingSrc    = null;
@@ -343,8 +338,9 @@ private class Shader : IGraphicsResource, IShader {
     Tuple!(ShaderType,string,string,uint)[] m_subroutineCache;
     bool m_isBindable = false;
 
-    this (ResourcePool pool) {
+    this (ResourcePool pool, GLContext gl ) {
         m_graphicsPool = pool;
+        this.gl = gl;
     }
     override string toString () {
         return format("Shader %s %s '%s'", m_programObject,
@@ -359,10 +355,8 @@ private class Shader : IGraphicsResource, IShader {
         void recompileShader ( ref uint shader, ShaderType type, string src ) {
             // Create shader if it doesn't already exist
             if (!shader) {
-                shader = glCreateShader( type.toGLEnum );
                 glAssertOk( format("Error creating shader? (%s)", type) );
             }
-
             assert( shader, format("Could not create shader! (%s)", type ));
 
             const(char)* source = &src[0];
@@ -445,10 +439,8 @@ private class Shader : IGraphicsResource, IShader {
         return this;
     }
     override IShader useSubroutine (ShaderType type, string name, string value) {
-        uint shaderType = type.toGLEnum;
         uint fetchSubroutineUniform () {
             if (name !in m_locationCache) {
-                int location = glGetSubroutineUniformLocation(m_programObject, shaderType, name.toStringz);
                 enforce(location != -1, format("Could not get subroutine uniform '%s'", name));
                 glAssertOk(format("glGetSubroutineUniformLocation(%s, %s, %s)", m_programObject, type, name));
                 return m_locationCache[name] = location;
@@ -473,7 +465,6 @@ private class Shader : IGraphicsResource, IShader {
             uint v     = fetchSubroutineValue();
             enforce( index == 0, format("Index != 0: %s", index));
 
-            glUniformSubroutinesuiv( shaderType, 1, &v );
             glAssertOk(format("glUniformSubroutinesuiv(%s, 1, %s)", type, v));
         }
         return this;
@@ -568,7 +559,6 @@ private class Texture : IGraphicsResource, ITexture {
     auto             m_size = vec2i(0, 0);
 
 
-    this (ResourcePool pool) {
         m_graphicsPool = pool;
     }
     override string toString () {
@@ -641,39 +631,11 @@ private class Texture : IGraphicsResource, ITexture {
     }
 }
 
-private auto toGLEnum ( GLType type ) {
-    final switch (type) {
-        case GLType.BYTE: return GL_BYTE;
-        case GLType.UNSIGNED_BYTE: return GL_UNSIGNED_BYTE;
-        case GLType.SHORT: return GL_SHORT;
-        case GLType.UNSIGNED_SHORT: return GL_UNSIGNED_SHORT;
-        case GLType.INT: return GL_INT;
-        case GLType.UNSIGNED_INT: return GL_UNSIGNED_INT;
-        case GLType.FIXED: return GL_FIXED;
-        case GLType.HALF_FLOAT: return GL_HALF_FLOAT;
-        case GLType.FLOAT: return GL_FLOAT;
-        case GLType.DOUBLE: return GL_DOUBLE;
-    }
-}
-private auto toGLEnum ( GLPrimitive primitive ) {
-    final switch (primitive) {
-        case GLPrimitive.POINTS: return GL_POINTS;
-        case GLPrimitive.LINES:  return GL_LINES;
-        case GLPrimitive.LINE_STRIP: return GL_LINE_STRIP;
-        case GLPrimitive.LINE_LOOP: return GL_LINE_LOOP;
-        case GLPrimitive.TRIANGLES: return GL_TRIANGLES;
-        case GLPrimitive.TRIANGLE_STRIP: return GL_TRIANGLE_STRIP;
-        case GLPrimitive.TRIANGLE_FAN: return GL_TRIANGLE_FAN;
-    }
-}
-
 private class Vao : IGraphicsResource, IVao {
-    ResourcePool         m_graphicsPool;
     GL41_GraphicsContext m_graphicsContext;
     uint        m_handle = 0;
     GLShaderRef m_boundShader;
 
-    this (ResourcePool pool, GL41_GraphicsContext context) {
         m_graphicsPool = pool;
         m_graphicsContext = context;
     }
@@ -705,7 +667,6 @@ private class Vao : IGraphicsResource, IVao {
         glBindBuffer( GL_ARRAY_BUFFER, vbo.unwrap.getHandle );
         glAssertOk(format("glBindBuffer(GL_ARRAY_BUFFER, %s)", vbo.unwrap.getHandle));
 
-        glVertexAttribPointer( index, count, dataType.toGLEnum, 
             cast(GLboolean)normalized, cast(int)stride, cast(void*)offset );
         glAssertOk(format("glVertexAttribPointer(%s, %s, %s, %s, %s, %s)",
             index, count, dataType, normalized, stride, offset));
@@ -729,7 +690,6 @@ private class Vao : IGraphicsResource, IVao {
         if (m_graphicsContext.bindShader(m_boundShader.unwrap),
             m_graphicsContext.bindVao( this, getHandle())
         ) {
-            glDrawArrays( primitive.toGLEnum, start, count );
             glAssertOk(format("glDrawArrays(%s, %s, %s)", primitive, start, count));
         } else {
             writefln("not drawing arrays!");
@@ -739,7 +699,6 @@ private class Vao : IGraphicsResource, IVao {
         if (m_graphicsContext.bindShader(m_boundShader.unwrap),
             m_graphicsContext.bindVao( this, getHandle())
         ) {
-            glDrawArraysInstanced( primitive.toGLEnum, start, count, instances );
             glAssertOk(format("glDrawArrays(%s, %s, %s)", primitive, start, count));
         }
     }
@@ -754,18 +713,10 @@ private class Vao : IGraphicsResource, IVao {
     }
 }
 
-private auto toGLEnum ( GLBuffering buffering ) {
-    final switch (buffering) {
-        case GLBuffering.STATIC_DRAW:  return GL_STATIC_DRAW;
-        case GLBuffering.DYNAMIC_DRAW: return GL_DYNAMIC_DRAW;
-    }
-}
-
 private class Vbo : IGraphicsResource, IVbo {
     ResourcePool m_graphicsPool;
     uint         m_handle = 0;
 
-    this (typeof(m_graphicsPool) pool) { m_graphicsPool = pool; }
 
     override string toString () {
         return format("VBO %s '%s'", m_handle, m_graphicsPool.getId);
@@ -779,10 +730,8 @@ private class Vbo : IGraphicsResource, IVbo {
         }
         return m_handle;
     }
-    override void bufferData (const(void)* data, size_t length, GLBuffering buffer_usage) {
         // TODO: Add a cpu-side data buffer + command buffer so this can be safely called
         // on threads other than the graphics thread!
-
         glFlushErrors();
         glBindBuffer( GL_ARRAY_BUFFER, getHandle() );
         glBufferData( GL_ARRAY_BUFFER, length, data, buffer_usage.toGLEnum );
