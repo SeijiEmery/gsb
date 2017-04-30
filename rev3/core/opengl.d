@@ -57,7 +57,7 @@ private void glDeleteVertexArray (ref uint vao ) {
 private void glDeleteTexture (ref uint tex) {
     glDeleteTextures(1, &tex); tex = 0;
 }
-private void glShaderSource (uint shader, string src) {
+private void glShaderSource (uint shader, const string src) {
     const(char)* source = &src[0];
     int          length = cast(int)src.length;
     derelict.opengl3.gl3.glShaderSource(shader, 1, &source, &length);
@@ -268,43 +268,43 @@ final class GLContext {
     //
 
     bool BindProgram (uint program) {
-        if (doBind(m_state.shader, program))
+        //if (doBind(m_state.shader, program))
             this.UseProgram(program);
         return program != 0;
     }
     bool BindVertexArray (uint vao) {
-        if (doBind(m_state.vao, vao))
+        //if (doBind(m_state.vao, vao))
             this.opDispatch!"BindVertexArray"(vao);
         return vao != 0;
     }
     bool BindBuffer (GLenum bufferType)(uint buffer) {
-        if (doBind(m_state.buffer, buffer))
+        //if (doBind(m_state.buffer, buffer))
             this.opDispatch!"BindBuffer"(bufferType, buffer);
         return buffer != 0;
     }
     bool BindTexture (GLenum type)(uint texture, int textureSlot) {
-        if (doBind(m_state.textureSlot, textureSlot))
+        //if (doBind(m_state.textureSlot, textureSlot))
             this.opDispatch!"ActiveTexture"(GL_TEXTURE0 + textureSlot);
-        if (doBind(m_state.texture, texture))
+        //if (doBind(m_state.texture, texture))
             this.opDispatch!"BindTexture"(textureType, texture);
         return texture != 0;
     }
 
-    void CompileAndAttachShader (ref uint program, ref uint shader, GLenum type, string src) {
+    void CompileAndAttachShader (ref uint program, ref uint shader, GLenum type, const string src) {
         CompileAndAttachShader(program, shader, cast(GLShaderType)type, src);
     }
-    void CompileAndAttachShader (ref uint program, ref uint shader, GLShaderType shaderType, string src) {
+    void CompileAndAttachShader (ref uint program, ref uint shader, GLShaderType shaderType, const string src) {
         if (!program) program = this.CreateProgram();
         if (!shader)  shader  = this.CreateShader(shaderType);
 
         this.ShaderSource(shader, src);
-        enforce(this.CompileShader(shader),
+        enforce!GLShaderCompilationException(this.CompileShader(shader),
             format("Failed to compile %s shader (%s): %s", shaderType, shader, this.GetShaderInfoLog(shader)));
         this.AttachShader(program, shader);
     }
     void LinkProgram (uint program) {
         enforce!GLException(program != 0, "Failed to link shader program: null program (no bound shaders?)");
-        enforce(this.opDispatch!"LinkProgram"(program),
+        enforce!GLShaderCompilationException(this.opDispatch!"LinkProgram"(program),
             format("Failed to link shader program (%s): %s", program, this.GetProgramInfoLog(program)));
     }
 }
@@ -533,12 +533,12 @@ public class GLBuffer (GLBufferType BufferType) : GLResource {
         }
         return this;
     }
-    void bufferData (GLenum usage, T)(T[] data) {
+    void bufferData (GLenum usage, T)(const T[] data) {
         bufferData(data, cast(GLBufferUsage)usage);
     }
-    void bufferData (T)(T[] data, GLBufferUsage buffering) {
+    void bufferData (T)(const T[] data, GLBufferUsage usage) {
         if (bind()) {
-            gl.BufferData!BufferType(data.length * T.sizeof, data.ptr, buffering);
+            gl.BufferData(BufferType, data.length * T.sizeof, data.ptr, usage);
         }
     }
 }

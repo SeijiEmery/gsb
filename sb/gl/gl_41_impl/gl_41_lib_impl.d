@@ -321,57 +321,26 @@ private class Shader : IGraphicsResource, IShader {
 
     // Call only on Graphics thread!
     private bool bindShader () {
-        void recompileShader ( ref uint shader, GLShaderType type, string src ) {
-            // Create shader if it doesn't already exist
-            if (!shader) {
-                shader = glCreateShader(type);
-                glAssertOk( format("Error creating shader? (%s)", type) );
-            }
-            assert( shader, format("Could not create shader! (%s)", type ));
-
-            const(char)* source = &src[0];
-            int    length = cast(int)src.length;
-
-            // Compile shader
-            glShaderSource( shader, 1, &source, &length );
-            glCompileShader( shader );
-
-            enforce( glGetCompileStatus(shader) == GL_TRUE,
-                format("Failed to compile %s shader: %s", type, getShaderInfoLog(shader)));
-            glEnforceOk(format("glShaderSource / glCompileShader (%s, %s)", type, shader));
-
-            // Attach to program object
-            glAttachShader( m_programObject, shader );
-            glEnforceOk(format("Failed to attach shader? (%s, %s)", type, getShaderInfoLog(shader)));
-        }
         void maybeRecompileShaders () {
             if (!m_hasPendingRecompile)
                 return;
 
-            m_isBindable = false;
-            glFlushErrors();
-
-            if (!m_programObject) {
-                m_programObject = glCreateProgram();
-                glAssertOk("Could not create program object?");
-                assert( m_programObject, "did not create program object!" );
-            }
             bool didRecompile = false;
-            foreach (uint i; 0 .. GLShaderType.max) {
+            m_isBindable = false;
+
+            foreach (uint i; GLShaderType.min .. GLShaderType.max) {
                 if (m_pendingSrc[i]) {
-                    auto src = m_pendingSrc[i]; m_pendingSrc[i] = null;
-                    recompileShader( m_shaderObjects[i], cast(GLShaderType)i, src );
+                    gl.CompileAndAttachShader(m_programObject, m_shaderObjects[i], i, m_pendingSrc[i]);
                     didRecompile = true;
+                    m_pendingSrc[i] = null;
                 }
             }
             if (didRecompile) {
                 foreach (k, v; m_locationCache)
                     m_locationCache.remove(k);
 
-                glLinkProgram( m_programObject );
-                enforce( glGetLinkStatus(m_programObject) == GL_TRUE,
-                    format("Failed to link shader program: %s", getProgramInfoLog(m_programObject)));
-                glEnforceOk("glLinkProgram");
+                assert(m_programObject != 0);
+                gl.LinkProgram(m_programObject);
             }
             m_hasPendingRecompile = false;
             m_isBindable = true;
@@ -398,22 +367,13 @@ private class Shader : IGraphicsResource, IShader {
     override IShader rawSource (GLShaderType type, string contents) {
         m_hasPendingRecompile = true;
         m_pendingSrc[type] = contents;
-
-        // Temp hack to test shader compilation (it works!)
-        if (m_pendingSrc[GLShaderType.FRAGMENT] && m_pendingSrc[GLShaderType.VERTEX]) {
-            import std.stdio;
-            writefln("Recompiling shader");
-            if (bindShader())
-                writefln("Shader compiled successfully + program %s bound!", m_programObject);
-        }
         return this;
     }
     override IShader useSubroutine (GLShaderType type, string name, string value) {
         uint fetchSubroutineUniform () {
             if (name !in m_locationCache) {
-                int location = glGetSubroutineUniformLocation(m_programObject, type, name.toStringz);
+                int location = gl.GetSubroutineUniformLocation(m_programObject, type, name.toStringz);
                 enforce(location != -1, format("Could not get subroutine uniform '%s'", name));
-                glAssertOk(format("glGetSubroutineUniformLocation(%s, %s, %s)", m_programObject, type, name));
                 return m_locationCache[name] = location;
             }
             return m_locationCache[name];
