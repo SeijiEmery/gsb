@@ -8,7 +8,7 @@ import std.stdio;
 
 public import derelict.opengl3.gl3;
 
-
+/+
 class Rev3GLRenderer {
     GLContext gl;
 
@@ -33,7 +33,7 @@ class Rev3GLRenderer {
         auto vao = gl.create!GLVao();
         auto vbo = gl.create!GLVbo();
 
-        vbo.bufferData(vertices, GLBuffering.GL_STATIC_DRAW);
+        vbo.bufferData(vertices, GLBufferUsage.GL_STATIC_DRAW);
         vao.bindVertexAttrib(0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, 3 * float.sizeof, 0);
 
         return Mesh(vao, vbo);
@@ -53,7 +53,7 @@ class RawGLRenderer {
     alias Shader = uint;
     alias Mesh   = uint;
 
-    uint compileShader (GLenum type, string src) {
+    static uint compileShader (GLenum type, string src) {
         assert(glGetError() == GL_NO_ERROR);
         auto s = src.toStringz;
         auto l = cast(int)src.length;
@@ -124,38 +124,41 @@ class TriangleRenderer (Renderer) {
 
     this (Renderer renderer) {
         this.renderer = renderer;
-        this.shader = renderer.loadProgram(q{
+        this.shader = renderer.loadProgram(`
             #version 410
             layout(location=0) in vec3 position;
             void main () {
                 gl_Position = vec4(position, 0);
             }
-        }, q{
+        `, `
             #version 410
             out vec4 color;
             void main () {
                 color = vec4(1.0, 0.0, 0.0, 0.0);
             }
-        });
+        `);
         this.mesh = renderer.loadMesh([
-             0.5f,  0.5f, 0.0f,  // Top Right
-             0.5f, -0.5f, 0.0f,  // Bottom Right
-            -0.5f, -0.5f, 0.0f,  // Bottom Left
-            -0.5f,  0.5f, 0.0f   // Top Left 
+            +0.0f, +0.5f, 0.0f,
+            +0.5f, -0.5f, 0.0f,
+            -0.5f, -0.5f, 0.0f,
         ], null);
     }
     void draw (mat4 m, mat4 v, mat4 p) {
-        renderer.drawArrays(shader, mesh, GL_TRIANGLES, 0, 6);
+        renderer.drawArrays(shader, mesh, GL_TRIANGLES, 0, 3);
     }
     void cleanup () {
         renderer.deleteProgram(shader);
         renderer.deleteMesh(mesh);
     }
-}
+}+/
 
 class Application : GLFWApplication {
-    TriangleRenderer!RawGLRenderer  rawRenderer;
-    TriangleRenderer!Rev3GLRenderer rev3Renderer;
+    //TriangleRenderer!RawGLRenderer  rawRenderer;
+    //TriangleRenderer!Rev3GLRenderer rev3Renderer;
+
+    GLShader shader;
+    GLVao    vao;
+    GLVbo    vbo;
 
     this (string[] args) {
         super(AppConfig("Opengl Triangle Test").applyArgs(args));
@@ -165,20 +168,60 @@ class Application : GLFWApplication {
         writefln("==== Initializing ====");
         //rev3Renderer = new TriangleRenderer!Rev3GLRenderer(new Rev3GLRenderer(gl));
         //rawRenderer  = new TriangleRenderer!RawGLRenderer(new RawGLRenderer());
+
+        shader = gl.create!(GLShader).get;
+        shader.source(GLShaderType.VERTEX, q{
+            #version 410
+            layout(location=0) in vec3 position;
+            void main () {
+                gl_Position = vec4(position, 0);
+            }
+        });
+        shader.source(GLShaderType.FRAGMENT, q{
+            #version 410
+            out vec4 color;
+            void main () {
+                color = vec4(1.0, 0.0, 0.5, 0.0);
+            }
+        });
+        vbo = gl.create!GLVbo.get;
+        vbo.bufferData!GL_STATIC_DRAW([
+            -0.8f, -0.8f, 0.0f,
+             0.0f, -0.8f, 0.0f,
+             0.0f,  0.8f, 0.0f,
+        ]);
+
+        vao = gl.create!GLVao.get;
+        vao.bind();
+        vbo.bind();
+        gl.EnableVertexAttribArray(0);
+        gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, cast(int)(float.sizeof * 3), null);// cast(int)(3 * float.sizeof), cast(void*)0);
+        gl.BindVertexArray(0);
     }
     int frame = 0;
     override void onFrame () {
         writefln("==== Frame %s ====", frame++);
 
+        gl.ClearColor(0, 0, 0, 0);
+        gl.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         import std.random;
-        gl.ClearColor(uniform(0.0, 1.0), uniform(0.0, 1.0), uniform(0.0, 1.0), 0.0);
-        gl.Clear(GL_COLOR_BUFFER_BIT);
+        //gl.ClearColor(uniform(0.0, 1.0), uniform(0.0, 1.0), uniform(0.0, 1.0), 0.0);
+        //gl.Clear(GL_COLOR_BUFFER_BIT);
         //rev3Renderer.draw(mat4.identity, mat4.identity, mat4.identity);
+
+        assert(shader.bind() && vao.bind());
+        gl.DrawArrays(GL_TRIANGLES, 0, 3);
     }
     override void onTeardown () {
         writefln("==== Teardown ====");
+
+        shader.release();
+        vao.release();
+        vbo.release();
         //rev3Renderer.cleanup();
         //rawRenderer.cleanup();
+        gl.gcResources();
     }
 }
 
