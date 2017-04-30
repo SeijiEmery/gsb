@@ -358,15 +358,15 @@ struct RenderableMeshPart {
 
         void genTris ( float[] packedData_v3_s2_n3, size_t count ) {
             auto vbo = resourcePool.createVBO();
-            gl.getLocalBatch.execGL({ bufferData(vbo, packedData_v3_s2_n3, GLBuffering.STATIC_DRAW); });
+            gl.getLocalBatch.execGL({ bufferData(vbo, packedData_v3_s2_n3, GLBufferUsage.GL_STATIC_DRAW); });
 
             auto vao = resourcePool.createVAO();
-            vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 8, 0 );
-            vao.bindVertexAttrib( 1, vbo, 2, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 8, float.sizeof * 3 );
-            vao.bindVertexAttrib( 2, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 8, float.sizeof * 5 );
+            vao.bindVertexAttrib( 0, vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, float.sizeof * 8, 0 );
+            vao.bindVertexAttrib( 1, vbo, 2, GLType.GL_FLOAT, GLNormalized.FALSE, float.sizeof * 8, float.sizeof * 3 );
+            vao.bindVertexAttrib( 2, vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, float.sizeof * 8, float.sizeof * 5 );
             vao.bindShader( shader );
 
-            renderItems ~= RenderItem( vao, GLPrimitive.TRIANGLES, 0, count * 3 );
+            renderItems ~= RenderItem( vao, GLPrimitive.GL_TRIANGLES, 0, count * 3 );
         }
         genTris( mesh.packedData, mesh.triCount );
     }
@@ -549,7 +549,7 @@ void main (string[] args) {
         auto resourcePool = gl.createResourcePrefix("model-viewer");
 
         auto meshShader = resourcePool.createShader();
-        meshShader.rawSource(ShaderType.VERTEX, `
+        meshShader.rawSource(GLShaderType.VERTEX, `
             #version 410
             layout(location=0) in vec3 vertPosition;
             layout(location=1) in vec2 vertUV;
@@ -570,7 +570,7 @@ void main (string[] args) {
                 gl_Position = mvp * vec4(vertPosition, 1.0);
             }
         `);
-        meshShader.rawSource(ShaderType.FRAGMENT, `
+        meshShader.rawSource(GLShaderType.FRAGMENT, `
             #version 410
             in vec3 position;
             in vec3 normal;
@@ -709,7 +709,7 @@ void main (string[] args) {
         void setLightModel (LightingModel lightModel) {
             writefln("Set lighting model = %s", g_lightModel = lightModel);
             gl.getLocalBatch.execGL({
-                meshShader.useSubroutine(ShaderType.FRAGMENT, "activeShadingModel", lightModel.to!string);
+                meshShader.useSubroutine(GLShaderType.FRAGMENT, "activeShadingModel", lightModel.to!string);
             });
         }
         void advLightModel (uint dir) {
@@ -838,7 +838,7 @@ void main (string[] args) {
         auto load_mesh_time = initTime.peek - gl_init_time;
 
         auto shader = resourcePool.createShader();
-        shader.rawSource(ShaderType.VERTEX, `
+        shader.rawSource(GLShaderType.VERTEX, `
             #version 410
             layout(location=0) in vec3 vertPosition;
             layout(location=1) in vec3 vertColor;
@@ -855,7 +855,7 @@ void main (string[] args) {
                     model * vec4(vertPosition, 1.0));
             }
         `);
-        shader.rawSource(ShaderType.FRAGMENT, `
+        shader.rawSource(GLShaderType.FRAGMENT, `
             #version 410
             in vec3 color;
             out vec4 fragColor;
@@ -890,12 +890,12 @@ void main (string[] args) {
             }
         }
         gl.getLocalBatch.execGL({
-            bufferData( vbo, position_color_data, GLBuffering.STATIC_DRAW );
-            vao.bindVertexAttrib( 0, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
-            vao.bindVertexAttrib( 1, vbo, 3, GLType.FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
+            bufferData( vbo, position_color_data, GLBufferUsage.GL_STATIC_DRAW );
+            vao.bindVertexAttrib( 0, vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, float.sizeof * 6, 0 );
+            vao.bindVertexAttrib( 1, vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, float.sizeof * 6, float.sizeof * 3 );
 
-            bufferData( instance_vbo, instanceGridData, GLBuffering.STATIC_DRAW );
-            vao.bindVertexAttrib( 2, instance_vbo, 3, GLType.FLOAT, GLNormalized.FALSE, 0, 0 );
+            bufferData( instance_vbo, instanceGridData, GLBufferUsage.GL_STATIC_DRAW );
+            vao.bindVertexAttrib( 2, instance_vbo, 3, GLType.GL_FLOAT, GLNormalized.FALSE, 0, 0 );
             vao.setVertexAttribDivisor( 2, 1 );
 
             vao.bindShader( shader );
@@ -1063,7 +1063,7 @@ void main (string[] args) {
                     shader.setv("vp", proj * view);
                     shader.setv("model", modelMatrix);
                     //vao.drawArrays( GLPrimitive.TRIANGLES, 0, 3 );
-                    vao.drawArraysInstanced( GLPrimitive.TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
+                    vao.drawArraysInstanced( GLPrimitive.GL_TRIANGLES, 0, 3, GRID_DIM.x * GRID_DIM.y * GRID_DIM.z );
                 });
             }
 

@@ -73,6 +73,7 @@ subPackage {
     dependency "derelict-glfw3" version="~>1.1.1"
     dependency "derelict-gl3"   version="~>1.0.18"
     dependency "gl3n"           version="~>1.3.1"
+    dependency "gsb:rev3_core" version="*"
 }
 
 subPackage {
@@ -86,6 +87,7 @@ subPackage {
     dependency "derelict-glfw3" version="~>1.1.1"
     dependency "derelict-gl3"   version="~>1.0.18"
     dependency "gl3n"           version="~>1.3.1"
+    dependency "gsb:rev3_core" version="*"
 }
 subPackage {
     name "gl_41"
@@ -94,7 +96,7 @@ subPackage {
     sourcePaths "sb/gl/interface" "sb/gl/gl_41_impl"
     targetPath  "build/libs/graphics"
 
-    dependency "rev3_core"    version="*"
+    dependency "gsb:rev3_core" version="*"
     dependency "derelict-gl3" version="~>1.0.18"
     dependency "gl3n"         version="~>1.3.1"
 }
@@ -138,6 +140,7 @@ subPackage {
     name "platform"
     targetType "none"
     dependency "gsb:platform_glfw" version="*"
+    dependency "rev3_core" version="*"
 }
 subPackage {
     name "sb_base"

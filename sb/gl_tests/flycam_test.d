@@ -118,8 +118,8 @@ void main (string[] args) {
             auto resourcePool = gl.createResourcePrefix("flycam-test");
 
             auto shader = resourcePool.createShader();
-            shader.rawSource(ShaderType.VERTEX, vertexShader);
-            shader.rawSource(ShaderType.FRAGMENT, fragmentShader);
+            shader.rawSource(GLShaderType.VERTEX, vertexShader);
+            shader.rawSource(GLShaderType.FRAGMENT, fragmentShader);
             
             auto vao = resourcePool.createVAO();
             auto vbo = resourcePool.createVBO();
