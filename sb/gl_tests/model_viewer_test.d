@@ -11,6 +11,7 @@ import core.time;
 import std.conv;
 import gl3n.linalg;
 import gl3n.math;
+import std.math: isNaN;
 import std.exception: enforce;
 import std.format;
 import std.path: baseName;

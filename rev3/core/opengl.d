@@ -277,14 +277,12 @@ final class GLContext {
             this.opDispatch!"BindVertexArray"(vao);
         return vao != 0;
     }
-    bool BindBuffer (uint buffer, GLenum type) { return BindBuffer(buffer, cast(GLBufferType)type); }
-    bool BindBuffer (uint buffer, GLBufferType bufferType) {
+    bool BindBuffer (GLenum bufferType)(uint buffer) {
         if (doBind(m_state.buffer, buffer))
             this.opDispatch!"BindBuffer"(bufferType, buffer);
         return buffer != 0;
     }
-    bool BindTexture (uint texture, GLenum type, int slot) { return BindTexture(texture, cast(GLTextureType)type, slot); }
-    bool BindTexture (uint texture, GLTextureType textureType, int textureSlot) {
+    bool BindTexture (GLenum type)(uint texture, int textureSlot) {
         if (doBind(m_state.textureSlot, textureSlot))
             this.opDispatch!"ActiveTexture"(GL_TEXTURE0 + textureSlot);
         if (doBind(m_state.texture, texture))
@@ -527,7 +525,7 @@ public class GLBuffer (GLBufferType BufferType) : GLResource {
         return m_object;
     }
     bool bind () {
-        return gl.BindBuffer(get(), BufferType);
+        return gl.BindBuffer!BufferType(get());
     }
     auto clear () {
         if (m_object) {
@@ -540,7 +538,7 @@ public class GLBuffer (GLBufferType BufferType) : GLResource {
     }
     void bufferData (T)(T[] data, GLBufferUsage buffering) {
         if (bind()) {
-            gl.BufferData(BufferType, data.length * T.sizeof, data.ptr, buffering);
+            gl.BufferData!BufferType(data.length * T.sizeof, data.ptr, buffering);
         }
     }
 }

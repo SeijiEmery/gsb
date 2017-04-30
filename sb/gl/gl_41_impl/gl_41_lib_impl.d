@@ -423,9 +423,8 @@ private class Shader : IGraphicsResource, IShader {
                 if (entry[0] == type && entry[1] == name && entry[2] == value)
                     return entry[3];
             }
-            auto subroutine = glGetSubroutineIndex(m_programObject, type, value.toStringz);
+            auto subroutine = gl.GetSubroutineIndex(m_programObject, type, value.toStringz);
             enforce(subroutine != -1, format("Could not get subroutine value '%s': '%s'", name, value));
-            glAssertOk(format("glGetSubroutineIndex(%s, %s, %s)", m_programObject, type, value));
             m_subroutineCache ~= tuple(type, name, value, subroutine);
             return subroutine;
         }
@@ -436,86 +435,75 @@ private class Shader : IGraphicsResource, IShader {
             uint v     = fetchSubroutineValue();
             enforce( index == 0, format("Index != 0: %s", index));
 
-            glUniformSubroutinesuiv(type, 1, &v );
-            glAssertOk(format("glUniformSubroutinesuiv(%s, 1, %s)", type, v));
+            gl.UniformSubroutinesuiv(type, 1, &v );
         }
         return this;
     }
     uint getLocation (string name) {
         if (name !in m_locationCache) {
-            glFlushErrors();
-            int location = glGetUniformLocation(m_programObject, name.toStringz);
+            int location = gl.GetUniformLocation(m_programObject, name.toStringz);
             enforce(location != -1, format("Could not get uniform '%s'", name));
-            glAssertOk(format("glGetUniformLocation(%s, %s)", m_programObject, name));
             return m_locationCache[name] = cast(uint)location;
         }
         return m_locationCache[name];
     }
     override IShader setv (string name, float v) {
         if (gl.BindProgram(getProgram)) {
-            glUniform1f( getLocation(name), v );
-            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     override IShader setv (string name, int v) {
         if (gl.BindProgram(getProgram)) {
-            glUniform1i( getLocation(name), v );
-            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     override IShader setv (string name, uint v) {
         if (gl.BindProgram(getProgram)) {
-            glUniform1ui( getLocation(name), v );
-            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     override IShader setv (string name, vec2 v) {
         if (gl.BindProgram(getProgram)) {
-            glUniform2fv( getLocation(name), 1, v.value_ptr );
-            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     override IShader setv (string name, vec3 v) {
         if (gl.BindProgram(getProgram)) {
-            glUniform3fv( getLocation(name), 1, v.value_ptr );
-            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     override IShader setv (string name, vec4 v) {
         if (gl.BindProgram(getProgram)) {
-            glUniform4fv( getLocation(name), 1, v.value_ptr );
-            glAssertOk(format("glUniform(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     override IShader setv (string name, mat3 v) {
         if (gl.BindProgram(getProgram)) {
-            glUniformMatrix3fv( getLocation(name), 1, true, v.value_ptr );
-            glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     override IShader setv (string name, mat4 v) {
         if (gl.BindProgram(getProgram)) {
-            glUniformMatrix4fv( getLocation(name), 1, true, v.value_ptr );
-            glAssertOk(format("glUniformMatrix(%s (%s), %s)", name, getLocation(name), v));
+            gl.SetUniform(getLocation(name), v);
         }
         return this;
     }
     mixin RetainRelease;
     private void onReleased () {
         if (m_programObject) {
-            glDeleteProgram(m_programObject);
+            gl.DeleteProgram(m_programObject);
             m_programObject = 0;
         }
         foreach (ref uint shader; m_shaderObjects) {
             if (shader) {
-                glDeleteShader(shader);
+                gl.DeleteShader(shader);
                 shader = 0;
             }
         }
@@ -549,14 +537,11 @@ private class Texture : IGraphicsResource, ITexture {
     }
 
     override ITexture fromBytes (ubyte[] contents, vec2i dimensions, TextureSrcFormat srcFormat) {
-        glFlushErrors();
         if (!m_handle) {
-            glGenTextures(1, &m_handle);
-
-            glBindTexture(GL_TEXTURE_2D, m_handle); 
-            glAssertOk(format("glBindTexture(GL_TEXTURE_2D, %s)", m_handle));
+            gl.GenTextures(1, &m_handle);
+            gl.opDispatch!"BindTexture"(GL_TEXTURE_2D, m_handle); 
         } else {
-            glBindTexture(GL_TEXTURE_2D, m_handle);
+            gl.opDispatch!"BindTexture"(GL_TEXTURE_2D, m_handle);
         }
         GLenum internalFmt, baseFmt;
         final switch (srcFormat) {
@@ -564,18 +549,11 @@ private class Texture : IGraphicsResource, ITexture {
             case TextureSrcFormat.RGB: internalFmt = GL_RGB8; baseFmt = GL_RGB; break;
             case TextureSrcFormat.RGBA: internalFmt = GL_RGBA8; baseFmt = GL_RGBA; break;
         }
-        glTexStorage2D(GL_TEXTURE_2D, 1, internalFmt, dimensions.x, dimensions.y);
-        glAssertOk(format("glTexStorage2D(GL_TEXTURE_2D, 1, %s, %s, %s)",
-            srcFormat, dimensions.x, dimensions.y));
-    
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, dimensions.x, dimensions.y, baseFmt,
+        gl.TexStorage2D(GL_TEXTURE_2D, 1, internalFmt, dimensions.x, dimensions.y);
+        gl.TexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, dimensions.x, dimensions.y, baseFmt,
             GL_UNSIGNED_BYTE, contents.ptr);
-        glAssertOk(format("glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, %s, %s, %s, GL_UNSIGNED_BYTE, %s)",
-            dimensions.x, dimensions.y, srcFormat, contents.ptr));
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glAssertOk("glTexParameteri(...)");
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
         m_currentFormat = srcFormat;
         m_size = dimensions;
@@ -587,12 +565,8 @@ private class Texture : IGraphicsResource, ITexture {
     }
     override bool bindTo (uint textureSlot) {
         if (m_handle) {
-            glActiveTexture(GL_TEXTURE0 + textureSlot);
-            glAssertOk(format("glActiveTexture(%s)", textureSlot));
-
-            glBindTexture(GL_TEXTURE_2D, m_handle);
-            glAssertOk(format("glBindTexture(GL_TEXTURE_2D, %s)", m_handle));
-
+            gl.ActiveTexture(GL_TEXTURE0 + textureSlot);
+            gl.opDispatch!"BindTexture"(GL_TEXTURE_2D, m_handle);
             return true;
         }
         return false;
@@ -600,7 +574,7 @@ private class Texture : IGraphicsResource, ITexture {
     mixin RetainRelease;
     private void onReleased () {
         if (m_handle) {
-            glDeleteTextures(1, &m_handle);
+            gl.DeleteTextures(1, &m_handle);
             m_handle = 0;
         }
         m_graphicsPool.releaseResource(this);
@@ -625,9 +599,7 @@ private class Vao : IGraphicsResource, IVao {
     }
     uint getHandle () {
         if (!m_handle) {
-            glGenVertexArrays(1, &m_handle);
-            glAssertOk("glGenVertexArrays");
-            assert( m_handle, "glGenVertexArrays returned null!");
+            m_handle = gl.CreateVertexArray();
         }
         return m_handle;
     }
@@ -637,28 +609,18 @@ private class Vao : IGraphicsResource, IVao {
     {
         assert( count >= 1 && count <= 4, format("Invalid count passed to bindVertexAttrib: %s!", count));
 
-        glFlushErrors();
         gl.BindVertexArray(getHandle);
-        //glBindVertexArray( getHandle() ); glAssertOk("glBindVertexArray");
+        gl.EnableVertexAttribArray( index ); 
 
-        glEnableVertexAttribArray( index ); 
-        glAssertOk(format("glEnableVertexAttribArray(%s)", index));
-
-        glBindBuffer( GL_ARRAY_BUFFER, vbo.unwrap.getHandle );
-        glAssertOk(format("glBindBuffer(GL_ARRAY_BUFFER, %s)", vbo.unwrap.getHandle));
-
-        glVertexAttribPointer( index, count, dataType, 
+        gl.opDispatch!"BindBuffer"(GL_ARRAY_BUFFER, vbo.unwrap.getHandle);
+        gl.VertexAttribPointer( index, count, dataType, 
             cast(GLboolean)normalized, cast(int)stride, cast(void*)offset );
-        glAssertOk(format("glVertexAttribPointer(%s, %s, %s, %s, %s, %s)",
-            index, count, dataType, normalized, stride, offset));
 
         gl.BindVertexArray(0);
     }
     override void setVertexAttribDivisor (uint index, uint divisor) {
-        glFlushErrors();
         gl.BindVertexArray(getHandle);
-        glVertexAttribDivisor( index, divisor );
-        glAssertOk(format("glVertexAttribDivisor(%s, %s)", index, divisor));
+        gl.VertexAttribDivisor( index, divisor );
     }
     override void bindShader ( GLShaderRef shader ) { 
         m_boundShader = shader;
@@ -671,8 +633,7 @@ private class Vao : IGraphicsResource, IVao {
         if (gl.BindProgram(m_boundShader.unwrap.getProgram) &&
             gl.BindVertexArray(getHandle)
         ) {
-            glDrawArrays( primitive, start, count );
-            glAssertOk(format("glDrawArrays(%s, %s, %s)", primitive, start, count));
+            gl.DrawArrays( primitive, start, count );
         } else {
             writefln("not drawing arrays!");
         }
@@ -681,16 +642,14 @@ private class Vao : IGraphicsResource, IVao {
         if (gl.BindProgram(m_boundShader.unwrap.getProgram) &&
             gl.BindVertexArray(getHandle)
         ) {
-            glDrawArraysInstanced( primitive, start, count, instances );
-            glAssertOk(format("glDrawArrays(%s, %s, %s)", primitive, start, count));
+            gl.DrawArraysInstanced( primitive, start, count, instances );
         }
     }
 
     mixin RetainRelease;
     private void onReleased () { 
         if (m_handle) {
-            glDeleteVertexArrays(1, &m_handle);
-            m_handle = 0;
+            gl.DeleteVertexArray(m_handle);
         }
         m_graphicsPool.releaseResource(this); 
     }
@@ -709,26 +668,21 @@ private class Vbo : IGraphicsResource, IVbo {
 
     uint getHandle () {
         if (!m_handle) {
-            glGenBuffers(1, &m_handle);
-            glAssertOk("glGenBuffers");
-            assert( m_handle, "glGenBuffers returned null!" );
+            m_handle = gl.CreateBuffer();
         }
         return m_handle;
     }
     override void bufferData (const(void)* data, size_t length, GLBufferUsage buffer_usage) {
         // TODO: Add a cpu-side data buffer + command buffer so this can be safely called
         // on threads other than the graphics thread!
-        glFlushErrors();
-        glBindBuffer( GL_ARRAY_BUFFER, getHandle() );
-        glBufferData( GL_ARRAY_BUFFER, length, data, buffer_usage );
-        glAssertOk(format("glBufferData( %s, %s, %s, %s)", getHandle, length, data, buffer_usage));
+        gl.opDispatch!"BindBuffer"(GL_ARRAY_BUFFER, getHandle());
+        gl.opDispatch!"BufferData"(GL_ARRAY_BUFFER, length, data, buffer_usage);
     }
 
     mixin RetainRelease;
     private void onReleased () {
         if (m_handle) {
-            glDeleteBuffers(1, &m_handle);
-            m_handle = 0;
+            gl.DeleteBuffer(m_handle);
         }
         m_graphicsPool.releaseResource(this);
     }
