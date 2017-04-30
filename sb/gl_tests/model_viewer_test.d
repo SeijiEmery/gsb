@@ -14,12 +14,94 @@ import gl3n.math;
 import std.exception: enforce;
 import std.format;
 import std.path: baseName;
-import std.algorithm: endsWith, move;
+import std.algorithm: endsWith, move, any;
 import std.string: fromStringz;
 import core.sync.mutex;
 import std.file;
 import std.path;
 import std.array;
+
+immutable string ASSET_PACK_PATH = "./assets/models.zip";
+immutable string[] ASSET_PRELOAD_EXTS = [ ".obj", ".zip", ".jpg" ];
+auto ASSET_PATHS () {
+    return [
+        "cube.obj":         "cube/cube.obj",
+        "teapot.obj":       "teapot/teapot.obj",
+        "dragon.obj":       "dragon/dragon.obj.zip",
+        "sibenik.obj":      "sibenik/sibenik.obj",
+        "lost_empire.obj":  "lost-empire/lost_empire.obj",
+    ];
+}
+
+class ArchivedAssetLoader {
+    import std.file;
+    import std.zip;
+    import std.parallelism;
+
+    Mutex           mutex;
+    ZipArchive      archive;
+    ubyte[][string] cachedFiles;
+    string[string]  assetPaths;
+
+    public static void loadAll (ArchivedAssetLoader loader, string archivePath) {
+        synchronized (loader.mutex) {
+            StopWatch sw; sw.start();
+            loader.archive = new ZipArchive(read(archivePath));
+            writefln("Preloaded asset pack '%s' in ", sw.peek.to!Duration);
+        }
+        foreach (ArchiveMember member; taskPool.parallel(loader.archive.directory.byValue)) {
+            auto ext = member.name.extension;
+            foreach (v; ASSET_PRELOAD_EXTS) {
+                if (ext == v) {
+                    writefln("Preloading asset '%s'", member.name);
+                    loader.load(member.name);
+                    break;
+                }
+            }
+        }
+    }
+
+    this (string archivePath, string[string] assetPaths, ThreadManager manager) {
+        enforce(exists(archivePath), format("Could not load asset pack '%s' (does not exist)", archivePath));
+        this.assetPaths = assetPaths;
+        this.archive = null;
+        this.mutex   = new Mutex();
+        taskPool.put(task!loadAll(this, archivePath));
+    }
+    ubyte[] load (string path) {
+        string originalAssetPath = path;
+        if (path in assetPaths)
+            path = assetPaths[path];
+
+        bool assetExists = false;
+        synchronized {
+            if (path in cachedFiles)
+                return cachedFiles[path];
+            assetExists = cast(bool)(path in archive.directory);
+        }
+        enforce(assetExists, format("Asset path '%s' does not exist!", path));
+
+        StopWatch sw; sw.start();
+        ubyte[] data = archive.expand(archive.directory[path]);
+        while (path.endsWith(".zip")) {
+            auto a2 = new ZipArchive(data);
+            auto innerPath = baseName(path, ".zip");
+            enforce(innerPath in a2.directory, 
+                format("Could not unpack file: zipped asset '%s' does not contain '%s'!", path, innerPath));
+            path = innerPath;
+            data = a2.expand(a2.directory[innerPath]);
+        }
+        sw.stop();
+
+        synchronized {
+            if (path !in cachedFiles) {
+                writefln("Loaded / unpacked '%s' in %s", originalAssetPath, sw.peek.to!Duration);
+                return cachedFiles[path] = data;
+            }
+            return cachedFiles[path];
+        }
+    }
+}
 
 auto readFile (string path) {
     import std.file;
@@ -180,7 +262,7 @@ RawModelData loadObj (string path, string obj_file_contents, RawModelData model 
 
     sbLoadObj(obj_file_contents, new class ObjLoaderDelegate {
         void onTriangle (SbObj_Triangle tri) {
-            assert( mesh, "Null mesh!" );
+            //assert( mesh, "Null mesh!" );
             foreach (ref vert; tri.verts) {
                 mesh.packedData ~= [ vert.v.x, vert.v.y, vert.v.z, vert.t.x, vert.t.y, vert.n.x, vert.n.y, vert.n.z ];
                 center += vert.v.xyz;
@@ -209,7 +291,7 @@ RawModelData loadObj (string path, string obj_file_contents, RawModelData model 
         }
     });
 
-    //double cx = 0, cy = 0, cz = 0; size_t vertCount = 0;
+    //double cx = 0, cy = 0, cz = 0;// size_t vertCount = 0;
     //tkParseObj( obj_file_contents,
     //    (const(char)* mtlName, size_t triCount) {
     //        mesh = model.addMesh( mtlName.fromStringz.dup, triCount );
@@ -441,6 +523,9 @@ struct TextureManager {
 
 
 void main (string[] args) {
+    auto threading = new ThreadManager();
+    //auto assetLoader = new ArchivedAssetLoader(ASSET_PACK_PATH, ASSET_PATHS, threading);
+
     SbPlatformConfig platformConfig = {
         backend: SbPlatform_Backend.GLFW3,
         glVersion: SbPlatform_GLVersion.GL_410,
@@ -583,7 +668,6 @@ void main (string[] args) {
             }
         `);
         auto gl_init_time = initTime.peek;
-        auto threading = new ThreadManager();
 
         struct LightInfo {
             vec3 pos = vec3(-25, 9, 0);
@@ -734,6 +818,7 @@ void main (string[] args) {
                 }
             });
         }
+
         loadMesh( "./assets/cube/cube.obj",
             vec3(5, 0, 0), vec3(1, 1, 1), quat.identity);
         loadMesh( "./assets/teapot/teapot.obj",
