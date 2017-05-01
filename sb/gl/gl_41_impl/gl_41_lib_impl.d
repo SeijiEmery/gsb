@@ -61,7 +61,6 @@ private class GL41_GraphicsLib : IGraphicsLib {
 }
 
 private class GL41_GraphicsContext : IGraphicsContext {
-    auto gl = new GLContext();
     this () { m_mutex = new Mutex(); }
 
     override IBatch   createBatch   () { return getLocalBatch(); }
@@ -163,22 +162,22 @@ private class ResourcePool : IGraphicsResourcePool {
         m_mutex = new Mutex();
     }
     override GLTextureRef createTexture () {
-        auto texture = new Texture(this, m_graphicsContext.gl);
+        auto texture = new Texture(this);
         synchronized (m_mutex) { m_activeResources ~= texture; }
         return GLTextureRef(texture);
     }
     override GLShaderRef createShader () {
-        auto shader = new Shader(this, m_graphicsContext.gl);
+        auto shader = new Shader(this);
         synchronized (m_mutex) { m_activeResources ~= shader; }
         return GLShaderRef(shader);
     }
     override GLVboRef createVBO () {
-        auto vbo = new Vbo(this, m_graphicsContext.gl);
+        auto vbo = new Vbo(this);
         synchronized (m_mutex) { m_activeResources ~= vbo; }
         return GLVboRef(vbo);
     }
     override GLVaoRef createVAO () {
-        auto vao = new Vao(this, m_graphicsContext, m_graphicsContext.gl);
+        auto vao = new Vao(this, m_graphicsContext);
         synchronized (m_mutex) { m_activeResources ~= vao; }
         return GLVaoRef(vao);
     }
@@ -227,7 +226,7 @@ private auto glGetCompileStatus ( uint shader ) {
 }
 private auto getShaderInfoLog ( uint shader ) {
     int length = 0;
-    glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &length );
+    gl.GetShaderiv( shader, GL_INFO_LOG_LENGTH, &length );
 
     char[] log;
     log.length = length;
@@ -236,7 +235,7 @@ private auto getShaderInfoLog ( uint shader ) {
 }
 private auto glGetLinkStatus ( uint program ) {
     int result;
-    glGetProgramiv( program, GL_LINK_STATUS, &result );
+    gl.GetProgramiv( program, GL_LINK_STATUS, &result );
     return result;
 }
 private auto getProgramInfoLog ( uint program ) {
@@ -297,7 +296,6 @@ private auto unwrap (ref GLVboRef vbo) { return cast(Vbo)(vbo._value); }
 
 private class Shader : IGraphicsResource, IShader {
     ResourcePool m_graphicsPool;
-    GLContext    gl;
 
     bool                   m_hasPendingRecompile = false;
     string[GLShaderType.max] m_pendingSrc    = null;
@@ -307,9 +305,8 @@ private class Shader : IGraphicsResource, IShader {
     Tuple!(GLShaderType,string,string,uint)[] m_subroutineCache;
     bool m_isBindable = false;
 
-    this (ResourcePool pool, GLContext gl ) {
+    this (ResourcePool pool) {
         m_graphicsPool = pool;
-        this.gl = gl;
     }
     override string toString () {
         return format("Shader %s %s '%s'", m_programObject,
@@ -474,16 +471,14 @@ private class Shader : IGraphicsResource, IShader {
     auto getProgram () { return m_programObject; }
 }
 private class Texture : IGraphicsResource, ITexture {
-    GLContext gl;
     ResourcePool m_graphicsPool;
     uint         m_handle = 0;
     TextureSrcFormat m_currentFormat;
     auto             m_size = vec2i(0, 0);
 
 
-    this (ResourcePool pool, GLContext gl) {
+    this (ResourcePool pool) {
         m_graphicsPool = pool;
-        this.gl = gl;
     }
     override string toString () {
         return format("Texture %s (%s %s x %s) '%s'", 
@@ -542,16 +537,14 @@ private class Texture : IGraphicsResource, ITexture {
 }
 
 private class Vao : IGraphicsResource, IVao {
-    GLContext gl;
     GL41_GraphicsContext m_graphicsContext;
     ResourcePool m_graphicsPool;
     uint        m_handle = 0;
     GLShaderRef m_boundShader;
 
-    this (ResourcePool pool, GL41_GraphicsContext context, GLContext gl) {
+    this (ResourcePool pool, GL41_GraphicsContext context) {
         m_graphicsPool = pool;
         m_graphicsContext = context;
-        this.gl = gl;
     }
     override string toString () {
         return format("VAO %s '%s' | bound shader: %s", m_handle, m_graphicsPool.getId,
@@ -616,11 +609,10 @@ private class Vao : IGraphicsResource, IVao {
 }
 
 private class Vbo : IGraphicsResource, IVbo {
-    GLContext gl;
     ResourcePool m_graphicsPool;
     uint         m_handle = 0;
 
-    this (typeof(m_graphicsPool) pool, GLContext gl) { m_graphicsPool = pool; this.gl = gl; }
+    this (typeof(m_graphicsPool) pool) { m_graphicsPool = pool; }
 
     override string toString () {
         return format("VBO %s '%s'", m_handle, m_graphicsPool.getId);

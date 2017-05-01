@@ -113,15 +113,12 @@ struct Rev3Renderer {
     import rev3.core.opengl;
     import rev3.core.resource;
 
-    GLContext    gl;
     Ref!GLShader shader;
     Ref!GLVao    vao;
     Ref!GLVbo    triangleVbo;
     Ref!GLVbo    gridVbo;
 
-    this (const vec3[] gridData) {
-        this.gl = new GLContext();
-        
+    this (const vec3[] gridData) {        
         this.shader = gl.create!GLShader();
         shader.source(GL_VERTEX_SHADER,   vertexShader);
         shader.source(GL_FRAGMENT_SHADER, fragmentShader);

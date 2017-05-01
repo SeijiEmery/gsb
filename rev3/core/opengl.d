@@ -8,6 +8,16 @@ import std.exception: enforce;
 import std.string;
 import std.variant;
 
+// Global context
+__gshared GLContext gl;
+
+shared static this () {
+    gl = new GLContext();
+}
+shared static ~this () {
+    gl.gcResources();
+}
+
 class GLException : Exception {
     this (string message, string file = __FILE__, ulong line = __LINE__) {
         super(message, file, line);
