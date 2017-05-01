@@ -217,70 +217,6 @@ private class ResourcePool : IGraphicsResourcePool {
     }
 }
 
-// GL utilities
-
-private auto glGetCompileStatus ( uint shader ) {
-    int result;
-    glGetShaderiv( shader, GL_COMPILE_STATUS, &result );
-    return result;
-}
-private auto getShaderInfoLog ( uint shader ) {
-    int length = 0;
-    gl.GetShaderiv( shader, GL_INFO_LOG_LENGTH, &length );
-
-    char[] log;
-    log.length = length;
-    glGetShaderInfoLog( shader, length, &length, &log[0] );
-    return log[ 0 .. length ];
-}
-private auto glGetLinkStatus ( uint program ) {
-    int result;
-    gl.GetProgramiv( program, GL_LINK_STATUS, &result );
-    return result;
-}
-private auto getProgramInfoLog ( uint program ) {
-    int length = 0;
-    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
-
-    char[] log;
-    log.length = length;
-    glGetProgramInfoLog( program, length, &length, &log[0] );
-    return log [ 0 .. length ];
-}
-
-// GL error checking
-
-private void glAssertOk (lazy string msg, string file = __FILE__, size_t line = __LINE__) {
-    auto err = glGetError();
-    assert( err == GL_NO_ERROR, format("GL ERROR: %s | %s, %s: %s", 
-        err.glErrorToString, file, line, msg ));
-}
-private void glEnforceOk (lazy string msg, string file = __FILE__, size_t line = __LINE__) {
-    auto err = glGetError();
-    enforce( err == GL_NO_ERROR, format("GL ERROR: %s | %s, %s: %s",
-        err.glErrorToString, file, line, msg ));
-}
-private void glFlushErrors (string file = __FILE__, size_t line = __LINE__) {
-    GLenum err;
-    import std.stdio;
-    while ((err = glGetError()) != GL_NO_ERROR)
-        writefln("Uncaught error: %s (%s, %s)", err.glErrorToString, file, line);
-}
-private auto glErrorToString ( GLenum error ) {
-    switch (error) {
-        case GL_NO_ERROR: return "GL_NO_ERROR";
-        case GL_INVALID_ENUM: return "GL_INVALID_ENUM";
-        case GL_INVALID_VALUE: return "GL_INVALID_VALUE";
-        case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
-        case GL_INVALID_FRAMEBUFFER_OPERATION: return "GL_INVALID_FRAMEBUFFER_OPERATION";
-        case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
-        //case GL_STACK_UNDERFLOW: return "GL_STACK_UNDERFLOW";
-        //case GL_STACK_OVERFLOW:  return "GL_STACK_OVERFLOW";
-        default: return format("Unknown error %s", error);
-    }
-}
-
-
 private interface IGraphicsResource {
     void forceRelease ();
 }
@@ -345,8 +281,7 @@ private class Shader : IGraphicsResource, IShader {
         try {
             maybeRecompileShaders();
             if (m_isBindable) {
-                glUseProgram( m_programObject );
-                glEnforceOk(format("glUseProgram: %s", m_programObject));
+                gl.UseProgram( m_programObject );
                 return true;
             }
         } catch (Exception e) {
@@ -386,7 +321,6 @@ private class Shader : IGraphicsResource, IShader {
             return subroutine;
         }
         if (gl.BindProgram(getProgram)) {
-            glFlushErrors();
             //uint[2] kv = [ fetchSubroutineUniform(), fetchSubroutineValue() ];
             uint index = fetchSubroutineUniform();
             uint v     = fetchSubroutineValue();
