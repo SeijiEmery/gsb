@@ -72,4 +72,4 @@ Controls / gameplay:
  - the simulation rate can be sped up / slowed down (to zero) by pressing the left / right triggers. This is cool, and could probably have been worked into an interesting game mechanic; as is, it makes dodging lasers more feasible as there is a visible half second delay before actually firing. Bumpers changes the base time rate up / down.
  - if you die, you have a 5 second countdown before respawning. Goal is to murder all other players and not die.
  - super basic, but can be kinda fun w/ friends.
- - source code is in [gametest.d]<https://github.com/SeijiEmery/gsb/blob/master/gsb/src/components/shadowgun/gametest.d>
+ - source code is in [gametest.d](https://github.com/SeijiEmery/gsb/blob/master/gsb/src/components/shadowgun/gametest.d)
