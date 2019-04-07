@@ -19,7 +19,6 @@ This project should be as crossplatform as D is, and glfw / opengl 4.1. There is
 
     git clone https://github.com/SeijiEmery/gsb.git
     cd gsb
-    git checkout demo
     cd ext && make && cd ..
 
 To run demos:
