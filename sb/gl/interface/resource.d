@@ -1,6 +1,7 @@
 module sb.gl.resource;
 public import sb.gl.texture;
 public import sb.gl.shader;
+public import rev3.core.opengl;
 
 alias GLResourcePoolRef = ResourceHandle!IGraphicsResourcePool;
 alias GLTextureRef      = ResourceHandle!ITexture;
@@ -19,16 +20,14 @@ interface IGraphicsResourcePool {
 }
 
 interface IVbo {
-    void bufferData (const(void)*, size_t, GLBuffering);
+    void bufferData (const(void)*, size_t, GLBufferUsage);
 
     void release ();
     void retain  ();
 }
-public void bufferData (T)(ref GLVboRef vbo, T[] data, GLBuffering bufferUsage) {
+public void bufferData (T)(ref GLVboRef vbo, T[] data, GLBufferUsage bufferUsage) {
     vbo.bufferData(data.ptr, T.sizeof * data.length, bufferUsage);
 }
-
-enum GLBuffering { STATIC_DRAW, DYNAMIC_DRAW };
 
 interface IVao {
     void bindVertexAttrib (uint index, GLVboRef vbo, uint count, GLType dataType,
@@ -43,26 +42,6 @@ interface IVao {
 
     void release ();
     void retain ();
-}
-
-// maps to GLenum values; we need some abstraction for this since
-// we are NOT importing actual opengl symbols (ie. import derelict.gl3)
-// into our library interface
-enum GLType { 
-    BYTE, UNSIGNED_BYTE, 
-    SHORT, UNSIGNED_SHORT, 
-    INT, UNSIGNED_INT,
-    FIXED,
-    HALF_FLOAT, FLOAT, DOUBLE
-}
-enum GLNormalized : bool { FALSE = false, TRUE = true }
-
-// And ditto for opengl primitives.
-// Higher level API TBD!
-enum GLPrimitive {
-    POINTS,
-    LINES, LINE_STRIP, LINE_LOOP,
-    TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN
 }
 
 private struct ResourceHandle (T) if (is(T == class) || is(T == interface)) {

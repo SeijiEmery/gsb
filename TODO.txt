@@ -1,0 +1,347 @@
+
+Note on code organization:
+    3 main branches: gsb, sb, rev3
+
+    gsb (GLSandbox) split into 'core', 'engine', 'components':
+        'core': shared code; could be used to implement other apps
+        'engine': implements main executable (gsb)
+        'components': hotloadable (in theory) sub-components.
+            Instead of having multiple executables, gsb has one, and loads applet-like
+            components that implement various behaviors. 
+            This is a bad architecture (monolithic), hence rewrites.
+
+    sb (Sandbox - attempted rewrite of gsb) split into:
+        'app': 'engine' equivalent (plus supporting libraries)
+        'gl':  opengl wrapper; bad abstraction layer makes this overly complex + hard to use
+        'platform': glfw wrapper; ditto
+        'model_loaders': tk_objfile wrapper, and custom, buggy .obj / .mtl loader (loadobj)
+        'image_loaders': wraps stb_image
+        'task_graph': task-graph threading infrastructure
+        'threading':  thread abstraction; mostly unused
+        'shared':     includes everything else
+        'mesh', 'gla', 'resource_loader': unused and/or unimplemented; should delete these.
+
+    'gl_tests': sb feature tests
+        flycam_test         (works; tests gl rendering + flycam code)
+        model_viewer_test   (works; tests .obj loader + basic gl rendering)
+        window_test         (broken; tests glfw / event impl)
+
+    rev3 (3rd rewrite), split into 'core', 'tests', and various systems / frameworks (eg. 'renderer3d')
+        'core': implements reusable software components:
+            'config': compile-time constants determine behavior of other modules (eg. toggle opengl logging)
+            'resource_mgt': memory management + data structures
+            'math': gl3n + std math libraries, plus any custom types + operations
+            'opengl': new opengl abstraction layer (targets opengl 4.1 / glfw3)
+            'glfw_app': boilerplate to build a simple glfw application, and handle input, etc.
+
+        TBD: 'tests', 'renderer3d', 'renderer2d', something abstracting UI, etc.
+
+    General architecture + lessons learned:
+        Note: Created new branches (in same codebase) for breaking changes and to prototype new behavior + systems.
+        => codebase is a mess, but old still code still works (important for things I never got around 
+           to reimplementing -- sb doesn't have 2d rendering + UI; gsb doesn't have proper 3d rendering.
+           Major refactoring + code cleanup is long overdue, hence rev3).
+
+        gsb: monolithic architecture, loaded plugin components for game behavior
+            + running old tests within app really easy, and will break app when/if apis change
+            - serious problems with monolithic architecture
+            - difficult to change existing code without breaking tons of things
+            - compile times awful (~10-20s) - though could be improved by just refactoring modules + project files
+        
+        sb: opposite of gsb -- separate test executables, hard module boundaries
+            + much better compile times with library-level separation + decentralization
+            – severely overcompensated (separate public interface / private impl files); 
+              PITA to write, navigate, and maintain.
+            – abstraction levels turned out to be terrible. Spent a lot of time + effort writing high-level
+              opengl interfaces, when should've reserved that for renderer impls instead.
+            - built some neat things for multi-threaded programming (task graphs), but ended up over-complicated
+              and stuck to single-threaded code instead (hence unused). 
+            – Figured out that it's much better to write a single-threaded game engine FIRST, and only 
+              add threading once it can do interesting / useful things, and threading becomes a performance
+              problem. The engine should be designed *to enable* multi-threaded programming, but adding it
+              out of the box is premature optimization and should be ignored.
+
+        rev3:
+            * aims to build reusable software components that do interesting things, while (hopefully) adhering
+              to KISS and taking *full* advantage of the D language (hence, metaprogramming, reflection, etc).
+              D's memory model turns out to be a bit of a PITA for low-level stuff compared to c++; but this is
+              outweighed by its positive features (metaprogramming + reflection, delegates, strings, etc).
+            * singlethreaded until further notice. If pressed, we're sticking with my original gsb threading
+              architecture (similar to autodesk stingray): 1 main thread, 1 render thread (GL), multiple 
+              worker threads to do other stuff. This is obvious if you realize how GL works and you want peak
+              performance; using vulkan would have benefit of not having to write multithreaded commandbuffer
+              impl myself (and no dedicated gl thread), but is otherwise identitical.
+            * Goal is to move + refactor everything useful from sb into rev3, then do the same with gsb.
+              In the end we will hopefully only have one code branch, not 3.
+            * Resuable features in 'core', tests in 'tests', architectural sub-systems (larger / more structured)
+              in separate folders. Use proper module boundaries to speed up compile times; metaprogramming may
+              cause build times to take a hit (all opengl calls go through a metaprogramming thingy to add error
+              checking + call tracing for example).
+            * As before, no serious effort for documentation, etc., – b/c as a single developer this is a waste of
+              my time and effort, particularly if things change frequently. D is clean enough that code is to some
+              extent self-documenting, and I *will* be writing unit tests. Documentation should only be added once
+              the codebase is to some degree stable, and/or there are other devs + users.
+
+-------------------------------------------------------------------------------
+===============================================================================
+                              TODO / TASKS
+===============================================================================
+-------------------------------------------------------------------------------
+
+
+===============================================================================
+                          Finish rev3/core/opengl
+===============================================================================
+
+    – Shader subroutines (broken)
+    – Shader uniform buffers
+    – Remaining shader introspection calls, etc.
+    – Texture calls + state
+    – Remaining buffer types, calls + state
+    – Building blocks for render targets, etc.
+    – Record GL state like scissoring, depth options, etc.
+
+External:
+    – replace sb/gl api
+    – replace all gl calls in gsb (and make everything continue to work!)
+    – delete above APIs, so we only have one opengl abstraction
+    – move opengl tests (above) gradually to rev3/tests/respective_test_dir
+    – UI code to display + introspect opengl calls, resources, etc.
+
+
+===============================================================================
+                          Finish rev3/core/glfw_app
+===============================================================================
+
+    – Black screen bug: *something* in glfw_app.d isn't initializing correctly.
+      Should see sb/platform (but that's a complete mess), and/or gsb/engine.
+    – Port sb input implementations, though keep tied closer to glfw (eg. key codes)
+    – Add _minimalistic_ window abstraction
+    – Port opengl tests to use this
+    - Polish + add features (?)
+        – time
+        – logging (?)
+        - etc...
+
+===============================================================================
+                               Memory management
+===============================================================================
+
+    – Build off stuff already in rev3/core/memory_mgt
+    – But add stuff to implement ECS, event streams, etc.
+    – Should have a bunch of code lying around in sb / gsb, so incorporate / use that
+    – Things I'll be writing from scratch (new features):
+        – Ref!T (exists; revise), and WeakRef!T.
+        – Tree structures using Ref / WeakRef
+        – ...
+
+
+===============================================================================
+                                   Gamepads
+===============================================================================
+
+    – Build off of gsb / sb gamepad.d for initial impl
+    – But should aim to eventually have something that's fully configurable:
+        – reads / writes human-readable config files in some nice text format
+        – nice gui to edit configs
+        – gamepad vendor types mapped to button bindings (buttons / axes)
+        – enable / disable hot detection and polling frequency (menu option?)
+        – popup on unrecognized gamepad (vendor string): choose existing binding,
+          or create a new one
+        – config files store bindings, per-gamepad / per-client settings
+          (tweak deadzones + sensitivity, remap keys), and global gamepad settings
+          (tweak deadzones, sensitivity, and key bindings / remapping). Could be
+          structured as object hierarchy (a la javascript) to make this easy to change
+          properties at multiple levels; default vs. user set values + ability to clear
+          to match parent.
+        – nuke configs => should prompt for gamepad mappings next time a controller
+          is plugged in
+        – ability to edit mappings _with_ an unrecognized controller would be nice
+          (will make best guess based on button / axes count + available mappings; as
+          buttons are set, will become more "accurate" - but can also be set w/ mouse
+          ofc).
+
+External GUI goals:
+    – All user interfaces should be designed to be interactible with mouse / keyboard,
+      gamepad, or vive controls. Won't necessarily have those controls implemented, but
+      should include ability to do so; NOT mouse centric (but should take advantage of
+      mouse where it makes sense, etc.)
+
+
+===============================================================================
+                               rev3/core/camera
+===============================================================================
+
+    camera class (so far missing in sb...)
+    For simplicity of our initial implementation, we will not have separate
+    model / controller classes; we'll define several camera modes (via enum),
+    and have camera control itself (but using input callbacks).
+
+    Parameters should be specified + documented precisely, in units like:
+
+        meters,  meters / sec,  meters / sec ^ 2
+        degrees, degrees / sec, degrees / sec ^ 2
+        pixels / degree, degrees / pixel  (<- are these needed?)
+        etc.
+
+    R/W parameters:
+        position, rotation, fov, aspect ratio, move + rotate fields
+    Get:
+        view / perspective matrices
+        view frustrum
+        current position / rotation, etc.
+    
+    Camera modes + used members / parameters:
+        FirstPerson     (move_speed, turn_speed)
+        Orbit           (move_speed, turn_speed, target_point, target_elasticity)
+        Follow          (similar to orbit-cam, geared towards 3rd person camera...?)
+        TopDown         (in some form...)
+        etc...
+
+    Methods:
+        applyInput (input args...)
+        simulate   (float dt)
+
+
+===============================================================================
+                               3d Renderer
+===============================================================================
+
+    – start with camera class (see above)
+    – should manage high-level resource layer (refcounted assets):
+        – Shaders / shader libraries
+            – shader interfaces (?)  (required fields, incl uniforms, 
+              uniform buffers, and subroutines; used to implement materials)
+        – Materials / material libraries
+        – Meshes (static, skinned)
+        – Textures (2d, 3d)
+        – Animations (...?)
+    – and some form of scene graph / object collection (though this falls under ECS, etc.)
+        – with transactional operations, a la horizon zero dawn? (should be easy enough to implement in D)
+
+    Terminology:
+        "asset": mostly-immutable data loaded from disk; modified by editor operations
+        "instance": instance of asset in game world; serialized to disk
+        "blueprint" / "prefab": asset-like generalization of object instance. 
+            contains pre-built object instance(s), data and relationships.
+            instantiated blueprint inherits data (stored as diff (?))
+
+===============================================================================
+                        Resource Loading: assimp
+===============================================================================
+
+    – neccessary, b/c own .obj loader awful and most perf awful.
+    – use prev concept + cache mesh and texture data (use assimp for imports?)
+
+===============================================================================
+                                Filesystem
+===============================================================================
+
+Needed features:
+    – zip / archive loading (treat loading files from .zip same as from folder)
+    – asset bundles + fuzzy lookup (?) (load bundles, then asset "foo.jpg" loaded
+      correctly if name unique. If not, get warning (and maybe gui popup ?))
+    – file watching (use existing FileWatcher (or whatever) c++ lib for this?)
+    – Stretch feature: D binary hotloading for "script" files. Useful for some stuff;
+      having hotloadable systems (ECS) – and maybe components – would be awesome.
+
+
+===============================================================================
+                2d Vector Rendering: incorporate / wrap nanovg
+===============================================================================
+
+    – should play nicely with rev3/core/opengl
+    – would probably be rev3/core/nanovg (or something)
+
+===============================================================================
+                              GUI framework
+===============================================================================
+
+    – built on top of nanovg
+    – or port of nanogui (but model doesn't support non-mouse-based input paradigms + less control?)
+    – or go full-bore + import qt; rebuild off of that (is an option...)
+    – somehow integrated into ECS; definitely ref-counted (?)
+
+
+===============================================================================
+                              Feature: Box2d
+===============================================================================
+
+    – Integrate as component into ECS impl (whatever form that takes)
+    – Should play nicely with 2d / 3d rendering. Uses just x / y coords.
+
+===============================================================================
+                             2d Sprite animation
+===============================================================================
+
+Should:
+    – Have sprite + animation editor / viewer
+    – Some reasonably efficient impl
+    – Makes sense to implement 1st as "game engine" b/c much simpler than 3d
+        – also, easy to get 2d assets; easier to build a simple game with that + box2d
+        + some ecs impl + some input impl than in 3d (as a proof of concept)
+    – Use 3d coords; z = depth for object sorting
+        – planar transforms (to shift all rendering ?). 
+          Benefit: physics, game logic stays in x / y only; graphics unconstrained.
+    – ECS should allow mixing 2d / 3d content (eventually...)
+
+
+===============================================================================
+                    Long-term Feature #1: Node-graph
+===============================================================================
+
+    – Doesn't have to *do* anything, but useful to implement tons of other stuff
+      (editor tools, etc...)
+
+===============================================================================
+         Long-term Feature #2: A* pathfinding + navmeshes / navgrids
+===============================================================================
+    
+    – Plus distance fields / Djikstra maps, etc.
+    – Focus on 2d; build debug rendering + editor tools
+
+===============================================================================
+               Long-term Feature #3: AI + Flocking stuff & demos
+===============================================================================
+    
+    – can build demos using vector graphics and/or sprites
+    – Flocking / N-body behaviors; crowd behaviors; build demos
+    – A* pathfinding (from before)
+    – Action graphs (node-graph) + state (gui / D code) + Action solvers
+        => tons of neat AI applications
+        – FEAR AI is well documented and relatively simple; would be neat to reimplement
+        that as cover-based top-down game (for example) to showcase AI behaviors
+
+
+===============================================================================
+                         Stuff we don't need:
+===============================================================================
+
+    – Node-based material editor (that's nice, but shader interfaces + decent-enough
+    GUI for material properties should be more than enough). Plus shader recompilation
+    for most big engines ridiculously complex + inefficient (well, it's for 
+    performance though...). Instead, we want:
+        – shader hotloading (easy enough with file watcher lib); super awesome if
+          we can do this at runtime w/ running game code
+        – shader interfaces (enforces contracts w/ runtime code). Fails => error
+          messages + default / "empty" shader loaded, and/or rendering disabled
+          until reloaded with valid shader.
+        – change interface(s) => change dependent code (unless built to handle
+          multiple interfaces (eg. renderer), and only type is changed)
+
+
+===============================================================================
+                                Sound / Audio
+===============================================================================
+
+    Extremely low priority (until further notice)
+
+
+===============================================================================
+                                Networking
+===============================================================================
+
+    Extremely low priority (until further notice)
+    However, could build off of vibe.d (maybe?).
+    Might want to borrow stuff anyways (eg. concurrency / fibers; text processing (?))
+
