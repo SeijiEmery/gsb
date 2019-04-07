@@ -12,7 +12,7 @@ If I were doing this over again I'd have used nanovg instead of rolling my own t
 
 Obviously, GSB is missing a lot of features, and has some weird ones: I was deadset on making the engine multithreaded, for instance (despite the fact that opengl is notoriously singlethreaded – I got around this by basically reimplementing command buffers (ie. the ones in vulkan / metal / directx 12), but this made things horrifically complicated). It has probably the world's worst GUI library, pretty good gamepad support (that's one of the few things in this project that I'm somewhat proud of), and pretty good automatic resolution switching for high-dpi displays, implemented ofc using GLFW callbacks and some basic logic off of the framebuffer / window size.
 
-This project should be as crossplatform as D is, and glfw / opengl 4.1. There is one crappy hack (see ext/), since I apparently didn't want to write proper bindings for stb, tk_objfile, and a few other things (and D is binary compatible with C). I doubt you could compile this for mobile though, first because of the opengl 4.1 dependency, and secondly b/c I'm pretty sure that core.atomic has a bunch of x86 assembly in it and no ARM version :/
+This project should be as crossplatform as D is, and glfw / opengl 4.1. There is one crappy hack (see ext/), since I apparently didn't want to write proper bindings for stb, tk_objfile, and a few other things. I doubt you could compile this for mobile though, first because of the opengl 4.1 dependency, and secondly b/c I'm pretty sure that D's core.atomic has a bunch of x86 assembly in it and no ARM version :/
 
 
 ## Build Instructions:
